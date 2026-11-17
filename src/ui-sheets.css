@@ -470,3 +470,8 @@
   font: 700 10px/15px var(--f-body, inherit); color: #f4efe5; background: rgba(43, 38, 34, 0.86); text-shadow: none; }
 .ring-btn .sklv::before { content: "Lv"; margin-right: 1px; opacity: 0.8; font-weight: 600; }
 .ring-btn .sklv[data-lv1] { display: none; }
+/* keep "Lv" and the number on one chip, also for awakened (cinnabar / gold) badges */
+.ring-btn .sklv, .ring-btn.aw1 .sklv, .ring-btn.aw2 .sklv { display: inline-flex; align-items: center; gap: 1px; white-space: nowrap; width: auto; min-width: 0; height: 15px; padding: 0 4px; font-size: 10px; line-height: 15px; }
+.ring-btn.aw1 .sklv { background: var(--cinnabar); color: #fff6ec; }
+.ring-btn.aw2 .sklv { background: var(--gold); color: #2b2622; }
+.ring-btn .sklv[data-lv1] { display: none; }
