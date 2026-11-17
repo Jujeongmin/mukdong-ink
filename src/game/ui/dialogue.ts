@@ -56,13 +56,15 @@ export class Dialogue {
     root.insertAdjacentHTML("beforeend", `
       <div class="dlg" data-dlg hidden>
         <div class="dlg-veil"></div>
+        <div class="dlg-stage">
+        <div class="dlg-face" aria-hidden="true"><img class="f0" alt=""><img class="f1" alt=""><b class="dlg-face-name"></b></div>
         <div class="dlg-box" role="dialog" aria-live="polite">
-          <div class="dlg-face" aria-hidden="true"><img class="f0" alt=""><img class="f1" alt=""><b class="dlg-face-name"></b></div>
           <button type="button" class="dlg-skip btn btn-secondary btn-sm" hidden>건너뛰기</button>
           <div class="dlg-who"><b class="dlg-name"></b><span class="dlg-title"></span></div>
           <p class="dlg-text"></p>
           <div class="dlg-choices"></div>
           <span class="dlg-next" aria-hidden="true"></span>
+        </div>
         </div>
       </div>`);
     this.box = el("[data-dlg]", root);

@@ -262,7 +262,9 @@ export class Sheets {
         return `<li class="qrow${d.claimed ? " claimed" : d.done ? " ready" : ""}">
           <div class="qmain"><b class="sec">${esc(d.q.title)}</b><span class="qprog"><i class="bar" style="--f:${f.toFixed(3)}" aria-hidden="true"></i><small>${d.prog} / ${d.target}</small></span>${rewardChips(d.q)}</div>${btn}</li>`;
       }).join("");
-      return `${this.head("먹노인")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], "하루에 한 번씩 새로 맡긴다.\n다 하면 여기서 보상을 받는다.")}<ol class="qrows">${daily}</ol>`;
+      const ready = DAILY_QUESTS.filter((_, k) => { const d = dailyStatus(p, k); return d.done && !d.claimed; }).length;
+      const all = ready > 1 ? `<button class="btn btn-lg daily-all" type="button" data-do="claimDailyAll" ${this.busy ? "disabled" : ""}>모두 받기 (${ready})</button>` : "";
+      return `${this.head("먹노인")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], "하루에 한 번씩 새로 맡긴다.\n다 하면 여기서, 또는 오른쪽 의뢰 칸에서 바로 받는다.")}<ol class="qrows">${daily}</ol>${all}`;
     }
     let main = `<p class="cap">이어지는 의뢰가 없다.</p>`;
     if (s) {
@@ -407,6 +409,9 @@ export class Sheets {
         const i = Number(b.dataset.i);
         const p = await attempt(api.claimDaily(i));
         if (p) { this.ctx.apply(p); toast(`오늘의 의뢰 완료 · ${rewardText(DAILY_QUESTS[i])}`); audio.play("quest-done"); }
+      } else if (what === "claimDailyAll") {
+        const p = await attempt(api.claimDailyAll());
+        if (p) { this.ctx.apply(p); toast("오늘의 의뢰 보상을 모두 받았다"); audio.play("quest-done"); }
       } else if (what === "dye") {
         const d = DYES[Number(b.dataset.k)];
         const p = await attempt(api.dye(b.dataset.t === "scarf" ? "scarf" : "sash", d.hex));

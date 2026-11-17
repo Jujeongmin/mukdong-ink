@@ -537,3 +537,4 @@
 .album-big .album-pic { cursor: zoom-out; padding: 7px; }
 .album-big figcaption { display: grid; gap: 2px; }
 @media (max-width: 520px) { .album-grid { grid-template-columns: 1fr; gap: 12px; } }
+.sheet-card .btn.daily-all { display: block; margin: 14px auto 0; }

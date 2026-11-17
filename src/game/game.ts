@@ -36,7 +36,7 @@ import { Title, mockAdPresenter } from "./ui/title";
 import { CharacterCreator } from "./ui/create";
 import { Loading } from "./ui/loading";
 import { Hints } from "./ui/hints";
-import { MAIN_QUESTS } from "../shared/world";
+import { DAILY_QUESTS, MAIN_QUESTS } from "../shared/world";
 
 /** A main quest's position by id (the list can change; never hard-code indices). */
 const questIndex = (id: string): number => MAIN_QUESTS.findIndex((q) => q.id === id);
@@ -153,6 +153,7 @@ export class Game {
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
+      claimDaily: () => void this.claimDailyAll(),
       interact: () => this.interact(),
       skill: (i) => this.pressSkill(i),
       respawn: () => void this.respawn(),
@@ -414,6 +415,8 @@ export class Game {
     this.lastProfileAt = performance.now();
     if (this.player) this.player.applyLook(this.lookOf(p));
     this.hud.setProfile(p);
+    // the top-left ensō shows your own face (the same in-engine cutout the dialogue uses; cached per look)
+    if (this.player) { const face = this.portraitOf("me"); if (face) this.hud.setFace(face.neutral); }
     this.hud.tag(this, esc(p.name || "먹동이"), "me");
     if (prev && p.level > prev.level && this.player) {
       const sk = SKILLS.find((s) => s.unlock > prev.level && s.unlock <= p.level);
@@ -691,6 +694,21 @@ export class Game {
     else if (this.hints.has("gate8") && !this.hints.has("gate8-open")) { this.hints.mark("gate8-open"); this.sheets.openGrowth("skills", "awaken1"); }
     else if (this.hints.has("gate9") && !this.hints.has("gate9-open")) { this.hints.mark("gate9-open"); this.sheets.openGrowth("enhance", "odds"); }
     else this.sheets.openGrowth();
+  }
+
+  /** Every finished daily quest, paid from the tracker (no walk back to 먹노인). */
+  private async claimDailyAll(): Promise<void> {
+    const before = this.profile;
+    const p = await attempt(this.api.claimDailyAll());
+    if (!p) { this.hud.setProfile(before); return; }
+    const sum = { exp: 0, pigment: 0, jade: 0, stones: 0, shards: 0 };
+    DAILY_QUESTS.forEach((q, i) => {
+      if (!before.daily.claimed[i] && p.daily.claimed[i]) for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += q.reward[k] ?? 0;
+    });
+    this.applyProfile(p);
+    const names: Record<keyof typeof sum, string> = { exp: "경험", pigment: "안료", jade: "묵옥", stones: "먹돌", shards: "색 조각" };
+    toast(`오늘의 의뢰 보상 · ${(Object.keys(sum) as (keyof typeof sum)[]).filter((k) => sum[k]).map((k) => `${names[k]} ${sum[k]}`).join(" · ")}`);
+    audio.play("quest-done");
   }
 
   private openAlbum(): void {
@@ -971,7 +989,7 @@ export class Game {
     if (who === "me") {
       if (!this.player || !this.profile) return null;
       const p = this.profile;
-      const key = `me:${p.dye?.scarf ?? ""}:${p.dye?.sash ?? ""}:${p.equip.hat}:${p.equip.sash}`;
+      const key = `me:${p.dye?.scarf ?? ""}:${p.dye?.sash ?? ""}:${p.equip.hat}:${p.equip.sash}:${p.equip.weapon}`;
       return this.portraits.get(key) ?? this.portraits.capture(key, this.player.rig);
     }
     const have = this.portraits.get(who);

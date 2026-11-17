@@ -1,6 +1,6 @@
-// Dialogue portraits rendered in-engine: a head-and-shoulders view of the speaker's actual rig (the NPC
-// standing in this zone, or the player's own figure with their dyes), drawn once per speaker into a 256²
-// render target with the main renderer, read back to a canvas and kept as two PNG data URLs (neutral and a
+// Dialogue portraits rendered in-engine: a waist-up cutout (transparent background) of the speaker's actual rig
+// (the NPC standing in this zone, or the player's own figure with their dyes), drawn once per speaker into a
+// 320×384 render target with the main renderer, read back to a canvas and kept as two PNG data URLs (neutral and a
 // slight head tilt for "speaking"). The render target, temporary scene, camera and lights are created per
 // capture and disposed right after (memory checklist). About ten small images are cached.
 
@@ -8,7 +8,7 @@ import * as THREE from "three";
 import { renderOffscreen } from "../render/gfx";
 import type { Rig } from "../render/rig";
 
-const SIZE = 256;
+const W = 320, H = 384;
 const MAX_CACHE = 12;
 
 export interface PortraitPair {
@@ -19,7 +19,7 @@ export interface PortraitPair {
 export class Portraits {
   private readonly cache = new Map<string, PortraitPair>();
   /** one readback buffer and one canvas, reused for every capture */
-  private readonly buf = new Uint8Array(SIZE * SIZE * 4);
+  private readonly buf = new Uint8Array(W * H * 4);
   private canvas: HTMLCanvasElement | null = null;
 
   get(key: string): PortraitPair | null {
@@ -45,22 +45,22 @@ export class Portraits {
     scene.add(g);
     g.position.set(0, 0, 0);
     g.rotation.y = -0.5;
-    const cam = new THREE.PerspectiveCamera(24, 1, 0.1, 30);
-    const rt = new THREE.WebGLRenderTarget(SIZE, SIZE);
+    const cam = new THREE.PerspectiveCamera(24, W / H, 0.1, 30);
+    const rt = new THREE.WebGLRenderTarget(W, H);
     rt.texture.colorSpace = THREE.SRGBColorSpace;
     const pose1 = rig.pose[1];
     let pair: PortraitPair | null = null;
     try {
       rig.apply();
       g.updateMatrixWorld(true);
-      // frame head and shoulders from the figure's actual bounds (props and hats included)
+      // frame from the top of the figure (hats included) down to about the waist; the dialogue box hides the cut
       const box = new THREE.Box3().setFromObject(g);
       const h = box.max.y - box.min.y;
-      const bust = Math.max(0.45, h * 0.4);
+      const span = Math.max(0.8, h * 0.66);
       const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
-      const ty = box.max.y - bust * 0.46;
-      const dist = bust / (2 * Math.tan((24 * Math.PI) / 360)) * 1.05;
-      cam.position.set(cx + dist * 0.12, ty + bust * 0.06, cz + dist);
+      const ty = box.max.y + span * 0.04 - span * 0.5;
+      const dist = span / (2 * Math.tan((24 * Math.PI) / 360)) * 1.04;
+      cam.position.set(cx + dist * 0.12, ty + span * 0.04, cz + dist);
       cam.lookAt(cx, ty, cz);
       cam.updateMatrixWorld(true);
       if (renderOffscreen(scene, cam, rt, this.buf)) {
@@ -99,13 +99,13 @@ export class Portraits {
   /** The readback (bottom row first) flipped into the canvas, as a PNG data URL. */
   private toUrl(): string {
     const c = this.canvas ?? (this.canvas = document.createElement("canvas"));
-    c.width = SIZE;
-    c.height = SIZE;
+    c.width = W;
+    c.height = H;
     const ctx = c.getContext("2d");
     if (!ctx) return "";
-    const img = ctx.createImageData(SIZE, SIZE);
-    const row = SIZE * 4;
-    for (let y = 0; y < SIZE; y++) img.data.set(this.buf.subarray((SIZE - 1 - y) * row, (SIZE - y) * row), y * row);
+    const img = ctx.createImageData(W, H);
+    const row = W * 4;
+    for (let y = 0; y < H; y++) img.data.set(this.buf.subarray((H - 1 - y) * row, (H - y) * row), y * row);
     ctx.putImageData(img, 0, 0);
     return c.toDataURL("image/png");
   }

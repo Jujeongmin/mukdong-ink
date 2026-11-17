@@ -137,6 +137,8 @@ export interface GameApi {
   /** Hand the current main quest in to its turn-in NPC (stand within NPC_REACH). */
   claimMain(npcId?: string): Promise<ProfileView>;
   claimDaily(index: number): Promise<ProfileView>;
+  /** Every finished daily quest at once. Errors: quest_not_done (none ready). */
+  claimDailyAll(): Promise<ProfileView>;
   /** Say a line in your room (zone + channel). Errors: bad_args (empty/too long), on_cooldown (pace), rate_limited (same line again), not_ready. */
   chatSay(text: string): Promise<ChatMessage>;
   /** Each line said in your room while you are in it, once. Nothing from before you joined is replayed. */

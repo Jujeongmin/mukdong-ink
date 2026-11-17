@@ -24,6 +24,8 @@ export interface HudHandlers {
   gear(): void;
   growth(): void;
   album(): void;
+  /** pay every finished daily quest */
+  claimDaily(): void;
   auto(): void;
   travel(): void;
   autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean };
@@ -46,6 +48,7 @@ const SKILL_COLOR = ["#2f4f9e", "#d4462a", "#c08a2a", "#8fc7cf", "#3b2a48"];
 
 const MARKUP = `
 <div class="portrait passive" aria-label="나" data-portrait data-tip-title="나" data-tip="">
+  <i class="face" data-face aria-hidden="true"></i>
   <div class="ring spr-enso"><i class="head"></i><i class="scarf" data-scarf></i></div>
   <b class="lv-seal" data-lv title="경지">1</b>
   <div class="vitals">
@@ -61,6 +64,7 @@ const MARKUP = `
   <span class="ui-later" data-ui="gear" data-tip-title="묵옥" data-tip="뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다."><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
   <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 설정 (${KEYS.mute} 음소거)" data-tip-title="소리" data-tip="음량 조절. ${KEYS.mute} 키로 끄고 켠다."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
+  <i class="purse-break" aria-hidden="true"></i>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><span>장비</span><kbd>${KEYS.gear}</kbd></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="화첩 (${KEYS.album})" data-tip="보스를 벤 순간 돌아온 색을 그림으로 모아 둔다."><span>화첩</span><kbd>${KEYS.album}</kbd></button>
@@ -178,6 +182,14 @@ export class Hud {
     el("[data-gear]", root).addEventListener("click", () => this.h.gear());
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
     el("[data-album]", root).addEventListener("click", () => this.h.album());
+    // the daily card is rebuilt often; one delegated listener on its box
+    el("[data-quest]", root).addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-claim-daily]");
+      if (!b || b.disabled) return;
+      e.stopPropagation();
+      b.disabled = true;
+      this.h.claimDaily();
+    });
     el("[data-auto]", root).addEventListener("click", () => this.h.auto());
     el("[data-autoset]", root).addEventListener("click", () => this.toggleAutoPop());
     el("[data-sound]", root).addEventListener("click", () => this.h.settings("sound"));
@@ -188,6 +200,15 @@ export class Hud {
     el("[data-prompt]", root).addEventListener("click", () => this.h.interact());
     this.wireRise();
     gameSettings.onChange(() => this.gourdTip());
+  }
+
+  /** Your own figure in the ensō (replaces the drawn head once the in-engine cutout exists). */
+  setFace(url: string): void {
+    const f = el("[data-face]", this.root);
+    if (f.dataset.url === url) return;
+    f.dataset.url = url;
+    f.style.backgroundImage = `url("${url}")`;
+    el("[data-portrait]", this.root).classList.add("has-face");
   }
 
   setProfile(p: ProfileView): void {
@@ -336,13 +357,16 @@ export class Hud {
 
   /** The day's quests that are still open, under the main card: title + progress, or who to report to. */
   private dailyCard(p: ProfileView): string {
-    let rows = "";
+    let rows = "", ready = 0;
     for (let i = 0; i < DAILY_QUESTS.length; i++) {
       const d = dailyStatus(p, i);
       if (d.claimed) continue;
-      rows += `<li class="${d.done ? "done" : ""}"><span>${esc(d.q.title)}</span>${d.done ? `<b class="qtag done">먹노인에게 보고</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
+      if (d.done) ready++;
+      rows += `<li class="${d.done ? "done" : ""}"><span>${esc(d.q.title)}</span>${d.done ? `<b class="qtag done">완료</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
     }
-    return rows ? `<div class="qcard daily"><header><span class="qch">오늘</span><h4>오늘의 의뢰</h4></header><ul class="qbody qdaily">${rows}</ul></div>` : "";
+    // finished ones are paid right here, all at once (no walk back to 먹노인)
+    const claim = ready ? `<button class="btn btn-sm daily-claim" type="button" data-claim-daily>보상 받기${ready > 1 ? ` ${ready}` : ""}</button>` : "";
+    return rows ? `<div class="qcard daily"><header><span class="qch">오늘</span><h4>오늘의 의뢰</h4>${claim}</header><ul class="qbody qdaily">${rows}</ul></div>` : "";
   }
 
   /** Phones: the tracker folds to a one-line chip and back. */

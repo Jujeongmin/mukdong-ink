@@ -925,6 +925,28 @@ export class Server {
     return profileView(account, p);
   }
 
+  /** Every finished, unclaimed daily quest paid at once (one lock, one save). quest_not_done when none is ready. */
+  async claimDailyAll(): Promise<ProfileView> {
+    const account = $sender.account;
+    let levelUp = false;
+    const p = await updateProfile(account, (q) => {
+      let cur = q;
+      let paidAny = false;
+      for (let i = 0; i < DAILY_QUESTS.length; i++) {
+        if (cur.daily.claimed[i] || !dailyDone(cur, i)) continue;
+        const paid = giveReward(cur, DAILY_QUESTS[i].reward);
+        levelUp ||= paid.levelUp;
+        const claimed = paid.profile.daily.claimed.map((c, k) => c || k === i);
+        cur = { ...paid.profile, daily: { ...paid.profile.daily, claimed } };
+        paidAny = true;
+      }
+      if (!paidAny) throw new RuleViolation("quest_not_done");
+      return cur;
+    });
+    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpFor(p.level), hp: maxHpFor(p.level) });
+    return profileView(account, p);
+  }
+
   /**
    * A watched rewarded ad: AD_REWARD_JADE jade, AD_DAILY times per KST day, once per requestId, after the
    * Verse8 verifier says it was watched (see ads.ts for when it cannot be asked).

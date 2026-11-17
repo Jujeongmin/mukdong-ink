@@ -1,6 +1,6 @@
 import { POTION_COST, POTION_HEAL, maxHpFor } from "../../src/shared/combat";
 import { COST1, COST10, DUPE_SHARDS, DUPE_STONES, DYES, DYE_COST, GACHA_ENTRIES, GACHA_EXTRA_BY_ID, ITEM, NOT_DRAWN, PITY } from "../../src/shared/items";
-import { MAIN_QUESTS, ZONES } from "../../src/shared/world";
+import { DAILY_QUESTS, MAIN_QUESTS, ZONES } from "../../src/shared/world";
 import { NO_ROOM, editProfile, errorOf, goTo, inVillage, newPlayer, profileOf, rolling, walkTo } from "./helpers";
 
 const questIndex = (id: string) => MAIN_QUESTS.findIndex((q) => q.id === id);
@@ -213,6 +213,17 @@ describe("talking and quests", () => {
 });
 
 describe("daily quests", () => {
+  test("claim all pays every finished one once, and nothing when none is ready", async (server) => {
+    await newPlayer(server, "test-a");
+    expect(await errorOf(server.claimDailyAll())).toContain("quest_not_done");
+    await editProfile("test-a", (q) => ({ ...q, daily: { ...q.daily, progress: [30, 15, 0] } }));
+    const p = await server.claimDailyAll();
+    expect(p.daily.claimed).toEqual([true, true, false]);
+    expect(p.pigment).toBe(DAILY_QUESTS[0].reward.pigment + DAILY_QUESTS[1].reward.pigment);
+    expect(await errorOf(server.claimDailyAll())).toContain("quest_not_done");
+    expect(await errorOf(server.claimDaily(0))).toContain("already_claimed");
+  });
+
   test("pay once when done, and start over on a new KST day", async (server) => {
     await newPlayer(server, "test-a");
     expect(await errorOf(server.claimDaily(0))).toContain("quest_not_done");
