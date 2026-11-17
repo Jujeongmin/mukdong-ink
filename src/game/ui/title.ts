@@ -41,7 +41,7 @@ export class Title {
             <i class="logo-stroke" aria-hidden="true"></i>
             <p class="subtitle">잃어버린 색</p>
           </div>
-          <p class="title-lead">먹으로 그린 세상, 색은 검법과 물들인 천에만 남았다.</p>
+          <p class="title-lead">먹으로 그린 세상, 색은 검법과 물들인 천에만 남았다</p>
           <div class="title-cta" data-slot><button class="start title-start" type="button" data-start><span>눌러서 시작</span></button></div>
           <div class="status" data-status aria-live="polite"></div>
         </div>

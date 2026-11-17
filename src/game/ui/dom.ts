@@ -78,7 +78,7 @@ const RULE_TEXT: Record<RuleCode, string> = {
   quest_not_done: "아직 의뢰를 마치지 못했습니다.",
   already_claimed: "이미 보상을 받았습니다.",
   name_taken: "이미 쓰는 이름입니다.",
-  bad_name: "이름은 한글·영문·숫자 2~10자로 지어 주세요.",
+  bad_name: "쓸 수 없는 이름이다. 한글·영문·숫자 2~8자, 거친 말은 안 된다.",
   rate_limited: "조금 천천히 해 주세요.",
 };
 

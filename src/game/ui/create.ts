@@ -84,7 +84,7 @@ export class CharacterCreator {
         <form class="create-panel" data-form>
           <h2>먹동이를 그리다</h2>
           <p class="sub">몸은 먹, 천 두 자락에만 색이 남는다. 이 색은 다른 이들 눈에도 보인다.</p>
-          <label class="create-name"><span>이름</span><input data-name maxlength="10" autocomplete="off" placeholder="2~10자" aria-label="이름"></label>
+          <label class="create-name"><span>이름</span><input data-name maxlength="8" autocomplete="off" placeholder="2~8자 · 한글, 영문, 숫자" aria-label="이름"></label>
           <div class="create-row"><span>목도리</span><div class="swatches" data-sw="scarf"></div></div>
           <div class="create-row"><span>허리띠</span><div class="swatches" data-sw="sash"></div></div>
           <p class="create-err" data-err aria-live="polite"></p>
