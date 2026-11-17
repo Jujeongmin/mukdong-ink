@@ -20,11 +20,14 @@ export interface AlbumPage {
   quest?: string;
   /** the color this page restores, for its frame */
   hue: string;
+  /** the zone to walk through in 추억 속 풍경, and the color it is held in */
+  zone?: string;
+  color?: readonly number[];
 }
 
 export const ALBUM_PAGES: AlbumPage[] = [
-  { id: "c1", chapter: "1장", title: "물빛을 되찾은 날", place: "먹봉우리", boss: "boss", quest: "c1q10", hue: "#4f86c6" },
-  { id: "c2", chapter: "2장", title: "불빛을 되찾은 날", place: "향로 마당", boss: "ashboss", quest: "c2q10", hue: "#c8503a" },
+  { id: "c1", chapter: "1장", title: "물빛을 되찾은 날", place: "먹봉우리", boss: "boss", quest: "c1q10", hue: "#4f86c6", zone: "peak", color: [0.42, 0.74, 1.0] },
+  { id: "c2", chapter: "2장", title: "불빛을 되찾은 날", place: "향로 마당", boss: "ashboss", quest: "c2q10", hue: "#c8503a", zone: "censer", color: [1.0, 0.46, 0.24] },
   { id: "c3", chapter: "3장", title: "흙빛", place: "아직 찾지 못한 조각", hue: "#c9a13e" },
   { id: "c4", chapter: "4장", title: "바람빛", place: "아직 찾지 못한 조각", hue: "#d9d6cc" },
   { id: "c5", chapter: "5장", title: "먹빛", place: "아직 찾지 못한 조각", hue: "#2a2622" },

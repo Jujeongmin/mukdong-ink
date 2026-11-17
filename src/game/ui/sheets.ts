@@ -31,6 +31,9 @@ export interface SheetCtx {
   mark?(id: string): void;
   /** the settings menu's hooks */
   settings?: SettingsCtx;
+  /** 화첩: walk a recovered region (추억 속 풍경); `memoryBlock` says why not right now */
+  enterMemory?(pageId: string): void;
+  memoryBlock?(): string | null;
 }
 
 /** One short line the first time each growth tab is opened. */
@@ -47,6 +50,14 @@ const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", �
 
 function itemStat(it: ItemDef, plus = 0): string {
   return it.atk ? `공격 ${enhancedAtk(it.atk, plus)}` : it.tint ? "색 있는 장비" : kindName(it);
+}
+
+/** 으로 / 로 after a word (로 after a vowel or ㄹ): 파랑으로, 보라로. */
+function withRo(word: string): string {
+  const c = word.charCodeAt(word.length - 1) - 0xac00;
+  if (c < 0 || c > 11171) return "로";
+  const jong = c % 28;
+  return jong === 0 || jong === 8 ? "로" : "으로";
 }
 
 /** "먹돌 16" / "색 조각 1" (a gacha bundle or what a duplicate turned into). */
@@ -227,7 +238,7 @@ export class Sheets {
       const pic = album.picture(sel.id)!;
       return `${this.head("화첩")}<figure class="album-big" style="--hue:${sel.hue}">
         <button type="button" class="album-pic" data-page="${sel.id}" aria-label="작게 보기"><img src="${pic.url}" alt="${esc(sel.title)}"></button>
-        <figcaption><b class="sec">${esc(sel.chapter)} · ${esc(sel.title)}</b><span class="cap">${esc(sel.place)} · ${date(pic.at)}</span></figcaption></figure>`;
+        <figcaption><div><b class="sec">${esc(sel.chapter)} · ${esc(sel.title)}</b><span class="cap">${esc(sel.place)} · ${date(pic.at)}</span></div>${this.walkBtn(sel.id, true)}</figcaption></figure>`;
     }
     const got = ALBUM_PAGES.filter((pg) => album.has(pg.id) || pageEarned(pg, p.main)).length;
     const pages = ALBUM_PAGES.map((pg) => {
@@ -238,10 +249,16 @@ export class Sheets {
         : `<div class="album-pic empty"><span>${earned ? "그림이 비어 있다.<br>다시 베면 이 날이 남는다." : pg.boss ? "아직 되찾지 못한 색" : "아직 이어지지 않은 이야기"}</span></div>`;
       const sub = pic ? `${pg.place} · ${date(pic.at)}` : pg.place;
       return `<li class="album-page${pic ? " has" : earned ? " earned" : " locked"}" style="--hue:${pg.hue}">${body}
-        <div class="album-cap"><b class="sec">${esc(pg.chapter)} · ${esc(earned || pic ? pg.title : pg.boss ? "?" : pg.title)}</b><span class="cap">${esc(sub)}</span></div></li>`;
+        <div class="album-cap"><div><b class="sec">${esc(pg.chapter)} · ${esc(earned || pic ? pg.title : pg.boss ? "?" : pg.title)}</b><span class="cap">${esc(sub)}</span></div>${earned && pg.zone ? this.walkBtn(pg.id, false) : ""}</div></li>`;
     }).join("");
-    return `${this.head("화첩")}<p class="say">보스를 벤 순간 잠깐 돌아온 색을 그림으로 남긴다. 세상은 아직 먹빛이지만, 이 그림들은 네 것이다.</p>
+    return `${this.head("화첩")}<p class="say">보스를 벤 순간 잠깐 돌아온 색을 그림으로 남긴다. 들어가 보면 그날의 색 속을 혼자 걸어 볼 수 있다.</p>
       <p class="cap album-count">${got} / ${ALBUM_PAGES.length}장</p><ol class="album-grid">${pages}</ol>`;
+  }
+
+  /** 들어가 보기: into 추억 속 풍경 (only from a safe place; the reason shows as the tip otherwise) */
+  private walkBtn(pageId: string, big: boolean): string {
+    const why = this.ctx.memoryBlock?.() ?? null;
+    return `<button type="button" class="btn ${big ? "btn-lg" : "btn-sm"} album-walk" data-do="memory" data-page-go="${pageId}"${tipAttr("들어가 보기", why ?? "그날 되찾은 색 속을 혼자 걸어 본다. 몬스터도 다른 사람도 없다.")} ${why ? "disabled" : ""}>들어가 보기</button>`;
   }
 
   /* ---------- 먹노인 ---------- */
@@ -289,7 +306,7 @@ export class Sheets {
       DYES.map((d, k) => {
         const on = p.dye[key] === d.hex;
         const poor = d.hex != null && p.pigment < DYE_COST;
-        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}"${tipAttr(d.name, on ? "지금 색" : d.hex == null ? "먹빛으로 되돌린다" : `안료 ${DYE_COST}`)} aria-label="${esc(d.name)}${on ? " (지금 색)" : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(d.name)}</span></button>`;
+        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}"${tipAttr(d.name, on ? "지금 색" : d.hex == null ? "검정으로 되돌린다" : `안료 ${DYE_COST}`)} aria-label="${esc(d.name)}${on ? " (지금 색)" : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(d.name)}</span></button>`;
       }).join("");
     return `${this.head("염색 장인")}${resBar([["pigment", p.pigment]], "색을 들이면 먹빛 세상에서도 네 색이 남는다.\n같이 싸우는 이들 눈에도 보인다.")}
       <div class="dye-cost"><span class="cap">한 번 물들이는 데</span>${resChip("pigment", DYE_COST, { need: true, short: p.pigment < DYE_COST })}</div>
@@ -397,6 +414,7 @@ export class Sheets {
     // selection only: no server call, no busy flicker
     if (what && growthLocal(what, b, this.growthState)) { this.render(); return; }
     if (what === "pickGear") { this.gearSel = b.dataset.id ?? ""; this.render(); return; }
+    if (what === "memory") { this.ctx.enterMemory?.(b.dataset.pageGo ?? ""); return; }
     if (what === "gearFilter") { this.gearFilter = (b.dataset.v ?? "") as SlotId | ""; this.render(); return; }
     this.busy = true;
     this.render();
@@ -415,7 +433,7 @@ export class Sheets {
       } else if (what === "dye") {
         const d = DYES[Number(b.dataset.k)];
         const p = await attempt(api.dye(b.dataset.t === "scarf" ? "scarf" : "sash", d.hex));
-        if (p) { this.ctx.apply(p); toast(d.hex == null ? "먹빛으로 되돌렸다" : `${d.name}으로 물들였다`); }
+        if (p) { this.ctx.apply(p); toast(d.hex == null ? "검정으로 되돌렸다" : `${d.name}${withRo(d.name)} 물들였다`); }
       } else if (what === "potion") {
         const n = Number(b.dataset.n);
         const p = await attempt(api.buyPotions(n));

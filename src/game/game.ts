@@ -10,7 +10,7 @@ import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
 import { newNav, questNav } from "./questnav";
 import { RoutePreview } from "./render/route";
-import { ALBUM_PAGES, PAGE_FOR_BOSS, album, pageEarned, paintFrame } from "./album";
+import { ALBUM_PAGES, PAGE_FOR_BOSS, album, pageEarned, paintFrame, type AlbumPage } from "./album";
 import { TargetRing } from "./render/target-ring";
 import { aimFor, pickTarget, targetable } from "./targeting";
 import type { MView as TargetView } from "./monsters";
@@ -22,7 +22,7 @@ import { audio, SKILL_SFX, type SfxName } from "./audio";
 import { Monsters } from "./monsters";
 import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
-import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, feel, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
+import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
 import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
@@ -154,6 +154,7 @@ export class Game {
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
       claimDaily: () => void this.claimDailyAll(),
+      exitMemory: () => void this.exitMemory(),
       interact: () => this.interact(),
       skill: (i) => this.pressSkill(i),
       respawn: () => void this.respawn(),
@@ -164,7 +165,8 @@ export class Game {
       settings: (tab) => this.openSettings(tab),
       chat: () => this.chat.openInput(),
     });
-    this.sheets = new Sheets(root, { api, profile: () => this.profile, apply: (p) => this.applyProfile(p), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id),
+    this.sheets = new Sheets(root, { api, profile: () => this.profile, apply: (p) => this.applyProfile(p),
+      enterMemory: (id) => void this.enterMemory(id), memoryBlock: () => this.memoryBlock(), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id),
       settings: {
         name: () => this.profile?.name ?? "",
         resetHints: () => { this.hints.reset(); toast("안내 혼잣말을 처음부터 다시 본다"); },
@@ -249,6 +251,7 @@ export class Game {
   private onEscape(): void {
     if (this.hud.autoPopOpen()) { this.hud.closeSoundPop(); return; }
     if (this.sheets.isOpen()) { this.sheets.close(); return; }
+    if (this.memory) { void this.exitMemory(); return; }
     if (this.dialogue.isOpen() || this.transitioning || this.dead) return;
     this.openSettings();
   }
@@ -318,14 +321,14 @@ export class Game {
   }
 
   private toggleAuto(): void {
-    if (!this.player || this.dead || this.transitioning) return;
+    if (!this.player || this.dead || this.transitioning || this.memory) return;
     if (this.zone.def.safe) { this.hints.think("auto-safe", "마을에선 붓을 쉬게 두자.", { urgent: true, repeat: true }); return; }
     const on = this.auto.toggle();
     toast(on ? "자동 사냥" : "자동 사냥 끔");
   }
 
   private autoTravel(): void {
-    if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen()) return;
+    if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
     if (this.auto.traveling) { this.auto.stop(); return; }
     const why = this.auto.startTravel();
     if (why) this.hints.think("auto-why", why, { urgent: true, repeat: true });
@@ -500,12 +503,12 @@ export class Game {
   }
 
   private onRoom(r: RoomView): void {
-    if (this.transitioning || !this.player) return;
+    if (this.transitioning || !this.player || this.memory) return;
     this.monsters.onRoom(r, this.player.x, this.player.z);
   }
 
   private onPlayers(pl: Record<string, RoomPlayer>): void {
-    if (this.transitioning || !this.player) return;
+    if (this.transitioning || !this.player || this.memory) return;
     const me = this.api.account;
     for (const id in pl) {
       const rp = pl[id];
@@ -636,12 +639,12 @@ export class Game {
 
   /* ---------- input actions ---------- */
   private pressAct(a: Act): void {
-    if (!this.player || this.dead) return;
+    if (!this.player || this.dead || (this.memory && a === "atk")) return;
     this.player.input[a] = BUF;
   }
 
   private pressSkill(i: number): void {
-    if (!this.player || this.sheets.isOpen() || this.transitioning) return;
+    if (!this.player || this.sheets.isOpen() || this.transitioning || this.memory) return;
     if (this.dead) return;
     const s = SKILLS[i];
     if (!s) return;
@@ -740,7 +743,7 @@ export class Game {
   }
 
   private interact(): void {
-    if (!this.player || this.dead || this.transitioning) return;
+    if (!this.player || this.dead || this.transitioning || this.memory) return;
     if (this.sheets.isOpen()) return;
     const n = this.nearNpc();
     if (n) { this.input.clear(); void this.story.talk(n); return; }
@@ -754,7 +757,7 @@ export class Game {
    * seen us reach the gate yet) is quiet and doesn't push us back: the driver just keeps walking.
    */
   private async travel(to: string, viaPortal?: string, retry = false): Promise<boolean> {
-    if (this.transitioning) return false;
+    if (this.transitioning || this.memory) return false;
     this.transitioning = true;
     this.sheets.close();
     this.input.clear();
@@ -786,29 +789,85 @@ export class Game {
     const changed = entry.zone !== this.entry.zone || entry.channel !== this.entry.channel;
     this.entry = entry;
     if (changed) {
-      for (const a of this.zone.anchors) this.hud.dropTag(a);
-      this.zone.dispose();
-      this.monsters.clear();
-      for (const [id, r] of this.remotes) this.dropRemote(id, r);
-      clearFx();
-      clearLights();
-      clearBloom();
-      this.zone = new ZoneScene(ZONES[entry.zone] ?? ZONES[START_ZONE]);
-      this.ambient.setTheme(this.zone.def.theme);
-    setEdge(this.zone.def.radius + 5);
-      this.zone.field.dynamic = this.monsters.obstacles;
-      this.player.field = this.zone.field;
-      this.zoneTags();
+      this.swapZone(entry.zone);
       this.hud.setZone(entry.zone, entry.channel);
       this.loading.channel(entry.channel);
       this.chatRoomChanged(entry.zone, entry.channel);
-      audio.musicForZone(entry.zone);
-      audio.ambience(entry.zone);
-      this.auto.zoneChanged();
     }
     this.player.teleport(entry.x, entry.z);
     this.camX = entry.x;
     this.camZ = entry.z;
+  }
+
+  /** Tear the current zone down (scenery, monsters, other players, effects) and build `zoneId`'s. */
+  private swapZone(zoneId: string): void {
+    for (const a of this.zone.anchors) this.hud.dropTag(a);
+    this.zone.dispose();
+    this.monsters.clear();
+    for (const [id, r] of this.remotes) this.dropRemote(id, r);
+    clearFx();
+    clearLights();
+    clearBloom();
+    this.zone = new ZoneScene(ZONES[zoneId] ?? ZONES[START_ZONE]);
+    this.ambient.setTheme(this.zone.def.theme);
+    setEdge(this.zone.def.radius + 5);
+    this.zone.field.dynamic = this.monsters.obstacles;
+    this.player.field = this.zone.field;
+    this.zoneTags();
+    audio.musicForZone(zoneId);
+    audio.ambience(zoneId);
+    this.auto.zoneChanged();
+  }
+
+  /* ---------- 추억 속 풍경: walk a recovered region alone, in its own color ---------- */
+  // Built locally (no room, no monsters, no other players); your real self keeps standing where you were in a
+  // safe zone, and nothing you do here reaches the server. Esc or 돌아가기 brings you back.
+  private memory: { page: AlbumPage; backX: number; backZ: number } | null = null;
+
+  /** Why the memory can't be opened right now, or null. */
+  memoryBlock(): string | null {
+    if (!this.player || this.dead || this.transitioning) return "지금은 펼칠 수 없다";
+    if (!this.zone.def.safe) return "마을에서만 펼칠 수 있다";
+    return null;
+  }
+
+  async enterMemory(pageId: string): Promise<void> {
+    const page = ALBUM_PAGES.find((pg) => pg.id === pageId);
+    if (!page?.zone || !ZONES[page.zone] || this.memory || this.memoryBlock()) return;
+    this.transitioning = true;
+    this.sheets.close();
+    this.input.clear();
+    if (this.auto.on) this.auto.toggle();
+    if (this.auto.traveling) this.auto.stop();
+    this.loading.show(page.zone, "기억 속으로…");
+    this.memory = { page, backX: this.player.x, backZ: this.player.z };
+    this.swapZone(page.zone);
+    holdColor(page.color ?? null);
+    const def = ZONES[page.zone];
+    const sx = def.boss?.x ?? 0, sz = (def.boss?.z ?? 0) + 5;
+    this.player.teleport(sx, sz);
+    this.camX = sx;
+    this.camZ = sz;
+    this.hud.setMemory(`${page.chapter} · ${page.title}`, def.name);
+    await this.loading.hide();
+    this.transitioning = false;
+  }
+
+  async exitMemory(): Promise<void> {
+    const m = this.memory;
+    if (!m || this.transitioning) return;
+    this.transitioning = true;
+    this.input.clear();
+    this.loading.show(this.entry.zone, "다시 먹빛 세상으로");
+    holdColor(null);
+    this.memory = null;
+    this.swapZone(this.entry.zone);
+    this.player.teleport(m.backX, m.backZ);
+    this.camX = m.backX;
+    this.camZ = m.backZ;
+    this.hud.setMemory(null);
+    await this.loading.hide();
+    this.transitioning = false;
   }
 
   /** NPC name tags carry a painted mark: ! has a quest, ? can take one back, … is waiting on you. */
@@ -948,7 +1007,7 @@ export class Game {
       this.slowUi();
     }
 
-    if (!this.transitioning) {
+    if (!this.transitioning && !this.memory) {
       const pose = this.pose;
       pose.x = p.x; pose.z = p.z; pose.y = p.y; pose.yaw = p.head;
       pose.atkSeq = p.atkSeq; pose.atkKind = p.atkKind; pose.skillSeq = p.skillSeq; pose.skill = p.skill;

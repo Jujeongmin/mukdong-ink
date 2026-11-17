@@ -1443,3 +1443,14 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   background: none; box-shadow: none; border-radius: 0; transform: none; -webkit-mask: none; mask: none;
   font-family: var(--f-brush); font-weight: 700; font-size: 0.82em; line-height: 1; color: inherit; text-shadow: var(--halo); font-variant-numeric: tabular-nums; }
 .who .lv-seal::before { content: "Lv"; font-family: var(--f-body); font-weight: 700; font-size: 0.68em; letter-spacing: 0.04em; opacity: 0.62; }
+
+/* ---------- 추억 속 풍경: a title bar with the way back; the quest card, purse and skills step aside ---------- */
+.memory-bar { position: fixed; top: calc(12px + var(--safe-t)); left: 50%; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 14px;
+  padding: 8px 10px 8px 18px; border-radius: 3px; background: rgba(27, 23, 20, 0.72); color: #f3ebdc; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3); pointer-events: auto; }
+.memory-bar[hidden] { display: none; }
+.memory-bar .mb-t { display: grid; gap: 1px; }
+.memory-bar b { font-family: var(--f-brush); font-size: 17px; letter-spacing: 0.03em; }
+.memory-bar small { font-size: 12px; opacity: 0.72; }
+.memory-bar .btn kbd { margin-left: 6px; font-size: 10px; opacity: 0.7; }
+#ui.in-memory .jokja, #ui.in-memory .purse, #ui.in-memory .arc, #ui.in-memory .gourd, #ui.in-memory .chat-log, #ui.in-memory .chat-btn, #ui.in-memory .prompt, #ui.in-memory .zone-mini { display: none; }
+@media (max-width: 640px) { .memory-bar { top: auto; bottom: calc(16px + var(--safe-b)); } }

@@ -4,7 +4,7 @@ import { DYES } from "../../src/shared/items";
 import { spawnZone } from "../src/hunt";
 import { NO_ROOM, editProfile, errorOf, goTo, inVillage, newPlayer, profileOf, rolling, walkTo } from "./helpers";
 
-const red = DYES.find((d) => d.name === "다홍")!.hex;
+const red = DYES.find((d) => d.name === "빨강")!.hex;
 const pink = DYES.find((d) => d.name === "분홍")!.hex;
 const cast = (skill: number) => ({ skill, x: 0, z: 0, yaw: 0 });
 

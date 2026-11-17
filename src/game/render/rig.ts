@@ -409,6 +409,7 @@ export class Rig {
 
   setWeapon(it: ItemDef | undefined): void {
     this.inner.remove(this.weapon);
+    this.swordHalo = null;
     this.sword = it?.kind === "sword";
     if (this.sword) {
       this.weapon = buildSword(it!);
@@ -438,7 +439,25 @@ export class Rig {
     this.dressBristle();
   }
 
+  /** sword enhancement: an ink halo around the blade from +5, the edge glows blue from +10 and gold from +15
+   *  (shared geometry and materials; the halo mesh owns nothing) */
+  private swordHalo: THREE.Mesh | null = null;
+  private dressSword(): void {
+    if (!this.sword) return;
+    const g = this.weapon as THREE.Group;
+    const blade = g.children[0] as THREE.Mesh, edge = g.children[1] as THREE.Mesh;
+    edge.material = this.glow >= 15 ? M_edgeGold : this.glow >= 10 ? M_edgeBlue : M_bladeEdge;
+    if (this.swordHalo) { this.swordHalo.removeFromParent(); this.swordHalo = null; }
+    if (this.glow >= 5) {
+      const h = new THREE.Mesh(blade.geometry, M_haloInk);
+      h.scale.set(1.18, 1.03, 2.2);
+      g.add(h);
+      this.swordHalo = h;
+    }
+  }
+
   private dressBristle(): void {
+    this.dressSword();
     const br = this.bristle;
     if (!br) return;
     for (let i = br.children.length - 1; i >= 0; i--) br.remove(br.children[i]);

@@ -26,6 +26,8 @@ export interface HudHandlers {
   album(): void;
   /** pay every finished daily quest */
   claimDaily(): void;
+  /** leave 추억 속 풍경 */
+  exitMemory(): void;
   auto(): void;
   travel(): void;
   autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean };
@@ -69,6 +71,7 @@ const MARKUP = `
   <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="화첩 (${KEYS.album})" data-tip="보스를 벤 순간 돌아온 색을 그림으로 모아 둔다."><span>화첩</span><kbd>${KEYS.album}</kbd></button>
 </div>
 <aside class="jokja" data-quest hidden></aside>
+<div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>돌아가기<kbd>Esc</kbd></button></div>
 <div class="zone-paint passive" data-zonepaint hidden><b data-zpname></b><span class="seal" data-zpch></span></div>
 <div class="bossbar passive" data-boss hidden><b data-bossname></b><div class="hp gauge boss"><i class="track"></i><i class="fill" data-bosshp></i></div></div>
 <div class="tags passive" data-tags></div>
@@ -181,6 +184,7 @@ export class Hud {
     el("[data-gear]", root).addEventListener("click", () => this.h.gear());
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
     el("[data-album]", root).addEventListener("click", () => this.h.album());
+    el("[data-memory-exit]", root).addEventListener("click", () => this.h.exitMemory());
     // the daily card is rebuilt often; one delegated listener on its box
     el("[data-quest]", root).addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-claim-daily]");
@@ -199,6 +203,16 @@ export class Hud {
     el("[data-prompt]", root).addEventListener("click", () => this.h.interact());
     this.wireRise();
     gameSettings.onChange(() => this.gourdTip());
+  }
+
+  /** 추억 속 풍경: a title bar with the way back; the quest card, purse and skills step aside. */
+  setMemory(title: string | null, place = ""): void {
+    const bar = el("[data-memory]", this.root);
+    bar.hidden = title === null;
+    this.root.classList.toggle("in-memory", title !== null);
+    if (title === null) return;
+    el("[data-memory-t]", bar).textContent = title;
+    el("[data-memory-p]", bar).textContent = `${place} · 기억 속 풍경`;
   }
 
   /** Your own figure in the ensō (replaces the drawn head once the in-engine cutout exists). */

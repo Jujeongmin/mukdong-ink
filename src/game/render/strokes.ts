@@ -8,7 +8,7 @@
 // Under the telegraphs (overlay renderOrder -1). OWNED here, alive all session.
 
 import * as THREE from "three";
-import { camFocus, feel, onQuality, overlay } from "./gfx";
+import { GROUND_DEPTH_GLSL, camFocus, feel, groundDepthU, onQuality, overlay } from "./gfx";
 import { inkDrop } from "./fx";
 
 const K = 10;
@@ -43,7 +43,7 @@ geo.setAttribute("aInfo", aInfo);
 }
 const mat = new THREE.ShaderMaterial({
   transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,
-  uniforms: { uTime: { value: 0 }, uHold: { value: 0.55 }, uDry: { value: 0.4 } },
+  uniforms: { uTime: { value: 0 }, uHold: { value: 0.55 }, uDry: { value: 0.4 }, ...groundDepthU },
   vertexShader: /* glsl */ `
     attribute vec2 aUv; attribute vec4 aInfo;
     varying vec2 vUv; varying vec4 vInfo;
@@ -54,12 +54,15 @@ const mat = new THREE.ShaderMaterial({
   fragmentShader: /* glsl */ `
     uniform float uTime, uHold, uDry;
     varying vec2 vUv; varying vec4 vInfo;
+    ${GROUND_DEPTH_GLSL}
     float h(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
     float n(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
       return mix(mix(h(i), h(i + vec2(1, 0)), u.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), u.x), u.y); }
     void main(){
       float birth = vInfo.x;
       if (birth < -50.0) discard;
+      // figures and walls in front of the stroke hide it (it no longer paints over the hero's own body)
+      if (behindScene()) discard;
       float age = birth < 0.0 ? 0.0 : uTime - birth;
       float u = vUv.x, v = vUv.y, seed = vInfo.w, heavy = vInfo.z;
       // the stroke's body: a band across the ribbon (toward the tip side), heavy and round at the start,

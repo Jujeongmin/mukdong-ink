@@ -69,7 +69,7 @@ describe("gear", () => {
 
   test("dyes with a listed color for pigment; washing back to ink is free", async (server) => {
     await inVillage(server, "test-a");
-    const red = DYES.find((d) => d.name === "다홍")!.hex;
+    const red = DYES.find((d) => d.name === "빨강")!.hex;
     expect(await errorOf(server.dye("sash", 0x123456))).toContain("bad_args");
     expect(await errorOf(server.dye("hat", red))).toContain("bad_args");
     expect(await errorOf(server.dye("sash", red))).toContain("no_currency");

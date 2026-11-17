@@ -200,6 +200,15 @@ export function colorBloom(x: number, z: number, col: readonly number[], onPeak:
   bloomPeak = onPeak;
   peakDue = false;
 }
+/** 추억 속 풍경: the whole field held in its own color, tinted by `col` (null lets the ink back). */
+export function holdColor(col: readonly number[] | null): void {
+  bloomT = -1;
+  bloomPeak = null;
+  peakDue = false;
+  if (!col) { bloomU.uBloom.value.w = 0; return; }
+  bloomU.uBloom.value.set(0, 0, 1e4, 1);
+  bloomU.uBloomCol.value.set(col[0], col[1], col[2]);
+}
 export function clearBloom(): void {
   bloomT = -1;
   bloomU.uBloom.value.w = 0;
@@ -271,11 +280,16 @@ const OCC_FRAG = `
     float L2 = dot(uOccP, uOccP);
     float t = dot(vOccV, uOccP) / L2;
     float tMax = 1.0 - 2.5 / sqrt(L2);
+    float k = 0.0;
     if (t > 0.0 && t < tMax) {
       float r = mix(2.6, 1.0, t);
-      float k = (1.0 - smoothstep(r * 0.7, r, length(vOccV - uOccP * t))) * (1.0 - smoothstep(tMax - 0.1, tMax, t));
-      if (k > fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453)) discard;
+      k = (1.0 - smoothstep(r * 0.7, r, length(vOccV - uOccP * t))) * (1.0 - smoothstep(tMax - 0.1, tMax, t));
     }
+    // foreground: scenery much nearer the camera than the player (the stalks and eaves that crowd the lower
+    // edges of the screen) thins to a see-through dither
+    float D = -uOccP.z, z = -vOccV.z;
+    k = max(k, (1.0 - smoothstep(D * 0.48, D * 0.68, z)) * 0.7);
+    if (k > fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453)) discard;
   }
 `;
 function addOcclusion(sh: THREE.WebGLProgramParametersWithUniforms): void {

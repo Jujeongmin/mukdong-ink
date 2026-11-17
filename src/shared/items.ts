@@ -67,13 +67,13 @@ export interface DyeDef {
 }
 export const DYES: DyeDef[] = [
   { name: "분홍", hex: 0xe58aa5 },
-  { name: "다홍", hex: 0xc0281c },
-  { name: "쪽빛", hex: 0x2a4f8a },
-  { name: "송화", hex: 0xd9b13a },
+  { name: "빨강", hex: 0xc0281c },
+  { name: "파랑", hex: 0x2a4f8a },
+  { name: "노랑", hex: 0xd9b13a },
   { name: "연두", hex: 0x7fae3e },
-  { name: "자주", hex: 0x7a2f6a },
-  { name: "옥색", hex: 0x5fa8a0 },
-  { name: "먹", hex: null },
+  { name: "보라", hex: 0x7a2f6a },
+  { name: "청록", hex: 0x5fa8a0 },
+  { name: "검정", hex: null },
 ];
 export const DYE_COST = 30; // 안료 per dye
 export const STARTER_DYE = { sash: 0x2a4f8a, scarf: 0xe58aa5 };
