@@ -108,13 +108,15 @@ const veilMat = new THREE.ShaderMaterial({
   uniforms: { uTime: { value: 0 } }, vertexShader: QUAD_VERT, fragmentShader: VEIL_FRAG,
 });
 const veilGeo = new THREE.PlaneGeometry(2.4, 2.6);
-// Lantern paper and lit windows: unlit warm color written with the dyed alpha, so the ink pass keeps it.
+// Lantern paper and lit windows: written with the dyed alpha so the ink pass keeps them bright, but in paper
+// white, not orange: the world has no color left, so even its lights are colorless (the one exception is
+// 해담's cinnabar lantern below, a story beat).
 const GLOW_PARAMS: THREE.MeshBasicMaterialParameters = {
   opacity: 0.5, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.ZeroFactor,
   blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.ZeroFactor,
 };
-const M_lanternGlow = new THREE.MeshBasicMaterial({ color: 0xffa24a, ...GLOW_PARAMS });
-const M_windowGlow = new THREE.MeshBasicMaterial({ color: 0xf2b45e, ...GLOW_PARAMS });
+const M_lanternGlow = new THREE.MeshBasicMaterial({ color: 0xf4f0e6, ...GLOW_PARAMS });
+const M_windowGlow = new THREE.MeshBasicMaterial({ color: 0xe6e1d4, ...GLOW_PARAMS });
 /** dark ink ring under water and puddles (the bank) */
 const M_bank = lam(0x2b2a30);
 /* chapter 2 scenery: SHARED geometry and materials (module level, never disposed) */
@@ -1004,7 +1006,7 @@ export class ZoneScene {
     }
     if (n.id === "haedam") this.glowPool(n.x + 0.4, n.z, 3.2);
     if (n.id === "noeul") {
-      // he sits on a bank stone, a small lantern hanging from a stake beside him (warm glow)
+      // he sits on a bank stone, a small lantern hanging from a stake beside him (paper-white glow)
       this.baker.add(part(G2.stone, M.rock, n.x - 0.15, 0, n.z, 0.6, 0.48, 0.55));
       const g = new THREE.Group();
       g.add(part(G.box, M.wood, 0, 0.75, 0, 0.07, 1.5, 0.07));

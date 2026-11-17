@@ -50,9 +50,8 @@ const MARKUP = `
 <div class="portrait passive" aria-label="나" data-portrait data-tip-title="나" data-tip="">
   <i class="face" data-face aria-hidden="true"></i>
   <div class="ring spr-enso"><i class="head"></i><i class="scarf" data-scarf></i></div>
-  <b class="lv-seal" data-lv title="경지">1</b>
   <div class="vitals">
-    <span class="who" data-name>먹동이</span>
+    <span class="who"><span data-name>먹동이</span><b class="lv-seal" data-lv title="레벨">1</b></span>
     <div class="hp gauge" title="생명" data-hpbar><i class="track"></i><i class="chip" data-hpchip></i><i class="fill" data-hp></i><span data-hpt></span></div>
     <div class="exp gauge" title="경험" data-expbar><i class="track"></i><i class="fill" data-exp></i></div>
     <span class="zone-mini" data-zone></span>

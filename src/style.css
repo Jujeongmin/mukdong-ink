@@ -1436,3 +1436,10 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   .jokja .qcard.daily { display: none; }
   .arc.arc { --px: 54px; --r1: 116px; --r2: 168px; --rg: 64px; --s: 44px; --big: 74px; --sm: 40px; }
 }
+
+/* ---------- level: plain brush text after the name ("Lv 32"), no badge ---------- */
+.who { display: inline-flex; align-items: baseline; gap: 8px; }
+.who .lv-seal.lv-seal { position: static; display: inline-flex; align-items: baseline; gap: 2px; min-width: 0; height: auto; padding: 0;
+  background: none; box-shadow: none; border-radius: 0; transform: none; -webkit-mask: none; mask: none;
+  font-family: var(--f-brush); font-weight: 700; font-size: 0.82em; line-height: 1; color: inherit; text-shadow: var(--halo); font-variant-numeric: tabular-nums; }
+.who .lv-seal::before { content: "Lv"; font-family: var(--f-body); font-weight: 700; font-size: 0.68em; letter-spacing: 0.04em; opacity: 0.62; }
