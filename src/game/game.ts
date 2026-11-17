@@ -21,7 +21,7 @@ import { audio, SKILL_SFX, type SfxName } from "./audio";
 import { Monsters } from "./monsters";
 import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
-import { camFocus, camFwd, camera, feelFlags, clearLights, feel, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
+import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, feel, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
 import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
@@ -742,6 +742,7 @@ export class Game {
       for (const [id, r] of this.remotes) this.dropRemote(id, r);
       clearFx();
       clearLights();
+      clearBloom();
       this.zone = new ZoneScene(ZONES[entry.zone] ?? ZONES[START_ZONE]);
       this.ambient.setTheme(this.zone.def.theme);
     setEdge(this.zone.def.radius + 5);

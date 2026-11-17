@@ -10,7 +10,7 @@ import type { MonsterMode, MonsterState } from "../shared/types";
 import type { RoomEffect, RoomView } from "../net/api";
 import { angDiff, clamp, type RGB } from "./util";
 import { G, M_enemy, M_eye, M_flash, M_shadow } from "./render/materials";
-import { feel, overlay, scene, screenSplash } from "./render/gfx";
+import { colorBloom, feel, overlay, scene, screenSplash } from "./render/gfx";
 import { QUAD_VERT, addDecal, inkBurst, inkDrop, ring, sparkBurst, sparks } from "./render/fx";
 
 interface Look {
@@ -354,6 +354,9 @@ for (let i = 0; i < 14; i++) {
 const SPLAT_EDGE: RGB = [0.02, 0.02, 0.02];
 const INK: RGB = [0.06, 0.06, 0.06];
 
+/** Chapter bosses: the color their shard held (물빛 for 대먹귀, 불빛 for 잿불귀). */
+const BOSS_BLOOM: Record<string, readonly number[]> = { boss: [0.42, 0.74, 1.0], ashboss: [1.0, 0.46, 0.24] };
+
 export class Monsters {
   readonly views = new Map<string, MView>();
   private readonly pool = new Map<string, MView[]>();
@@ -477,6 +480,9 @@ export class Monsters {
     } else if (s.mode === "dead" && !wasDead) {
       const h = v.def.height * 0.5;
       inkBurst(v.x, h, v.z, v.def.boss ? 60 : 24, 0, 0, v.def.boss ? 2 : 1.2);
+      // a chapter boss falls: the stolen color floods back over the field for a few seconds
+      const bloom = BOSS_BLOOM[v.kind];
+      if (bloom) colorBloom(v.x, v.z, bloom);
       for (let k = 0; k < (v.def.boss ? 5 : 2); k++) addDecal(v.x + (Math.random() - 0.5) * 2 * v.def.radius * 2, v.z + (Math.random() - 0.5) * 2 * v.def.radius * 2, 0.2 + Math.random() * 0.35);
       if (Math.hypot(v.x - px, v.z - pz) < 9) {
         screenSplash(v.x, h, v.z, v.def.boss ? 0.14 : 0.06);

@@ -184,6 +184,52 @@ function updateLights(dt: number): void {
   }
 }
 
+/* ---------- boss bloom: for a few seconds the world shows its own color, then the ink takes it back ---------- */
+// A ring spreads from the fallen boss over the whole field (the same color reveal as skill light, tinted by
+// the chapter's color), holds, and fades back to ink. Transient and the same for everyone in the room.
+const bloomU = { uBloom: { value: new THREE.Vector4(0, 0, 0, 0) }, uBloomCol: { value: new THREE.Vector3(1, 1, 1) } };
+const BLOOM_GROW = 1.4, BLOOM_HOLD = 1.6, BLOOM_FADE = 2.2, BLOOM_R = 70;
+let bloomT = -1;
+export function colorBloom(x: number, z: number, col: readonly number[]): void {
+  bloomU.uBloom.value.set(x, z, 0, 0);
+  bloomU.uBloomCol.value.set(col[0], col[1], col[2]);
+  bloomT = 0;
+}
+export function clearBloom(): void {
+  bloomT = -1;
+  bloomU.uBloom.value.w = 0;
+}
+function updateBloom(dt: number): void {
+  if (bloomT < 0) return;
+  bloomT += dt;
+  const g = Math.min(1, bloomT / BLOOM_GROW);
+  const fade = (bloomT - BLOOM_GROW - BLOOM_HOLD) / BLOOM_FADE;
+  const b = bloomU.uBloom.value;
+  b.z = 2 + BLOOM_R * (1 - (1 - g) * (1 - g) * (1 - g)); // ease-out spread
+  b.w = fade <= 0 ? 1 : Math.max(0, 1 - fade * fade * (3 - 2 * fade));
+  if (fade >= 1) clearBloom();
+}
+
+/* ---------- ground marks in the overlay pass: hidden behind figures and props ---------- */
+// The overlay pass draws after the ink post-process into a framebuffer with no scene depth, so marks lying on
+// the ground (route, target ring) test themselves against the scene's depth texture here instead.
+export const groundDepthU = {
+  tSceneDepth: { value: null as THREE.Texture | null },
+  uDepthRes: { value: new THREE.Vector2(4, 4) },
+  uDNear: { value: camera.near },
+  uDFar: { value: camera.far },
+};
+/** GLSL: `behindScene()` is true where something in the scene stands in front of this fragment. */
+export const GROUND_DEPTH_GLSL = `
+uniform sampler2D tSceneDepth;
+uniform vec2 uDepthRes;
+uniform float uDNear, uDFar;
+float gdLin(float r) { float z = r * 2.0 - 1.0; return 2.0 * uDNear * uDFar / (uDFar + uDNear - z * (uDFar - uDNear)); }
+bool behindScene() {
+  float s = texture2D(tSceneDepth, gl_FragCoord.xy / uDepthRes).x;
+  return gdLin(gl_FragCoord.z) > gdLin(s) + 0.3;
+}`;
+
 /* ---------- screen ink splashes ---------- */
 const splashes = Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, -1000, 0));
 let splashIdx = 0;
@@ -254,6 +300,8 @@ uniform vec4 uSplash[6];
 uniform vec3 uPaper, uInk, uSkyTop, uSkyLow, uMist;
 uniform vec4 uMoon;
 uniform float uFogLow, uHazeNear, uHazeFar, uFlash, uHorizon, uCamX, uEdgeR, uPillars, uPillarH;
+uniform vec4 uBloom;
+uniform vec3 uBloomCol;
 uniform float uStalks, uGlow, uClouds, uFgDark, uLayers, uBands, uFine, uSunRing, uSkyPow, uContrast;
 varying vec2 vUv;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -421,6 +469,8 @@ void main(){
   paper *= 0.95 + 0.07 * fbm(uv * uRes / 90.0);
   paper -= 0.03 * smoothstep(0.62, 0.92, noise(uv * uRes * vec2(0.35, 0.04)));
   vec3 sky = skyAt(uv);
+  // the sky takes a wash of the bloom's color once the front is well out
+  sky = mix(sky, clamp(sky * (0.55 + 0.75 * uBloomCol), 0.0, 1.0), 0.45 * uBloom.w * smoothstep(8.0, 40.0, uBloom.z));
   vec3 col = sky;
   if (!isSky) {
     float strokeVar = uFine > 0.5 ? 0.5 + 1.0 * fbm(uv * vec2(3.0, 14.0) + 3.1) : 1.0;
@@ -460,6 +510,12 @@ void main(){
       float dd = length(wp.xz - Lt.xy) + (nn - 0.5) * 2.0;
       float m = (1.0 - smoothstep(Lt.z * 0.5, Lt.z, dd)) * Lt.w;
       if (m > reveal) { reveal = m; tint = uLightCol[i]; }
+    }
+    // boss bloom: a ragged front spreading from the fallen boss, the world's color behind it
+    if (uBloom.w > 0.0) {
+      float bd = length(wp.xz - uBloom.xy) + (nn - 0.5) * 5.0;
+      float bm = (1.0 - smoothstep(uBloom.z - 6.0, uBloom.z, bd)) * uBloom.w;
+      if (bm > reveal) { reveal = bm; tint = uBloomCol; }
     }
     float Lc = luma(src);
     vec3 chroma = src / max(Lc, 0.02);
@@ -550,6 +606,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   colorRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
   colorRT.depthTexture = new THREE.DepthTexture(4, 4);
   normalRT = new THREE.WebGLRenderTarget(4, 4);
+  groundDepthU.tSceneDepth.value = colorRT.depthTexture;
   postMat = new THREE.ShaderMaterial({
     depthTest: false,
     depthWrite: false,
@@ -571,6 +628,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
       uLightCol: { value: lightC },
       uSplash: { value: splashes },
       ...moodU,
+      ...bloomU,
     },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: POST_FRAG,
@@ -595,12 +653,14 @@ export function resize(): void {
   normalRT.setSize(pw, ph);
   postMat.uniforms.uRes.value.set(pw, ph);
   postMat.uniforms.uAspect.value = w / h;
+  groundDepthU.uDepthRes.value.set(pw, ph);
 }
 
 export function renderFrame(dt: number): void {
   if (!renderer) return;
   watchdog(dt);
   updateLights(dt);
+  updateBloom(dt);
   renderer.info.reset();
   postMat.uniforms.uTime.value = feel.time;
   if (occU.uOccOn.value > 0) {

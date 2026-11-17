@@ -3,15 +3,16 @@
 // materials created once (OWNED here); position updated in place each frame, no allocation.
 
 import * as THREE from "three";
-import { overlay } from "./gfx";
+import { GROUND_DEPTH_GLSL, groundDepthU, overlay } from "./gfx";
 
 const Y = 0.05;
 
 export class TargetRing {
   private readonly inkGeo = new THREE.RingGeometry(0.62, 0.8, 36);
   private readonly rimGeo = new THREE.RingGeometry(0.8, 0.88, 36);
-  private readonly inkMat = new THREE.MeshBasicMaterial({ color: 0x1d1916, transparent: true, opacity: 0.8, depthTest: false, depthWrite: false });
-  private readonly rimMat = new THREE.MeshBasicMaterial({ color: 0xc8322a, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false });
+  // the scene's figures and props stand in front of it (see GROUND_DEPTH_GLSL)
+  private readonly inkMat = flatMat(0x1d1916, 0.8);
+  private readonly rimMat = flatMat(0xc8322a, 0.9);
   private readonly ink = new THREE.Mesh(this.inkGeo, this.inkMat);
   private readonly rim = new THREE.Mesh(this.rimGeo, this.rimMat);
 
@@ -48,4 +49,15 @@ export class TargetRing {
     this.inkMat.dispose();
     this.rimMat.dispose();
   }
+}
+
+function flatMat(color: number, opacity: number): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true, depthTest: false, depthWrite: false,
+    uniforms: { uCol: { value: new THREE.Color(color) }, uA: { value: opacity }, ...groundDepthU },
+    vertexShader: "void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: `uniform vec3 uCol; uniform float uA;
+${GROUND_DEPTH_GLSL}
+void main(){ if (behindScene()) discard; gl_FragColor = vec4(uCol, uA); }`,
+  });
 }
