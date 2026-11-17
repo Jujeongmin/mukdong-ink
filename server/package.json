@@ -1,0 +1,18 @@
+{
+  "name": "mukdong-ink-server",
+  "private": true,
+  "description": "채묵: 잃어버린 색 Verse8 game server",
+  "scripts": {
+    "build": "gameserver-node build",
+    "test": "gameserver-node test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@agent8/gameserver-node": "^2.0.1",
+    "typescript": "~5.7.3"
+  },
+  "allowScripts": {
+    "esbuild@0.19.12": true,
+    "isolated-vm@6.2.0": true
+  }
+}

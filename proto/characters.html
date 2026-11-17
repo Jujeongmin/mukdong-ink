@@ -1,0 +1,600 @@
+<meta charset="utf-8">
+<title>먹동이</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&display=swap">
+<style>
+/* Layout: one ink stage with 먹동이 large in the middle; controls and a short spec sheet beside it
+   (stacked under it on narrow screens). Single deliberate look: rice paper and ink. */
+:root {
+  --paper: #ece3cf;
+  --paper-deep: #e1d6bd;
+  --ink: #1e1c1a;
+  --ink-soft: #57524b;
+  --line: rgba(30, 28, 26, 0.2);
+  --cinnabar: #b0291c;
+  --f-display: "Gowun Batang", "Nanum Myeongjo", "Batang", serif;
+  --f-body: "Gowun Dodum", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  color-scheme: light;
+}
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink); font-family: var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 40px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 16px; }
+header.top { display: grid; gap: 4px; }
+header.top h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: clamp(34px, 5vw, 48px); line-height: 1.05; }
+header.top p { margin: 0; max-width: 48em; font-size: 15px; line-height: 1.65; color: var(--ink-soft); }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.stage { position: relative; height: clamp(380px, 68vh, 640px); border: 1px solid var(--line); background: var(--paper-deep); overflow: hidden; cursor: grab; }
+.stage:active { cursor: grabbing; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.stage .drag { position: absolute; left: 12px; bottom: 10px; font-size: 12.5px; color: var(--ink-soft); pointer-events: none; }
+.side { display: grid; gap: 18px; min-width: 0; }
+.block { display: grid; gap: 8px; }
+.block h2 { margin: 0; font-family: var(--f-display); font-size: 17px; font-weight: 700; }
+.row { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg { border: 1.5px solid var(--ink); background: transparent; color: var(--ink); padding: 7px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+.seg[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.sw { width: 32px; height: 32px; border: 1.5px solid var(--ink); padding: 0; cursor: pointer; }
+.sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--ink); }
+.seg:focus-visible, .sw:focus-visible { outline: 2px solid var(--cinnabar); outline-offset: 2px; }
+.spec { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 14px; line-height: 1.55; }
+.spec dt { font-weight: 700; white-space: nowrap; }
+.spec dd { margin: 0; color: var(--ink-soft); }
+@media (max-width: 820px) { .layout { grid-template-columns: 1fr; } .stage { height: 420px; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>먹동이</h1>
+    <p>먹선 검객의 주인공. 먹빛 산수 나그네만큼의 키에 둥근 머리, 옷 대신 목도리와 허리띠만 두르고 큰 붓을 들고 싸웁니다. 몸은 먹, 천 소품만 색이 들어갑니다.</p>
+  </header>
+
+  <div class="layout">
+    <div class="stage" id="stage">
+      <canvas id="cv" aria-label="먹동이가 수묵으로 서 있는 화면. 끌어서 돌려 볼 수 있습니다."></canvas>
+      <span class="drag">끌어서 돌려 보기</span>
+    </div>
+
+    <div class="side">
+      <div class="block">
+        <h2>동작</h2>
+        <div class="row" role="group" aria-label="동작">
+          <button class="seg" type="button" data-anim="idle" aria-pressed="false">대기</button>
+          <button class="seg" type="button" data-anim="run" aria-pressed="false">달리기</button>
+          <button class="seg" type="button" data-anim="atk" aria-pressed="true">붓 베기</button>
+          <button class="seg" type="button" data-anim="spin" aria-pressed="false">회전베기</button>
+        </div>
+      </div>
+      <div class="block">
+        <h2>시점</h2>
+        <div class="row" role="group" aria-label="시점">
+          <button class="seg" type="button" data-view="front" aria-pressed="true">가까이</button>
+          <button class="seg" type="button" data-view="quarter" aria-pressed="false">게임 쿼터뷰</button>
+          <button class="seg" type="button" id="turn" aria-pressed="false">빙글 돌리기</button>
+        </div>
+      </div>
+      <div class="block">
+        <h2>목도리 색</h2>
+        <div class="row" id="scarfSw" role="group" aria-label="목도리 색"></div>
+      </div>
+      <div class="block">
+        <h2>허리띠 색</h2>
+        <div class="row" id="sashSw" role="group" aria-label="허리띠 색"></div>
+      </div>
+      <div class="block">
+        <h2>설정</h2>
+        <dl class="spec">
+          <dt>키</dt><dd>약 5등신. 머리가 조금 커서 쿼터뷰에서도 읽힙니다.</dd>
+          <dt>무기</dt><dd>큰 붓. 대나무 자루와 마디, 검은 붓목, 뿌리는 흰 털이고 끝은 먹을 머금었습니다. 휘두르면 붓털이 반대로 휘었다가 돌아옵니다.</dd>
+          <dt>소품</dt><dd>목도리, 허리띠와 늘어진 띠 자락. 둘 다 염색 상품 자리입니다.</dd>
+          <dt>색 규칙</dt><dd>몸과 붓은 먹. 색은 천 소품과 검법에만.</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const DYES = [
+  { name: '분홍', hex: 0xe58aa5 }, { name: '다홍', hex: 0xc0281c }, { name: '쪽빛', hex: 0x2a4f8a }, { name: '송화', hex: 0xd9b13a },
+  { name: '연두', hex: 0x7fae3e }, { name: '자주', hex: 0x7a2f6a }, { name: '옥색', hex: 0x5fa8a0 }, { name: '먹', hex: null },
+];
+const look = { scarf: 0xe58aa5, sash: 0x2a4f8a };
+const BODY = { prop: 1.0, headR: 0.24, limb: 1.15 };
+
+/* ---------- renderer ---------- */
+const stageEl = document.getElementById('stage');
+const canvas = document.getElementById('cv');
+let renderer;
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false }); }
+catch (err) {
+  stageEl.insertAdjacentHTML('beforeend', '<p style="position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center">이 브라우저에서 WebGL을 켤 수 없어 캐릭터를 그리지 못했습니다. 하드웨어 가속을 켜고 다시 열어 보세요.</p>');
+  throw err;
+}
+const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+renderer.setPixelRatio(DPR);
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+const scene = new THREE.Scene();
+const BG = new THREE.Color(0xeeeee8);
+scene.background = BG;
+scene.fog = new THREE.Fog(BG, 20, 70);
+const camera = new THREE.PerspectiveCamera(32, 1, 0.3, 150);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9a9080, 1.5));
+const sun = new THREE.DirectionalLight(0xfff2dc, 2.2);
+sun.position.set(-8, 16, 12);
+scene.add(sun);
+
+const lam = (hex, o = {}) => new THREE.MeshLambertMaterial({ color: hex, ...o });
+// Dyed materials write alpha 0.5; the ink pass keeps their color.
+const DYE = { side: THREE.DoubleSide, opacity: 0.5, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.ZeroFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.ZeroFactor };
+const litCache = new Map(), clothCache = new Map();
+const M_inkCloth = lam(0x2b2926, { side: THREE.DoubleSide });
+const M_inkClothFlat = new THREE.MeshBasicMaterial({ color: 0x2b2926, side: THREE.DoubleSide });
+function dyeLit(hex) { if (hex == null) return M_inkCloth; if (!litCache.has(hex)) litCache.set(hex, new THREE.MeshLambertMaterial({ color: hex, ...DYE })); return litCache.get(hex); }
+// ribbons have no normals: unlit flat color, like a painted stroke
+function dyeCloth(hex) { if (hex == null) return M_inkClothFlat; if (!clothCache.has(hex)) clothCache.set(hex, new THREE.MeshBasicMaterial({ color: hex, ...DYE })); return clothCache.get(hex); }
+
+scene.add(new THREE.Mesh(new THREE.CircleGeometry(40, 48).rotateX(-Math.PI / 2), lam(0xd8d2c0)));
+{
+  const g = new THREE.PlaneGeometry(1, 1, 40, 1).rotateX(-Math.PI / 2);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); p.setZ(i, z * (0.6 + 0.4 * Math.sin((x + 0.5) * Math.PI)) + Math.sin(x * 9) * 0.03); }
+  const stroke = new THREE.Mesh(g, lam(0x8e887a));
+  stroke.scale.set(7, 1, 1.4); stroke.position.set(0, 0.01, 0.1);
+  scene.add(stroke);
+}
+
+/* ---------- parts ---------- */
+const G_seg = new THREE.CylinderGeometry(1, 1, 1, 8);
+const G_ball = new THREE.SphereGeometry(1, 18, 14);
+const G_shadow = new THREE.CircleGeometry(1, 24).rotateX(-Math.PI / 2);
+const G_belt = new THREE.TorusGeometry(0.15, 0.045, 8, 22).rotateX(Math.PI / 2);
+const G_knot = new THREE.SphereGeometry(0.06, 10, 8);
+const M_ink = lam(0x141312);
+const M_shadow = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2, depthWrite: false });
+
+// Calligraphy brush: bamboo shaft with nodes, hanging loop, dark ferrule, bristles (pale root, inked point)
+const M_shaft = lam(0xa88f5c), M_node = lam(0x6e5a36), M_ferrule = lam(0x2a2421);
+const M_bristle = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+const G_bristle = (() => {
+  const prof = [[0, 0], [0.075, 0], [0.095, 0.06], [0.105, 0.14], [0.098, 0.24], [0.08, 0.34], [0.055, 0.44], [0.028, 0.53], [0.008, 0.6], [0, 0.63]];
+  const g = new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), 18);
+  const p = g.attributes.position, col = new Float32Array(p.count * 3);
+  const root = new THREE.Color(0xe8dcc0), tip = new THREE.Color(0x121110), c = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    c.copy(root).lerp(tip, THREE.MathUtils.smoothstep(p.getY(i) / 0.63, 0.18, 0.5));
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+})();
+const G_shaft = new THREE.CylinderGeometry(0.034, 0.042, 1.15, 10).translate(0, 0.475, 0);
+const G_node = new THREE.CylinderGeometry(0.047, 0.047, 0.035, 10);
+const G_ferrule = new THREE.CylinderGeometry(0.078, 0.06, 0.13, 12).translate(0, 1.115, 0);
+const G_loop = new THREE.TorusGeometry(0.05, 0.012, 6, 14);
+const BRUSH_LEN = 1.81;
+function makeBrush() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(G_shaft, M_shaft));
+  for (const y of [0.22, 0.58, 0.9]) { const n = new THREE.Mesh(G_node, M_node); n.position.y = y; g.add(n); }
+  g.add(new THREE.Mesh(G_ferrule, M_ferrule));
+  const loop = new THREE.Mesh(G_loop, M_ferrule); loop.position.y = -0.16; g.add(loop);
+  const bristle = new THREE.Mesh(G_bristle, M_bristle); bristle.position.y = 1.18; g.add(bristle);
+  return { group: g, bristle };
+}
+
+function seg(m, ax, ay, bx, by, r, z) {
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1e-4;
+  m.position.set((ax + bx) * 0.5, (ay + by) * 0.5, z);
+  m.scale.set(r, len, r);
+  m.rotation.set(0, 0, Math.atan2(dy, dx) - Math.PI / 2);
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// segment between two 3D points (cylinder along +y, oriented with a quaternion)
+const _d = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function seg3(m, ax, ay, az, bx, by, bz, r) {
+  _d.set(bx - ax, by - ay, bz - az);
+  const len = _d.length() || 1e-4;
+  m.position.set((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5);
+  m.scale.set(r, len, r);
+  m.quaternion.setFromUnitVectors(_up, _d.divideScalar(len));
+}
+const camFwd = new THREE.Vector3(0, 0, -1);
+
+class Ribbon {
+  constructor(n, segLen, width) {
+    this.N = n; this.seg = segLen; this.w = width;
+    for (const k of ['x', 'y', 'z', 'px', 'py', 'pz']) this[k] = new Float32Array(n);
+    this.geo = new THREE.BufferGeometry();
+    this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3));
+    const idx = [];
+    for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    this.geo.setIndex(idx);
+    this.mesh = new THREE.Mesh(this.geo, M_inkClothFlat);
+    this.mesh.frustumCulled = false;
+    scene.add(this.mesh);
+    this.started = false;
+  }
+  update(dt, ax, ay, az, fx, fz, t, gust) {
+    const { x, y, z, px, py, pz, N } = this;
+    if (!this.started) { for (let i = 0; i < N; i++) { x[i] = px[i] = ax - fx * i * 0.1; y[i] = py[i] = ay - i * 0.05; z[i] = pz[i] = az - fz * i * 0.1; } this.started = true; }
+    x[0] = px[0] = ax; y[0] = py[0] = ay; z[0] = pz[0] = az;
+    const d2 = dt * dt;
+    for (let i = 1; i < N; i++) {
+      const vx = (x[i] - px[i]) * 0.94, vy = (y[i] - py[i]) * 0.94, vz = (z[i] - pz[i]) * 0.94;
+      px[i] = x[i]; py[i] = y[i]; pz[i] = z[i];
+      x[i] += vx + (-fx * 7 * gust + Math.sin(t * 6 + i * 0.8) * 3) * d2;
+      y[i] += vy + (-6 + Math.sin(t * 7.3 + i) * 4) * d2;
+      z[i] += vz + (-fz * 7 * gust + 2 + Math.cos(t * 5 + i) * 3) * d2;
+    }
+    for (let it = 0; it < 4; it++) {
+      for (let i = 1; i < N; i++) {
+        const dx = x[i] - x[i - 1], dy = y[i] - y[i - 1], dz = z[i] - z[i - 1];
+        const dist = Math.hypot(dx, dy, dz) || 1e-4, diff = (dist - this.seg) / dist;
+        if (i === 1) { x[i] -= dx * diff; y[i] -= dy * diff; z[i] -= dz * diff; }
+        else { x[i] -= dx * diff * 0.5; y[i] -= dy * diff * 0.5; z[i] -= dz * diff * 0.5; x[i - 1] += dx * diff * 0.5; y[i - 1] += dy * diff * 0.5; z[i - 1] += dz * diff * 0.5; }
+      }
+    }
+    const pos = this.geo.attributes.position.array;
+    for (let i = 0; i < N; i++) {
+      const a = Math.max(0, i - 1), b = Math.min(N - 1, i + 1);
+      const tx = x[b] - x[a], ty = y[b] - y[a], tz = z[b] - z[a];
+      let wx = ty * camFwd.z - tz * camFwd.y, wy = tz * camFwd.x - tx * camFwd.z, wz = tx * camFwd.y - ty * camFwd.x;
+      const wl = Math.hypot(wx, wy, wz) || 1, w = this.w * (1 - (i / (N - 1)) * 0.6) / wl;
+      wx *= w; wy *= w; wz *= w;
+      pos[i * 6] = x[i] - wx; pos[i * 6 + 1] = y[i] - wy; pos[i * 6 + 2] = z[i] - wz;
+      pos[i * 6 + 3] = x[i] + wx; pos[i * 6 + 4] = y[i] + wy; pos[i * 6 + 5] = z[i] + wz;
+    }
+    this.geo.attributes.position.needsUpdate = true;
+  }
+}
+
+const overlay = new THREE.Scene();
+class Trail {
+  constructor() {
+    this.N = 16;
+    this.base = new Float32Array(this.N * 3); this.tip = new Float32Array(this.N * 3);
+    this.geo = new THREE.BufferGeometry();
+    this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.N * 6), 3));
+    this.geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.N * 8), 4));
+    const idx = [];
+    for (let i = 0; i < this.N - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    this.geo.setIndex(idx);
+    this.mesh = new THREE.Mesh(this.geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false }));
+    this.mesh.frustumCulled = false;
+    overlay.add(this.mesh);
+    this.strength = 0;
+  }
+  push(b, t) {
+    this.base.copyWithin(3, 0, (this.N - 1) * 3); this.tip.copyWithin(3, 0, (this.N - 1) * 3);
+    this.base[0] = b.x; this.base[1] = b.y; this.base[2] = b.z; this.tip[0] = t.x; this.tip[1] = t.y; this.tip[2] = t.z;
+    const pos = this.geo.attributes.position.array, col = this.geo.attributes.color.array;
+    for (let i = 0; i < this.N; i++) {
+      const a = this.strength * Math.pow(1 - i / (this.N - 1), 2.2) * 0.85;
+      for (let k = 0; k < 3; k++) { pos[i * 6 + k] = this.base[i * 3 + k]; pos[i * 6 + 3 + k] = this.tip[i * 3 + k]; }
+      const j = i * 8;
+      col[j] = col[j + 4] = 0.08; col[j + 1] = col[j + 5] = 0.075; col[j + 2] = col[j + 6] = 0.07;
+      col[j + 3] = a * 0.3; col[j + 7] = a;
+    }
+    this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.color.needsUpdate = true;
+  }
+}
+
+/* ---------- rig: pose = [torso, head, shL, elL, shR, elR, hipL, kneeL, hipR, kneeR, brush, rootY] ---------- */
+class Rig {
+  constructor() {
+    const s = BODY.prop;
+    this.L = { thigh: 0.5 * s, shin: 0.5 * s, torso: 0.72 * s, neck: 0.1 * s, head: BODY.headR, ua: 0.38 * s, fa: 0.36 * s };
+    this.group = new THREE.Group(); this.inner = new THREE.Group(); this.group.add(this.inner); scene.add(this.group);
+    this.segs = [];
+    for (let i = 0; i < 10; i++) { const m = new THREE.Mesh(G_seg, M_ink); this.inner.add(m); this.segs.push(m); }
+    this.headM = new THREE.Mesh(G_ball, M_ink); this.headM.scale.setScalar(this.L.head); this.inner.add(this.headM);
+    // round joints + shoulder/hip bars so limbs read as one connected body
+    this.joints = [];
+    for (let i = 0; i < 13; i++) { const j = new THREE.Mesh(G_ball, M_ink); this.inner.add(j); this.joints.push(j); }
+    // sloped collarbones (neck base → each shoulder) instead of a flat bar, plus a short pelvis
+    this.clav = [new THREE.Mesh(G_seg, M_ink), new THREE.Mesh(G_seg, M_ink)];
+    this.hipBar = new THREE.Mesh(G_seg, M_ink);
+    this.inner.add(this.clav[0], this.clav[1], this.hipBar);
+    this.belt = new THREE.Group();
+    this.beltRing = new THREE.Mesh(G_belt, dyeLit(look.sash));
+    this.beltRing.scale.set(1.15, 1, 1);
+    this.knot = new THREE.Mesh(G_knot, dyeLit(look.sash));
+    this.knot.position.set(-0.17, 0, 0);
+    this.belt.add(this.beltRing, this.knot);
+    this.inner.add(this.belt);
+    const b = makeBrush(); this.weapon = b.group; this.bristle = b.bristle; this.inner.add(this.weapon);
+    this.flex = 0; this.prevA = null;
+    this.pose = new Float32Array(12); this.spin = 0;
+    this.hand = new THREE.Vector2(); this.dir = new THREE.Vector2(); this.neck = new THREE.Vector2(); this.waistBack = new THREE.Vector2();
+    this.shadow = new THREE.Mesh(G_shadow, M_shadow); scene.add(this.shadow);
+  }
+  setSash(hex) { this.beltRing.material = dyeLit(hex); this.knot.material = dyeLit(hex); }
+  apply() {
+    const p = this.pose, L = this.L, w = BODY.limb;
+    this.inner.position.y = L.thigh + L.shin + p[11];
+    this.inner.rotation.z = this.spin;
+    const tx = Math.sin(p[0]) * L.torso, ty = Math.cos(p[0]) * L.torso;
+    const ha = p[0] + p[1];
+    const nx = tx + Math.sin(ha) * L.neck, ny = ty + Math.cos(ha) * L.neck;
+    this.neck.set(nx, ny);
+    seg(this.segs[0], 0, 0, tx, ty, 0.08 * w, 0);
+    seg(this.segs[1], tx, ty, nx, ny, 0.07 * w, 0);
+    this.headM.position.set(nx + Math.sin(ha) * L.head, ny + Math.cos(ha) * L.head, 0);
+    // sash sits a little above the hips and tilts with the torso; tails hang from the knot at the back
+    const wx = Math.sin(p[0]) * 0.14, wy = Math.cos(p[0]) * 0.14;
+    this.belt.position.set(wx, wy, 0);
+    this.belt.rotation.set(0, 0, -p[0]);
+    this.waistBack.set(wx - Math.cos(p[0]) * 0.19, wy + Math.sin(p[0]) * 0.19);
+    const J = this.joints;
+    const jt = (i, x, y, z, r) => { J[i].position.set(x, y, z); J[i].scale.setScalar(r); };
+    jt(12, tx, ty, 0, 0.088 * w); // rounded neck base
+    // shoulders sit a little below the neck base and out to the sides; arms splay slightly outward
+    const sdx = -Math.sin(p[0]) * 0.07, sdy = -Math.cos(p[0]) * 0.07;
+    seg3(this.hipBar, 0, 0, -0.1, 0, 0, 0.1, 0.085 * w);
+    for (let side = 0; side < 2; side++) {
+      const sgn = side ? 1 : -1, zs = 0.18 * sgn;
+      const sx0 = tx + sdx, sy0 = ty + sdy;
+      seg3(this.clav[side], tx, ty, 0, sx0, sy0, zs, 0.066 * w);
+      const sh = p[2 + side * 2], el = p[3 + side * 2];
+      const ex = sx0 + Math.sin(sh) * L.ua, ey = sy0 - Math.cos(sh) * L.ua, ez = zs * 1.6;
+      const fa = sh + el;
+      const hx = ex + Math.sin(fa) * L.fa, hy = ey - Math.cos(fa) * L.fa, hz = zs * 2.05;
+      seg3(this.segs[2 + side * 2], sx0, sy0, zs, ex, ey, ez, 0.066 * w);
+      seg3(this.segs[3 + side * 2], ex, ey, ez, hx, hy, hz, 0.062 * w);
+      jt(side * 6, sx0, sy0, zs, 0.072 * w);
+      jt(side * 6 + 1, ex, ey, ez, 0.066 * w);
+      jt(side * 6 + 2, hx, hy, hz, 0.068 * w);
+      if (side === 1) { const sa = fa + p[10]; this.hand.set(hx, hy); this.handZ = hz; this.dir.set(Math.sin(sa), -Math.cos(sa)); }
+    }
+    for (let side = 0; side < 2; side++) {
+      const sgn = side ? 1 : -1;
+      const hip = p[6 + side * 2], kn = p[7 + side * 2], z0 = 0.1 * sgn, z1 = 0.15 * sgn, z2 = 0.2 * sgn;
+      const kx = Math.sin(hip) * L.thigh, ky = -Math.cos(hip) * L.thigh, a = hip + kn;
+      const fx = kx + Math.sin(a) * L.shin, fy = ky - Math.cos(a) * L.shin;
+      seg3(this.segs[6 + side * 2], 0, 0, z0, kx, ky, z1, 0.08 * w);
+      seg3(this.segs[7 + side * 2], kx, ky, z1, fx, fy, z2, 0.075 * w);
+      jt(side * 6 + 3, 0, 0, z0, 0.085 * w);
+      jt(side * 6 + 4, kx, ky, z1, 0.079 * w);
+      jt(side * 6 + 5, fx, fy, z2, 0.076 * w);
+    }
+    const { x: sx, y: sy } = this.hand, { x: dx, y: dy } = this.dir;
+    this.weapon.position.set(sx - dx * 0.1, sy - dy * 0.1, (this.handZ || 0.28) + 0.03);
+    this.weapon.rotation.set(0, 0, Math.atan2(dy, dx) - Math.PI / 2);
+    // bristles lag behind the swing and spring back
+    const a = Math.atan2(dy, dx) + this.group.rotation.y;
+    if (this.prevA !== null) {
+      let d = a - this.prevA;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.flex += (clamp(-d * 9, -0.75, 0.75) - this.flex) * 0.3;
+    }
+    this.prevA = a;
+    this.bristle.rotation.z = this.flex;
+  }
+}
+
+const P = (...a) => Float32Array.from(a);
+const POSE = {
+  idle: P(0.06, 0, -0.35, 0.5, 0.45, 0.9, 0.2, -0.3, -0.15, -0.15, 3.7, -0.06),
+  spin: P(0.1, 0, -1.57, 0, 1.57, 0, 0.6, -0.9, -0.4, -0.6, 0, -0.05),
+};
+const KEYS = {
+  atk1: [[0, P(-0.15, 0, -0.6, 0.6, -2.5, 0.3, 0.55, -0.5, -0.5, -0.2, 0.3, -0.15)],
+         [0.3, P(0.4, -0.1, -1.4, 0.3, 1.65, 0, 0.8, -0.6, -0.6, -0.1, 0, -0.28)],
+         [1, P(0.3, 0, -1.2, 0.4, 2.3, 0.1, 0.75, -0.6, -0.6, -0.1, 0.2, -0.22)]],
+  atk2: [[0, P(0.45, 0, -1.2, 0.5, 0.2, 0, 0.6, -1.0, -0.4, -0.3, 0.7, -0.35)],
+         [0.35, P(-0.15, 0.1, -1.5, 0.4, 3.0, 0.1, 0.3, -0.2, -0.2, -0.6, 0, 0.05)],
+         [1, P(-0.1, 0.1, -1.4, 0.4, 3.2, 0.2, 0.3, -0.3, -0.2, -0.5, 0.1, 0)]],
+};
+function sampleKeys(out, keys, t) {
+  if (t <= keys[0][0]) { out.set(keys[0][1]); return; }
+  for (let i = 0; i < keys.length - 1; i++) {
+    const a = keys[i], b = keys[i + 1];
+    if (t <= b[0]) { let u = (t - a[0]) / (b[0] - a[0]); u = 1 - Math.pow(1 - u, 3); for (let k = 0; k < 12; k++) out[k] = a[1][k] + (b[1][k] - a[1][k]) * u; return; }
+  }
+  out.set(keys[keys.length - 1][1]);
+}
+function blend(cur, target, k) { for (let i = 0; i < 12; i++) cur[i] += (target[i] - cur[i]) * k; }
+function runPose(out, ph) {
+  const s = Math.sin(ph), c = Math.cos(ph);
+  out[0] = 0.32; out[1] = -0.1; out[2] = -0.9 * s + 0.1; out[3] = 0.9; out[4] = -1.1 + 0.25 * s; out[5] = 0.35;
+  out[6] = 0.25 + 0.85 * s; out[7] = -0.25 - (0.5 + 0.5 * c); out[8] = 0.25 - 0.85 * s; out[9] = -0.25 - (0.5 - 0.5 * c);
+  out[10] = -0.35; out[11] = -0.08 - 0.06 * Math.abs(c);
+}
+const tmp = new Float32Array(12);
+
+const rig = new Rig();
+rig.pose.set(POSE.idle);
+const trail = new Trail();
+const scarf = new Ribbon(10, 0.17, 0.1);
+const tails = [new Ribbon(6, 0.14, 0.06), new Ribbon(5, 0.14, 0.05)];
+function applyLook() {
+  scarf.mesh.material = dyeCloth(look.scarf);
+  for (const t of tails) t.mesh.material = dyeCloth(look.sash);
+  rig.setSash(look.sash);
+}
+applyLook();
+
+/* ---------- ink post pass ---------- */
+const colorRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+colorRT.depthTexture = new THREE.DepthTexture(4, 4);
+const normalRT = new THREE.WebGLRenderTarget(4, 4);
+const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+const postMat = new THREE.ShaderMaterial({
+  depthTest: false, depthWrite: false,
+  uniforms: { tColor: { value: colorRT.texture }, tDepth: { value: colorRT.depthTexture }, tNormal: { value: normalRT.texture },
+    uRes: { value: new THREE.Vector2(4, 4) }, uTime: { value: 0 }, uNear: { value: camera.near }, uFar: { value: camera.far } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    precision highp float;
+    uniform sampler2D tColor, tDepth, tNormal; uniform vec2 uRes; uniform float uTime, uNear, uFar;
+    varying vec2 vUv;
+    float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+    float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y); }
+    float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += a * noise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return v / 0.97; }
+    float linDepth(vec2 uv){ float d = texture2D(tDepth, uv).x; return -(uNear * uFar) / ((uFar - uNear) * d - uFar); }
+    vec3 nrm(vec2 uv){ return texture2D(tNormal, uv).xyz * 2.0 - 1.0; }
+    vec3 toSRGB(vec3 c){ return pow(max(c, 0.0), vec3(1.0 / 2.2)); }
+    float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+    void main(){
+      vec2 uv = vUv, px = 1.0 / uRes;
+      vec2 wob = vec2(fbm(uv * vec2(6.0, 9.0) + uTime * 0.02), fbm(uv * vec2(7.0, 5.0) - uTime * 0.015)) - 0.5;
+      vec2 suv = uv + wob * px * 7.0;
+      vec4 s4 = texture2D(tColor, suv);
+      vec3 src = toSRGB(s4.rgb);
+      float dyed = 1.0 - step(0.75, s4.a);
+      float d = linDepth(suv);
+      float strokeVar = 0.5 + 1.0 * fbm(uv * vec2(3.0, 14.0) + 3.1);
+      vec2 o = px * 1.7 * strokeVar;
+      float izC = 1.0 / d;
+      float izL = 1.0 / linDepth(suv - vec2(o.x, 0.0)), izR = 1.0 / linDepth(suv + vec2(o.x, 0.0));
+      float izD = 1.0 / linDepth(suv - vec2(0.0, o.y)), izU = 1.0 / linDepth(suv + vec2(0.0, o.y));
+      float dEdge = smoothstep(0.015, 0.06, (abs(izL + izR - 2.0 * izC) + abs(izU + izD - 2.0 * izC)) / izC);
+      float nEdge = (1.0 - dot(nrm(suv - vec2(o.x, 0.0)), nrm(suv + vec2(o.x, 0.0)))) + (1.0 - dot(nrm(suv - vec2(0.0, o.y)), nrm(suv + vec2(0.0, o.y))));
+      float edge = max(dEdge, smoothstep(0.3, 0.8, nEdge) * 0.8);
+      edge *= mix(1.0, 0.3, smoothstep(15.0, 60.0, d));
+      edge *= 0.6 + 0.4 * smoothstep(0.25, 0.7, noise(uv * uRes / 3.0));
+      edge *= 1.0 - smoothstep(90.0, 140.0, d);
+      float L = luma(src);
+      float q = (1.0 - L) * 4.0 + (fbm(uv * 8.0 + 2.0) - 0.5) * 0.3;
+      float soft = smoothstep(0.38, 0.62, fract(q));
+      float tone = (floor(q) + soft) / 4.0;
+      tone = pow(clamp(tone, 0.0, 1.0), 1.45) * 0.95;
+      tone *= 0.82 + 0.3 * fbm(uv * uRes / 6.0);
+      vec3 paper = vec3(0.925, 0.890, 0.812);
+      paper *= 0.95 + 0.07 * fbm(uv * uRes / 90.0);
+      paper -= 0.03 * smoothstep(0.62, 0.92, noise(uv * uRes * vec2(0.35, 0.04)));
+      vec3 inkCol = vec3(0.09, 0.085, 0.08);
+      vec3 inkImg = mix(paper, inkCol, clamp(tone, 0.0, 1.0) * 0.88);
+      inkImg = mix(inkImg, inkCol * 0.8, clamp(edge, 0.0, 1.0) * 0.92);
+      vec3 wc = mix(src, src * paper * 1.08, 0.3) * (0.9 + 0.16 * fbm(uv * uRes / 6.0));
+      vec3 colImg = mix(wc, inkCol * 0.85, clamp(edge, 0.0, 1.0) * 0.85);
+      gl_FragColor = vec4(mix(inkImg, colImg, dyed), 1.0);
+    }`,
+});
+const postScene = new THREE.Scene();
+const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat));
+
+/* ---------- UI ---------- */
+const state = { anim: 'atk', view: 'front', turn: false, yaw: 0.2 };
+if (location.hash === '#front') state.yaw = -Math.PI / 2; // open facing the viewer
+document.querySelectorAll('[data-anim]').forEach((b) => b.addEventListener('click', () => {
+  state.anim = b.dataset.anim;
+  document.querySelectorAll('[data-anim]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+  state.view = b.dataset.view;
+  document.querySelectorAll('[data-view]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+}));
+document.getElementById('turn').addEventListener('click', (e) => { state.turn = !state.turn; e.currentTarget.setAttribute('aria-pressed', String(state.turn)); });
+function swatches(el, key) {
+  el.innerHTML = DYES.map((d, k) => `<button type="button" class="sw" data-k="${k}" aria-label="${d.name}" title="${d.name}" aria-pressed="${look[key] === d.hex}" style="background:${d.hex == null ? '#2b2926' : '#' + d.hex.toString(16).padStart(6, '0')}"></button>`).join('');
+  el.querySelectorAll('.sw').forEach((b) => b.addEventListener('click', () => {
+    look[key] = DYES[+b.dataset.k].hex;
+    el.querySelectorAll('.sw').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    applyLook();
+  }));
+}
+swatches(document.getElementById('scarfSw'), 'scarf');
+swatches(document.getElementById('sashSw'), 'sash');
+// drag to turn
+let dragX = null;
+stageEl.addEventListener('pointerdown', (e) => { dragX = e.clientX; stageEl.setPointerCapture(e.pointerId); });
+stageEl.addEventListener('pointermove', (e) => { if (dragX === null) return; state.yaw += (e.clientX - dragX) * 0.012; dragX = e.clientX; });
+const endDrag = () => { dragX = null; };
+stageEl.addEventListener('pointerup', endDrag); stageEl.addEventListener('pointercancel', endDrag);
+
+/* ---------- loop ---------- */
+let realT = 0, lastW = 0, lastH = 0;
+const clock = new THREE.Clock();
+const camPos = new THREE.Vector3(0, 2, 6), camTgt = new THREE.Vector3(0, 1.1, 0);
+const wantPos = new THREE.Vector3(), wantTgt = new THREE.Vector3();
+const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vT = new THREE.Vector3();
+const BLACK = new THREE.Color(0x000000);
+function resize() {
+  const w = stageEl.clientWidth, h = stageEl.clientHeight;
+  if (w === lastW && h === lastH) return;
+  lastW = w; lastH = h;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  const pw = Math.floor(w * DPR), ph = Math.floor(h * DPR);
+  colorRT.setSize(pw, ph); normalRT.setSize(pw, ph);
+  postMat.uniforms.uRes.value.set(pw, ph);
+}
+function animate(dt) {
+  const pose = rig.pose, t = realT;
+  let yaw = 0, attacking = false;
+  if (state.anim === 'idle') { tmp.set(POSE.idle); tmp[11] += Math.sin(t * 2.2) * 0.02; tmp[0] += Math.sin(t * 2.2) * 0.02; blend(pose, tmp, 1 - Math.exp(-dt * 12)); }
+  else if (state.anim === 'run') { runPose(tmp, t * 11); blend(pose, tmp, 1 - Math.exp(-dt * 18)); }
+  else if (state.anim === 'atk') {
+    const c = t % 1.5;
+    if (c < 0.3) { sampleKeys(pose, KEYS.atk1, c / 0.3); attacking = true; }
+    else if (c < 0.62) { sampleKeys(pose, KEYS.atk2, (c - 0.3) / 0.32); attacking = true; }
+    else blend(pose, POSE.idle, 1 - Math.exp(-dt * 8));
+  } else {
+    const c = t % 1.6;
+    if (c < 0.55) { blend(pose, POSE.spin, 1 - Math.exp(-dt * 30)); yaw = -Math.PI * 4 * (c / 0.55); attacking = true; }
+    else blend(pose, POSE.idle, 1 - Math.exp(-dt * 8));
+  }
+  if (state.turn) state.yaw += dt * 0.6;
+  const head = state.yaw + yaw;
+  rig.group.rotation.set(0, head, 0);
+  rig.apply();
+  rig.group.updateMatrixWorld(true);
+  rig.shadow.position.set(0, 0.03, 0); rig.shadow.scale.setScalar(0.6);
+  trail.strength = attacking ? 1 : Math.max(0, trail.strength - dt * 6);
+  vA.set(rig.hand.x + rig.dir.x * BRUSH_LEN * 0.7, rig.hand.y + rig.dir.y * BRUSH_LEN * 0.7, 0.24);
+  vB.set(rig.hand.x + rig.dir.x * BRUSH_LEN, rig.hand.y + rig.dir.y * BRUSH_LEN, 0.24);
+  rig.inner.localToWorld(vA); rig.inner.localToWorld(vB);
+  trail.push(vA, vB);
+  const fx = Math.cos(head), fz = -Math.sin(head), gust = state.anim === 'run' ? 1.6 : 1;
+  vT.set(rig.neck.x, rig.neck.y, 0); rig.inner.localToWorld(vT);
+  scarf.update(dt, vT.x, vT.y, vT.z, fx, fz, t, gust);
+  tails.forEach((r, i) => {
+    vT.set(rig.waistBack.x, rig.waistBack.y, i ? 0.05 : -0.05); rig.inner.localToWorld(vT);
+    r.update(dt, vT.x, vT.y, vT.z, fx, fz, t + i * 1.7, gust * 0.7);
+  });
+}
+function updateCamera(dt) {
+  if (state.view === 'front') { wantPos.set(0, 1.7, 6.2); wantTgt.set(0, 1.1, 0); }
+  else { wantPos.set(0, 7.5, 7.0); wantTgt.set(0, 0.9, 0); }
+  const a = 1 - Math.exp(-dt * 4);
+  camPos.lerp(wantPos, a); camTgt.lerp(wantTgt, a);
+  camera.position.copy(camPos); camera.lookAt(camTgt);
+  camera.getWorldDirection(camFwd);
+}
+resize();
+updateCamera(10);
+renderer.setAnimationLoop(() => {
+  resize();
+  const dt = Math.min(clock.getDelta(), 1 / 30);
+  realT += dt;
+  postMat.uniforms.uTime.value = realT;
+  updateCamera(dt);
+  animate(dt);
+  renderer.setRenderTarget(colorRT); renderer.render(scene, camera);
+  scene.overrideMaterial = normalMat; scene.background = BLACK;
+  renderer.setRenderTarget(normalRT); renderer.render(scene, camera);
+  scene.overrideMaterial = null; scene.background = BG;
+  renderer.setRenderTarget(null); renderer.render(postScene, postCam);
+  renderer.autoClear = false; renderer.render(overlay, camera); renderer.autoClear = true;
+});
+</script>

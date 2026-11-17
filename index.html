@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#ece3cf" />
+    <title>채묵: 잃어버린 색</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&display=swap" />
+    <style>
+      /* What the page needs before (or without) src/style.css: a full-bleed stage and a boot screen,
+         so the embed never shows an empty rectangle while the bundle loads. */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #ece3cf;
+        color: #1e1c1a;
+        overflow: hidden;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .boot {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: #ece3cf;
+        color: #1e1c1a;
+        font-family: "Gowun Batang", serif;
+        z-index: 60;
+      }
+      .boot-title {
+        font-size: 44px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+      .boot-sub {
+        font-size: 19px;
+        letter-spacing: 0.3em;
+        color: #1e1c1a;
+      }
+      .boot-load {
+        font-family: sans-serif;
+        font-size: 13px;
+        letter-spacing: 0;
+        color: #57524b;
+        margin-top: 14px;
+      }
+    </style>
+    <script>
+      // Verse8 embeds the game in an iframe and asks it how big it is (REQUEST_GAME_SIZE).
+      // Without an answer the shell cannot size the frame. This comes from the Verse8 template.
+      (function () {
+        var lastWidth = -1;
+        var lastHeight = -1;
+
+        function reportGameSize(force) {
+          var height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+          var width = Math.max(document.body.scrollWidth, document.documentElement.scrollWidth);
+          // The shell resizes the frame from this, which resizes us again; report only real changes.
+          if (force !== true && width === lastWidth && height === lastHeight) return;
+          lastWidth = width;
+          lastHeight = height;
+          window.parent.postMessage({ type: "GAME_SIZE_RESPONSE", height: height, width: width }, "*");
+        }
+
+        window.addEventListener("load", function () { reportGameSize(true); });
+        window.addEventListener("resize", function () { reportGameSize(false); });
+        window.addEventListener("message", function (event) {
+          if (event.data && event.data.type === "REQUEST_GAME_SIZE") reportGameSize(true);
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <canvas id="stage" aria-label="먹으로 그린 들판 게임 화면"></canvas>
+    <div id="ui"></div>
+    <div class="boot">
+      <div class="boot-title">채묵</div>
+      <div class="boot-sub">잃어버린 색</div>
+      <div class="boot-sub boot-load">먹을 가는 중…</div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

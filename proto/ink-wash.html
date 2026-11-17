@@ -1,0 +1,742 @@
+<meta charset="utf-8">
+<title>먹빛 산수</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nanum+Brush+Script&family=Nanum+Myeongjo:wght@400;700&display=swap">
+<style>
+/* Layout: full-bleed WebGL scroll painting. Vertical brush title + seal top-right, control sheet bottom-left, hint top-left.
+   Single deliberate look: rice paper and ink in every theme. */
+:root {
+  --paper: #ece3cf;
+  --paper-veil: rgba(236, 227, 207, 0.86);
+  --ink: #1e1c1a;
+  --ink-soft: #57524b;
+  --line: rgba(30, 28, 26, 0.22);
+  --cinnabar: #b0291c;
+  --f-brush: "Nanum Brush Script", "Gungsuh", cursive;
+  --f-body: "Nanum Myeongjo", "Batang", "Noto Serif KR", serif;
+  --f-seal: "Nanum Brush Script", "Gungsuh", cursive;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#stage {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  display: block; touch-action: none; cursor: crosshair;
+}
+.title {
+  position: fixed;
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  right: calc(20px + env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 10px;
+  pointer-events: none;
+}
+.title h1 {
+  margin: 0;
+  writing-mode: vertical-rl;
+  font-family: var(--f-brush);
+  font-weight: 400;
+  font-size: clamp(40px, 7vw, 64px);
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.title p {
+  margin: 6px 0 0;
+  writing-mode: vertical-rl;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--ink-soft);
+}
+.seal {
+  margin-top: 8px;
+  width: 38px; height: 38px;
+  background: var(--cinnabar);
+  color: var(--paper);
+  font-family: var(--f-seal);
+  font-size: 17px; line-height: 1;
+  display: grid; place-items: center;
+  writing-mode: vertical-rl;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 2px var(--cinnabar), inset 0 0 0 3.5px var(--paper);
+  transform: rotate(-3deg);
+}
+.hint {
+  position: fixed;
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  margin: 0; max-width: 46vw;
+  font-size: 13px; line-height: 1.55;
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+.panel {
+  position: fixed;
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: min(300px, calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  background: var(--paper-veil);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 12px 16px 14px;
+}
+.panel summary {
+  cursor: pointer;
+  font-family: var(--f-brush);
+  font-size: 26px; line-height: 1.1;
+  list-style: none;
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.panel summary::-webkit-details-marker { display: none; }
+.panel summary::after { content: "펼치기"; font-family: var(--f-body); font-size: 12px; color: var(--ink-soft); }
+.panel[open] summary::after { content: "접기"; }
+.panel summary:focus-visible, .panel button:focus-visible, .panel input:focus-visible { outline: 2px solid var(--cinnabar); outline-offset: 2px; }
+.controls { display: grid; gap: 12px; margin-top: 10px; }
+.toggle {
+  font-family: var(--f-brush);
+  font-size: 24px; line-height: 1;
+  padding: 8px 12px 6px;
+  border: 0; border-radius: 2px;
+  background: var(--ink); color: var(--paper);
+  cursor: pointer;
+}
+.toggle:hover { background: var(--cinnabar); }
+.field { display: grid; gap: 3px; }
+.field label { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; }
+.field output { font-weight: 400; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.field input { width: 100%; margin: 2px 0; accent-color: var(--ink); }
+.field small { font-size: 11.5px; line-height: 1.45; color: var(--ink-soft); }
+.fallback {
+  position: fixed; inset: 0; display: grid; place-items: center;
+  padding: 24px; text-align: center; font-size: 16px; line-height: 1.6;
+}
+@media (max-width: 560px) {
+  .hint { max-width: 58vw; font-size: 12px; }
+  .title p { display: none; }
+}
+</style>
+
+<canvas id="stage" aria-label="수묵화 셰이더로 그린 3D 산수 풍경"></canvas>
+
+<div class="title">
+  <h1>먹빛 산수</h1>
+  <div>
+    <p>three.js 수묵 셰이더 실험</p>
+    <div class="seal" aria-hidden="true"></div>
+  </div>
+</div>
+
+<p class="hint">드래그해서 시점을 돌리고, 화면을 누르면 먹이 튑니다.</p>
+
+<details class="panel" id="panel" open>
+  <summary>붓 조절</summary>
+  <div class="controls">
+    <button class="toggle" id="toggle" type="button" aria-pressed="true">원본 3D 보기</button>
+    <div class="field">
+      <label for="edge">붓선 굵기 <output id="edgeOut" for="edge">1.6</output></label>
+      <input id="edge" type="range" min="0.5" max="4" step="0.1" value="1.6">
+      <small>깊이와 법선이 꺾이는 경계를 찾아 노이즈로 굵기를 흔든 선</small>
+    </div>
+    <div class="field">
+      <label for="bleed">번짐 <output id="bleedOut" for="bleed">0.5</output></label>
+      <input id="bleed" type="range" min="0" max="1" step="0.05" value="0.5">
+      <small>노이즈로 화면 좌표를 비틀어 먹이 종이에 스민 느낌</small>
+    </div>
+    <div class="field">
+      <label for="tones">농담 단계 <output id="tonesOut" for="tones">4</output></label>
+      <input id="tones" type="range" min="2" max="8" step="1" value="4">
+      <small>밝기를 몇 단계의 먹색으로 나눌지</small>
+    </div>
+    <div class="field">
+      <label for="mist">구름 여백 <output id="mistOut" for="mist">0.6</output></label>
+      <input id="mist" type="range" min="0" max="1" step="0.05" value="0.6">
+      <small>먼 봉우리 사이만 비워 두는 깊이 기반 안개</small>
+    </div>
+  </div>
+</details>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ---------- noise / random (CPU, used once at build time) ----------
+function hash3(x, y, z) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(z, 1274126177)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function vnoise(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+  const a = hash3(xi, yi, zi), b = hash3(xi + 1, yi, zi), c = hash3(xi, yi + 1, zi), d = hash3(xi + 1, yi + 1, zi);
+  const e = hash3(xi, yi, zi + 1), f = hash3(xi + 1, yi, zi + 1), g = hash3(xi, yi + 1, zi + 1), h = hash3(xi + 1, yi + 1, zi + 1);
+  const x00 = a + (b - a) * u, x10 = c + (d - c) * u, x01 = e + (f - e) * u, x11 = g + (h - g) * u;
+  const y0 = x00 + (x10 - x00) * v, y1 = x01 + (x11 - x01) * v;
+  return y0 + (y1 - y0) * w;
+}
+function fbm3(x, y, z, oct = 4) {
+  let s = 0, amp = 0.5, fr = 1;
+  for (let i = 0; i < oct; i++) { s += amp * vnoise(x * fr, y * fr, z * fr); fr *= 2.02; amp *= 0.5; }
+  return s / (1 - Math.pow(0.5, oct));
+}
+function rng(seed) {
+  return function () {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = rng(20261116);
+
+// ---------- renderer ----------
+const canvas = document.getElementById('stage');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+} catch (err) {
+  const msg = document.createElement('div');
+  msg.className = 'fallback';
+  msg.textContent = '이 브라우저에서 WebGL을 켤 수 없어 수묵 장면을 그리지 못했습니다. 하드웨어 가속을 켜고 다시 열어 보세요.';
+  document.body.appendChild(msg);
+  throw err;
+}
+const DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+renderer.setPixelRatio(DPR);
+renderer.setSize(innerWidth, innerHeight, false);
+// The post shader writes sRGB itself, so skip three's output conversion.
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+
+const scene = new THREE.Scene();
+const SKY = new THREE.Color(0xf4f1ea);
+scene.background = SKY;
+scene.fog = new THREE.Fog(SKY, 30, 190);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 1, 420);
+camera.position.set(11, 7.5, 22);
+
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(1, 5, -2);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 9;
+controls.maxDistance = 60;
+controls.minPolarAngle = 0.55;
+controls.maxPolarAngle = 1.48;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+controls.autoRotate = !reduceMotion;
+controls.autoRotateSpeed = 0.28;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8478, 1.3));
+const sun = new THREE.DirectionalLight(0xffffff, 2.4);
+sun.position.set(-30, 50, 20);
+scene.add(sun);
+
+// ---------- shared materials & geometries (never disposed per object) ----------
+const MAT = {
+  stone: new THREE.MeshLambertMaterial({ color: 0x9ea396, vertexColors: true }),
+  rock: new THREE.MeshLambertMaterial({ color: 0x7c7a70 }),
+  pine: new THREE.MeshLambertMaterial({ color: 0x34402f }),
+  bark: new THREE.MeshLambertMaterial({ color: 0x4a3f35 }),
+  water: new THREE.MeshLambertMaterial({ color: 0xe2e2da }),
+  robe: new THREE.MeshLambertMaterial({ color: 0xeeeae0 }),
+  skin: new THREE.MeshLambertMaterial({ color: 0xd8c8b0 }),
+  hat: new THREE.MeshLambertMaterial({ color: 0x6b6255 }),
+  dark: new THREE.MeshLambertMaterial({ color: 0x262420 }),
+  roof: new THREE.MeshLambertMaterial({ color: 0x3b3a37 }),
+  wood: new THREE.MeshLambertMaterial({ color: 0x8a7a64 }),
+  red: new THREE.MeshLambertMaterial({ color: 0xc0281c, side: THREE.DoubleSide }),
+};
+const GEO = {
+  trunk: new THREE.CylinderGeometry(0.09, 0.16, 1, 6).translate(0, 0.5, 0),
+  pad: new THREE.SphereGeometry(1, 12, 7),
+  pillar: new THREE.CylinderGeometry(0.09, 0.09, 1.9, 8),
+  wing: new THREE.BoxGeometry(0.7, 0.03, 0.16).translate(0.35, 0, 0),
+};
+
+function finalize(g) {
+  g.deleteAttribute('normal');
+  if (g.attributes.uv) g.deleteAttribute('uv');
+  const merged = mergeVertices(g, 1e-4);
+  merged.computeVertexNormals();
+  g.dispose();
+  return merged;
+}
+
+// Karst peak: lathe-like column with noisy radius and vertical striations (준법 texture).
+function makePeak(h, r, seed) {
+  const g = new THREE.CylinderGeometry(1, 1, 1, 48, 36, true);
+  const p = g.attributes.position;
+  const col = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const t = y + 0.5;
+    const ang = Math.atan2(z, x);
+    const cx = Math.cos(ang), cz = Math.sin(ang);
+    const n = fbm3(cx * 1.3 + seed, t * 2.2, cz * 1.3 + seed * 0.7);
+    const stri = fbm3(cx * 5 + seed, t * 0.9, cz * 5, 3);
+    const profile = Math.pow(Math.max(0, 1 - Math.pow(t, 2.6)), 0.55) * (1 - 0.3 * t);
+    const rad = r * profile * (0.72 + 0.55 * n + 0.22 * (stri - 0.5));
+    p.setXYZ(i, cx * rad, t * h - h * 0.08, cz * rad);
+    // Ink gathers on ridges and crowns; the foot dissolves into blank paper (mist).
+    const k = Math.min(1, Math.max(0, (t - 0.05) / 0.6));
+    const shade = (0.98 - 0.6 * k * k * (3 - 2 * k)) * (0.8 + 0.4 * stri);
+    col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = Math.min(1, shade);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return finalize(g);
+}
+
+function makeRock(sx, sy, sz, seed) {
+  const g = new THREE.IcosahedronGeometry(1, 5);
+  const p = g.attributes.position;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i).normalize();
+    const n = fbm3(v.x * 1.5 + seed, v.y * 1.5, v.z * 1.5);
+    const s = fbm3(v.x * 4 + seed, v.y * 1.1, v.z * 4, 3);
+    const r = 0.75 + 0.5 * n + 0.15 * (s - 0.5);
+    const y = v.y < 0 ? v.y * 0.35 : v.y;
+    p.setXYZ(i, v.x * r * sx, y * r * sy, v.z * r * sz);
+  }
+  return finalize(g);
+}
+
+const ray = new THREE.Raycaster();
+const DOWN = new THREE.Vector3(0, -1, 0);
+const rayOrigin = new THREE.Vector3();
+function surfaceY(mesh, x, z) {
+  mesh.updateMatrixWorld(true);
+  rayOrigin.set(x, 200, z);
+  ray.set(rayOrigin, DOWN);
+  const hit = ray.intersectObject(mesh, false)[0];
+  return hit ? hit.point.y : 0;
+}
+
+// ---------- landscape ----------
+const water = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), MAT.water);
+water.rotation.x = -Math.PI / 2;
+scene.add(water);
+
+function addPeak(x, z, h, r, seed) {
+  const m = new THREE.Mesh(makePeak(h, r, seed), MAT.stone);
+  m.position.set(x, 0, z);
+  m.rotation.set((rand() - 0.5) * 0.1, rand() * 6.28, (rand() - 0.5) * 0.1);
+  scene.add(m);
+  return m;
+}
+addPeak(-26, -32, 48, 12, 1.7);
+addPeak(21, -44, 58, 13, 4.2);
+addPeak(-4, -62, 40, 11, 8.8);
+for (let i = 0; i < 34; i++) {
+  const ang = rand() * Math.PI * 2;
+  const dist = 40 + rand() * 120;
+  const h = (14 + rand() * 22) * (0.7 + dist / 90);
+  addPeak(Math.cos(ang) * dist, Math.sin(ang) * dist - 12, h, h * (0.22 + rand() * 0.16), i * 7.31 + 11);
+}
+
+const heroRock = new THREE.Mesh(makeRock(4.2, 2.6, 3.4, 3.3), MAT.rock);
+heroRock.position.set(3, 0.6, 5);
+scene.add(heroRock);
+
+const pavRock = new THREE.Mesh(makeRock(6.5, 7.5, 5.5, 9.1), MAT.rock);
+pavRock.position.set(-12, 0, -9);
+scene.add(pavRock);
+
+for (let i = 0; i < 7; i++) {
+  const s = 0.6 + rand() * 1.4;
+  const m = new THREE.Mesh(makeRock(s * 1.3, s * (0.8 + rand()), s, 20 + i * 3.7), MAT.rock);
+  const ang = rand() * Math.PI * 2, d = 8 + rand() * 16;
+  m.position.set(Math.cos(ang) * d - 2, 0, Math.sin(ang) * d - 4);
+  scene.add(m);
+}
+
+function makePine(s, seed) {
+  const r = rng(seed);
+  const g = new THREE.Group();
+  const trunkH = 3.2;
+  const tr = new THREE.Mesh(GEO.trunk, MAT.bark);
+  tr.scale.set(1, trunkH, 1);
+  tr.rotation.z = (r() - 0.5) * 0.6;
+  g.add(tr);
+  const lean = tr.rotation.z;
+  for (let k = 0; k < 5; k++) {
+    const t = 0.45 + k * 0.13;
+    const pad = new THREE.Mesh(GEO.pad, MAT.pine);
+    const w = 0.95 + r() * 0.7 - k * 0.12;
+    pad.scale.set(w, 0.2 + r() * 0.08, w * 0.8);
+    pad.position.set(-Math.sin(lean) * trunkH * t + (r() - 0.5) * 1.4, Math.cos(lean) * trunkH * t, (r() - 0.5) * 0.6);
+    g.add(pad);
+  }
+  g.scale.setScalar(s);
+  return g;
+}
+function plant(rockMesh, x, z, s, seed, yaw = 0) {
+  const tree = makePine(s, seed);
+  tree.position.set(x, surfaceY(rockMesh, x, z) - 0.15, z);
+  tree.rotation.y = yaw;
+  scene.add(tree);
+}
+plant(heroRock, 0.8, 4.2, 1.15, 5, 0.4);
+plant(heroRock, 5.6, 6.2, 0.8, 9, 2.1);
+plant(pavRock, -15.6, -7.5, 1.3, 13, 1.0);
+plant(pavRock, -8.6, -10.5, 1.0, 17, -0.7);
+plant(pavRock, -13.5, -12.8, 1.2, 21, 2.6);
+
+function makePavilion() {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(3, 0.3, 3), MAT.wood);
+  base.position.y = 0.15;
+  g.add(base);
+  for (const sx of [-1.2, 1.2]) for (const sz of [-1.2, 1.2]) {
+    const p = new THREE.Mesh(GEO.pillar, MAT.red);
+    p.position.set(sx, 1.25, sz);
+    g.add(p);
+  }
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.6, 1.15, 4, 1), MAT.roof);
+  roof.rotation.y = Math.PI / 4;
+  roof.position.y = 2.75;
+  g.add(roof);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), MAT.roof);
+  tip.position.y = 3.4;
+  g.add(tip);
+  return g;
+}
+const pavilion = makePavilion();
+pavilion.position.set(-12, surfaceY(pavRock, -12, -9) - 0.25, -9);
+pavilion.rotation.y = 0.3;
+scene.add(pavilion);
+
+// Wanderer with a red scarf, facing the mountains (viewer stands behind, classic 산수 composition).
+const hero = new THREE.Group();
+{
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.8, 14), MAT.robe);
+  robe.position.y = 0.9;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 14, 10), MAT.skin);
+  head.position.y = 1.98;
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.78, 0.34, 18), MAT.hat);
+  hat.position.y = 2.2;
+  const sword = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 0.05), MAT.dark);
+  sword.position.set(0, 1.3, 0.32);
+  sword.rotation.z = 0.75;
+  hero.add(robe, head, hat, sword);
+}
+const scarfGeo = new THREE.PlaneGeometry(1.4, 0.17, 24, 1).translate(0.7, 0, 0);
+const scarfBase = Float32Array.from(scarfGeo.attributes.position.array);
+const scarf = new THREE.Mesh(scarfGeo, MAT.red);
+scarf.position.set(0, 1.78, 0.12);
+scarf.rotation.y = -0.7;
+hero.add(scarf);
+hero.position.set(3.4, surfaceY(heroRock, 3.4, 5) - 0.08, 5);
+hero.rotation.y = 0.15;
+scene.add(hero);
+
+// Boat with a ferryman.
+const boat = new THREE.Group();
+{
+  const hull = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.26, 0.62), MAT.bark);
+  hull.position.y = 0.1;
+  const man = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.9, 10), MAT.robe);
+  man.position.set(0.6, 0.65, 0);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.2, 12), MAT.hat);
+  cap.position.set(0.6, 1.15, 0);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 3.2, 5), MAT.dark);
+  pole.position.set(1.0, 0.9, 0);
+  pole.rotation.z = -0.5;
+  boat.add(hull, man, cap, pole);
+}
+boat.position.set(-3, 0, -16);
+scene.add(boat);
+
+const birds = [];
+for (let i = 0; i < 7; i++) {
+  const b = new THREE.Group();
+  const wl = new THREE.Mesh(GEO.wing, MAT.dark);
+  const wr = new THREE.Mesh(GEO.wing, MAT.dark);
+  wl.rotation.y = Math.PI;
+  b.add(wl, wr);
+  scene.add(b);
+  birds.push({ g: b, wl, wr, phase: i * 0.55 + rand() * 0.3, radius: 16 + rand() * 6, h: 19 + rand() * 5 });
+}
+
+// ---------- render targets ----------
+const w0 = Math.floor(innerWidth * DPR), h0 = Math.floor(innerHeight * DPR);
+const colorRT = new THREE.WebGLRenderTarget(w0, h0, { type: THREE.HalfFloatType });
+colorRT.depthTexture = new THREE.DepthTexture(w0, h0);
+const normalRT = new THREE.WebGLRenderTarget(w0, h0);
+const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+
+// ---------- ink post shader ----------
+const SPLASH_N = 6;
+const splashes = Array.from({ length: SPLASH_N }, () => new THREE.Vector4(0, 0, -1000, 0));
+let splashIdx = 0;
+
+const postMat = new THREE.ShaderMaterial({
+  depthTest: false,
+  depthWrite: false,
+  uniforms: {
+    tColor: { value: colorRT.texture },
+    tDepth: { value: colorRT.depthTexture },
+    tNormal: { value: normalRT.texture },
+    uRes: { value: new THREE.Vector2(w0, h0) },
+    uAspect: { value: innerWidth / innerHeight },
+    uTime: { value: 0 },
+    uNear: { value: camera.near },
+    uFar: { value: camera.far },
+    uEdge: { value: 1.6 },
+    uBleed: { value: 0.5 },
+    uTones: { value: 4 },
+    uMist: { value: 0.6 },
+    uInk: { value: 1 },
+    uSplash: { value: splashes },
+  },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+  `,
+  fragmentShader: /* glsl */`
+    precision highp float;
+    uniform sampler2D tColor, tDepth, tNormal;
+    uniform vec2 uRes;
+    uniform float uAspect, uTime, uNear, uFar, uEdge, uBleed, uTones, uMist, uInk;
+    uniform vec4 uSplash[${SPLASH_N}];
+    varying vec2 vUv;
+
+    float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+    float noise(vec2 p) {
+      vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y);
+    }
+    float fbm(vec2 p) {
+      float v = 0.0, a = 0.5;
+      for (int i = 0; i < 5; i++) { v += a * noise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; }
+      return v / 0.97;
+    }
+    float linDepth(vec2 uv) {
+      float d = texture2D(tDepth, uv).x;
+      return -(uNear * uFar) / ((uFar - uNear) * d - uFar);
+    }
+    vec3 nrm(vec2 uv) { return texture2D(tNormal, uv).xyz * 2.0 - 1.0; }
+    vec3 toSRGB(vec3 c) { return pow(max(c, 0.0), vec3(1.0 / 2.2)); }
+    float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+    void main() {
+      vec2 uv = vUv;
+      vec2 px = 1.0 / uRes;
+
+      // 번짐: wobble every sample so ink looks absorbed into paper
+      vec2 wob = vec2(fbm(uv * vec2(6.0, 9.0) + uTime * 0.02), fbm(uv * vec2(7.0, 5.0) - uTime * 0.015)) - 0.5;
+      vec2 suv = uv + wob * px * 16.0 * uBleed;
+
+      vec3 src = toSRGB(texture2D(tColor, suv).rgb);
+      float d = linDepth(suv);
+      float sky = step(uFar * 0.98, d);
+
+      // 붓선: Laplacian of inverse depth (planes cancel out) + normal discontinuity
+      float strokeVar = 0.5 + 1.0 * fbm(uv * vec2(3.0, 14.0) + 3.1);
+      vec2 o = px * uEdge * strokeVar;
+      float izC = 1.0 / d;
+      float izL = 1.0 / linDepth(suv - vec2(o.x, 0.0)), izR = 1.0 / linDepth(suv + vec2(o.x, 0.0));
+      float izD = 1.0 / linDepth(suv - vec2(0.0, o.y)), izU = 1.0 / linDepth(suv + vec2(0.0, o.y));
+      float dEdge = (abs(izL + izR - 2.0 * izC) + abs(izU + izD - 2.0 * izC)) / izC;
+      dEdge = smoothstep(0.015, 0.06, dEdge);
+      float nEdge = (1.0 - dot(nrm(suv - vec2(o.x, 0.0)), nrm(suv + vec2(o.x, 0.0))))
+                  + (1.0 - dot(nrm(suv - vec2(0.0, o.y)), nrm(suv + vec2(0.0, o.y))));
+      nEdge = smoothstep(0.3, 0.8, nEdge);
+      float edge = max(dEdge, nEdge * 0.8);
+      edge *= mix(1.0, 0.22, smoothstep(25.0, 150.0, d));
+      edge *= 0.6 + 0.4 * smoothstep(0.25, 0.7, noise(uv * uRes / 3.0)); // dry brush
+      edge *= 1.0 - sky;
+
+      // 농담: quantize brightness into soft-edged washes, pigment pools at wash borders
+      float L = luma(src);
+      float ink = 1.0 - L;
+      float q = ink * uTones + (fbm(uv * 8.0 + 2.0) - 0.5) * 0.7 * uBleed;
+      float qf = fract(q);
+      float wsoft = 0.06 + 0.3 * uBleed;
+      float soft = smoothstep(0.5 - wsoft, 0.5 + wsoft, qf);
+      float tone = (floor(q) + soft) / uTones;
+      tone = pow(clamp(tone, 0.0, 1.0), 1.45) * 0.95;
+      tone += 0.07 * soft * (1.0 - soft) * 4.0 * step(0.08, tone);
+      tone *= 0.82 + 0.3 * fbm(uv * uRes / 6.0);
+
+      // 구름 여백: drifting mist bands that only cover distant peaks
+      float band = fbm(vec2(uv.x * 2.2 + uTime * 0.012, uv.y * 5.5));
+      float mist = smoothstep(0.42, 0.72, band) * smoothstep(18.0, 70.0, d) * uMist;
+      mist *= smoothstep(0.9, 0.35, uv.y);
+      tone *= 1.0 - mist;
+      edge *= 1.0 - mist * 0.9;
+
+      // 한지
+      vec3 paper = vec3(0.925, 0.890, 0.812);
+      paper *= 0.95 + 0.07 * fbm(uv * uRes / 90.0);
+      paper -= 0.03 * smoothstep(0.62, 0.92, noise(uv * uRes * vec2(0.35, 0.04)));
+      vec2 vc = uv - 0.5;
+      paper *= 1.0 - 0.28 * dot(vc, vc);
+      vec3 inkCol = vec3(0.09, 0.085, 0.08);
+
+      vec3 col = mix(paper, inkCol, clamp(tone, 0.0, 1.0) * 0.88);
+      col = mix(col, inkCol * 0.8, clamp(edge, 0.0, 1.0) * 0.92);
+
+      // 낙관 같은 붉은 포인트: keep only strongly red surfaces in color
+      float redM = smoothstep(0.16, 0.34, src.r - max(src.g, src.b)) * (1.0 - sky);
+      vec3 cinn = vec3(0.70, 0.17, 0.11) * (0.75 + 0.35 * L);
+      col = mix(col, mix(cinn, inkCol, edge * 0.6), redM * 0.92);
+
+      // 먹 튀김
+      float spl = 0.0;
+      for (int i = 0; i < ${SPLASH_N}; i++) {
+        vec4 s = uSplash[i];
+        float age = uTime - s.z;
+        if (age < 0.0 || age > 6.0) continue;
+        vec2 p = uv - s.xy; p.x *= uAspect;
+        float dist = length(p);
+        float R = 0.12 *(1.0 - exp(-age * 7.0)) * (0.8 + 0.4 * s.w);
+        float ang = atan(p.y, p.x);
+        float rr = R * (1.0 + 0.6 * (noise(vec2(ang * 2.5 + s.w * 20.0, s.w * 7.0)) - 0.5));
+        float core = 1.0 - smoothstep(rr * 0.85, rr, dist);
+        float halo = (1.0 - smoothstep(rr, rr * 1.4, dist)) * 0.3;
+        float drops = 0.0;
+        for (int k = 0; k < 8; k++) {
+          float fk = float(k);
+          float a = hash(vec2(s.w * 13.0 + fk, fk * 1.7)) * 6.2831;
+          float rd = R * (1.35 + hash(vec2(fk, s.w * 3.0)) * 1.4);
+          float sz = R * (0.05 + 0.12 * hash(vec2(fk * 3.0, s.w * 5.0)));
+          drops = max(drops, 1.0 - smoothstep(sz * 0.7, sz, length(p - vec2(cos(a), sin(a)) * rd)));
+        }
+        float fade = 1.0 - smoothstep(2.5, 6.0, age);
+        spl = max(spl, max(max(core * 0.95, drops * 0.9), halo) * fade);
+      }
+      col = mix(col, inkCol, spl * (0.82 + 0.18 * noise(uv * uRes / 4.0)));
+
+      // 원본 ↔ 수묵 전환: ink spreads across the frame along a noise front
+      float tn = fbm(uv * 3.5 + 7.0) * 0.9 + 0.05;
+      float thr = uInk * 1.25;
+      float m = 1.0 - smoothstep(thr - 0.15, thr, tn);
+      vec3 outc = mix(src, col, m);
+      float front = (1.0 - smoothstep(0.0, 0.025, abs(tn - (thr - 0.075)))) * step(0.01, uInk) * step(uInk, 0.99);
+      outc = mix(outc, inkCol, front * 0.85);
+
+      gl_FragColor = vec4(outc, 1.0);
+    }
+  `,
+});
+const postScene = new THREE.Scene();
+const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat));
+
+// ---------- UI ----------
+const U = postMat.uniforms;
+function bindRange(id, uniform, digits) {
+  const input = document.getElementById(id);
+  const out = document.getElementById(id + 'Out');
+  const apply = () => { U[uniform].value = parseFloat(input.value); out.textContent = Number(input.value).toFixed(digits); };
+  input.addEventListener('input', apply);
+  apply();
+}
+bindRange('edge', 'uEdge', 1);
+bindRange('bleed', 'uBleed', 2);
+bindRange('tones', 'uTones', 0);
+bindRange('mist', 'uMist', 2);
+
+let inkTarget = 1;
+const toggleBtn = document.getElementById('toggle');
+toggleBtn.addEventListener('click', () => {
+  inkTarget = inkTarget > 0.5 ? 0 : 1;
+  toggleBtn.setAttribute('aria-pressed', String(inkTarget === 1));
+  toggleBtn.textContent = inkTarget === 1 ? '원본 3D 보기' : '수묵으로 되돌리기';
+});
+
+if (innerWidth < 760 || innerHeight < 700) document.getElementById('panel').open = false;
+
+// Tap (not drag) drops an ink splash.
+let downX = 0, downY = 0, downT = 0;
+canvas.addEventListener('pointerdown', (e) => { downX = e.clientX; downY = e.clientY; downT = performance.now(); });
+canvas.addEventListener('pointerup', (e) => {
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6 || performance.now() - downT > 400) return;
+  const s = splashes[splashIdx];
+  s.set(e.clientX / innerWidth, 1 - e.clientY / innerHeight, U.uTime.value, Math.random());
+  splashIdx = (splashIdx + 1) % SPLASH_N;
+});
+
+function onResize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  const pw = Math.floor(w * DPR), ph = Math.floor(h * DPR);
+  colorRT.setSize(pw, ph);
+  normalRT.setSize(pw, ph);
+  U.uRes.value.set(pw, ph);
+  U.uAspect.value = w / h;
+}
+addEventListener('resize', onResize);
+
+// ---------- loop (no per-frame allocation) ----------
+const clock = new THREE.Clock();
+const scarfPos = scarfGeo.attributes.position;
+const BLACK = new THREE.Color(0x000000);
+
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+  U.uTime.value = t;
+  controls.update();
+
+  // scarf in the wind
+  const arr = scarfPos.array;
+  for (let i = 0; i < scarfPos.count; i++) {
+    const bx = scarfBase[i * 3], f = bx / 1.4;
+    arr[i * 3 + 1] = scarfBase[i * 3 + 1] + Math.sin(t * 5 - bx * 5) * 0.12 * f - f * 0.18;
+    arr[i * 3 + 2] = scarfBase[i * 3 + 2] + Math.sin(t * 3.3 - bx * 4) * 0.16 * f;
+  }
+  scarfPos.needsUpdate = true;
+
+  for (const b of birds) {
+    const a = t * 0.12 + b.phase;
+    b.g.position.set(-6 + Math.cos(a) * b.radius, b.h + Math.sin(t * 0.7 + b.phase) * 1.2, -18 + Math.sin(a) * b.radius);
+    b.g.rotation.y = -a;
+    const flap = Math.sin(t * 7 + b.phase * 3) * 0.55;
+    b.wl.rotation.z = flap;
+    b.wr.rotation.z = flap;
+  }
+  boat.position.x = -3 + Math.sin(t * 0.06) * 7;
+
+  const step = dt * 0.8;
+  U.uInk.value += Math.max(-step, Math.min(step, inkTarget - U.uInk.value));
+
+  renderer.setRenderTarget(colorRT);
+  renderer.render(scene, camera);
+
+  if (U.uInk.value > 0) {
+    scene.overrideMaterial = normalMat;
+    scene.background = BLACK;
+    renderer.setRenderTarget(normalRT);
+    renderer.render(scene, camera);
+    scene.overrideMaterial = null;
+    scene.background = SKY;
+  }
+
+  renderer.setRenderTarget(null);
+  renderer.render(postScene, postCam);
+});
+</script>
