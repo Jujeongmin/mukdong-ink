@@ -731,25 +731,7 @@ export class Monsters {
     v.shadow.scale.setScalar(v.def.radius * 1.1 * (1 - Math.min(0.6, v.y * 0.06)));
   }
 
-  /** Auto-aim: best living monster near (x, z), biased toward the stick direction. */
-  aim(x: number, z: number, hasIn: boolean, ih: number): number | null {
-    let best: MView | null = null, bs = 1e9;
-    for (const e of this.views.values()) {
-      if (e.mode === "dead" || !e.look.group.visible || e.drop > 0) continue;
-      const dx = e.x - x, dz = e.z - z, d = Math.hypot(dx, dz) - e.def.radius;
-      if (d > 7.5) continue;
-      let score = d;
-      if (hasIn) {
-        const a = Math.abs(angDiff(ih, Math.atan2(-dz, dx)));
-        if (a > 1.1) continue;
-        score += a * 2;
-      }
-      if (score < bs) { bs = score; best = e; }
-    }
-    return best ? Math.atan2(-(best.z - z), best.x - x) : null;
-  }
-
-  boss(px: number, pz: number): MView | null {
+    boss(px: number, pz: number): MView | null {
     for (const v of this.views.values()) {
       if (v.def.boss && v.mode !== "dead" && Math.hypot(v.x - px, v.z - pz) < 34) return v;
     }

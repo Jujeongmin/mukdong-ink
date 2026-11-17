@@ -10,6 +10,9 @@ import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
 import { newNav, questNav } from "./questnav";
 import { RoutePreview } from "./render/route";
+import { TargetRing } from "./render/target-ring";
+import { aimFor, pickTarget, targetable } from "./targeting";
+import type { MView as TargetView } from "./monsters";
 import { Portraits } from "./ui/portraits";
 import { Rig } from "./render/rig";
 import { gameSettings } from "./ui/settings";
@@ -41,11 +44,6 @@ import { AutoPlay } from "./autoplay";
 import { attempt, el, errorCode, errorText, esc, installSprites, toast } from "./ui/dom";
 
 const BUF = 0.15;
-/* cursor-on-ground aiming, reused (no per-frame allocation) */
-const ray = new THREE.Raycaster();
-const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const ndcV = new THREE.Vector2();
-const hitV = new THREE.Vector3();
 /** 먹동이's thought when a skill first stirs in his hands (index = skill id). */
 /** actor sound codes (see actorSound) → clips: 1..3 combo, 4 air spin, 5 roll */
 const ACT_SFX: readonly (SfxName | null)[] = [null, "swing-1", "swing-2", "swing-3-spin", "swing-3-spin", "roll"];
@@ -110,6 +108,10 @@ export class Game {
   /** where the main quest points (4 Hz), and its ground preview */
   private readonly nav = newNav();
   private route: RoutePreview | null = null;
+  /** what the next swing would pick (~5 Hz) and its mark on the ground */
+  private aimTarget: TargetView | null = null;
+  private aimScan = 0;
+  private targetRing: TargetRing | null = null;
   /** dialogue portraits rendered from the speakers' own rigs, cached */
   private readonly portraits = new Portraits();
   /** the kind of monster that hurt us last (for the death line) */
@@ -197,7 +199,7 @@ export class Game {
       sinceManual: () => performance.now() - this.lastManualAt,
       skillReady: (i) => this.profile.level >= SKILLS[i].unlock && this.player.cd[i] <= 0,
       drinkPotion: () => void this.drinkPotion(),
-      travel: (to, from) => this.travel(to, from),
+      travel: (to, from) => this.travel(to, from, true),
       talk: (npc) => this.story.talk(npc),
       think: (id, text) => { this.hints.think(id, text, { urgent: true, repeat: true }); },
       changed: () => this.hud.setAuto(this.auto.on, this.auto.traveling),
@@ -344,8 +346,8 @@ export class Game {
       attack: (kind, a) => this.sendAttack(kind, a),
       skill: (i, a, delay) => this.sendSkill(i, a, delay),
       // mouse players face the cursor on every swing and cast; others get the nearest-target assist
-      aim: (x, z, hasIn, ih) => this.auto.aimHeading(x, z) ?? this.cursorHeading(x, z) ?? this.monsters.aim(x, z, hasIn, ih),
-      cursor: (x, z) => this.cursorHeading(x, z),
+      // auto-targeting for everyone: whoever is on you, else ahead, else nearest (targeting.ts)
+      aim: (x, z, dir, kind) => aimFor(this.monsters.views, x, z, dir, kind),
       evade: (x, z) => this.evadeHeading(x, z),
     };
     this.zone = new ZoneScene(ZONES[this.entry.zone] ?? ZONES[START_ZONE]);
@@ -697,28 +699,37 @@ export class Game {
   }
 
   /* ---------- zones ---------- */
-  private async travel(to: string, viaPortal?: string): Promise<void> {
-    if (this.transitioning) return;
+  /**
+   * Change zone. Returns true on arrival. With `retry` (auto-travel), a too_far answer (the server hasn't
+   * seen us reach the gate yet) is quiet and doesn't push us back: the driver just keeps walking.
+   */
+  private async travel(to: string, viaPortal?: string, retry = false): Promise<boolean> {
+    if (this.transitioning) return false;
     this.transitioning = true;
     this.sheets.close();
     this.input.clear();
     if (viaPortal) audio.play("portal");
-    this.chat.clear();
     this.loading.show(to, "길을 건너는 중…");
+    let ok = false;
     try {
       const entry = await this.api.enterZone(to, viaPortal);
+      this.chat.clear();
       this.loading.progress(0.7);
       this.rebuild(entry);
+      ok = true;
     } catch (e) {
-      toast(errorText(e), true);
-      // step back from the gate so we don't walk straight into it again
-      const p = this.player;
-      const d = Math.hypot(p.x, p.z) || 1;
-      p.teleport(p.x - (p.x / d) * 3, p.z - (p.z / d) * 3);
+      if (!(retry && errorCode(e) === "too_far")) {
+        toast(errorText(e), true);
+        // step back from the gate so we don't walk straight into it again
+        const p = this.player;
+        const d = Math.hypot(p.x, p.z) || 1;
+        p.teleport(p.x - (p.x / d) * 3, p.z - (p.z / d) * 3);
+      }
     } finally {
       await this.loading.hide();
       this.transitioning = false;
     }
+    return ok;
   }
 
   private rebuild(entry: ZoneEntry): void {
@@ -857,6 +868,11 @@ export class Game {
     this.hud.placeTag(this, p.x, p.y + 2.55, p.z);
     for (const r of this.remotes.values()) this.hud.placeTag(r, r.actor.x, r.actor.y + 2.55, r.actor.z);
     this.hud.placeSay(this, p.x, p.y + 3.15, p.z);
+    const at = this.aimTarget;
+    if (at && targetable(at) && !this.dead) {
+      this.targetRing ??= new TargetRing();
+      this.targetRing.show(at.x, at.z, at.def.radius, feel.time);
+    } else this.targetRing?.hide();
     if (this.nav.ok && !this.dead && (this.auto.traveling || this.hud.goHover)) {
       this.route ??= new RoutePreview();
       this.route.update(p.x, p.z, this.nav.stepX, this.nav.stepZ, this.nav.stepIsPortal, feel.time);
@@ -901,16 +917,6 @@ export class Game {
     return found ? Math.atan2(-az, ax) : null;
   }
 
-  /** Heading from (x, z) to the point under the mouse cursor, or null if the player isn't aiming with a mouse. */
-  private cursorHeading(x: number, z: number): number | null {
-    if (!this.input.mouseAim) return null;
-    ndcV.set(this.input.ndc.x, this.input.ndc.y);
-    ray.setFromCamera(ndcV, camera);
-    if (!ray.ray.intersectPlane(ground, hitV)) return null;
-    const dx = hitV.x - x, dz = hitV.z - z;
-    if (dx * dx + dz * dz < 0.04) return null;
-    return Math.atan2(-dz, dx);
-  }
 
   /** ~4 Hz: the quest card's distance line and state tag (no allocation on the hot path). */
   private questTick(): void {
@@ -983,6 +989,12 @@ export class Game {
 
   private slowUi(): void {
     this.autoPotion();
+    this.aimScan -= 0.1;
+    if (this.aimScan <= 0) {
+      this.aimScan = 0.2;
+      const pl = this.player, inp = pl.input, moving = Math.hypot(inp.mx, inp.mz) > 0.15;
+      this.aimTarget = this.zone.def.safe || this.dead ? null : pickTarget(this.monsters.views, pl.x, pl.z, moving ? Math.atan2(-inp.mz, inp.mx) : pl.head, -1);
+    }
     this.hintTick -= 0.1;
     if (this.hintTick <= 0) { this.hintTick = 0.25; this.checkHints(); this.questTick(); }
     const p = this.player;

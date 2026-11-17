@@ -58,6 +58,8 @@ function collarGeometry(): THREE.BufferGeometry {
 // the back (z < 0) so from behind the bristle sits behind the head instead of standing upright like a torch.
 const CARRY = { grip: [0.24, -0.07, 0.04], d: [-0.79, 0.58, -0.21], left: [0.08, -0.6, -0.06], poleR: [0.2, -1, 0.6], poleL: [-0.6, -0.1, -0.5] };
 const GUARD = { grip: [0.32, -0.5, 0.0], d: [0.72, -0.62, -0.12], left: [0, 0, 0], poleR: [0, -0.6, 0.8], poleL: [0, -0.8, -0.6] };
+/** scratch: the IK pole between carry and guard (no allocation) */
+const _pole = [0, 0, 0];
 /** in the guard the left hand holds the shaft this far below the right */
 const GUARD_LEFT = 0.42;
 const IK = new Float32Array(6);
@@ -485,7 +487,10 @@ export class Rig {
       let hx2 = ex + Math.sin(fa) * LEN.fa, hy2 = ey - Math.cos(fa) * LEN.fa, hz = zs * 2.05;
       let exx = ex, eyy = ey, ezz = ez;
       if (st > 0) {
-        const T = side ? this.ikR : this.ikL, pole = side ? (this.guard > 0.5 ? GUARD.poleR : CARRY.poleR) : (this.guard > 0.5 ? GUARD.poleL : CARRY.poleL);
+        // the elbow's pole slides with the guard blend (no flip half-way between carry and guard)
+        const T = side ? this.ikR : this.ikL, g = this.guard;
+        const p0 = side ? CARRY.poleR : CARRY.poleL, p1 = side ? GUARD.poleR : GUARD.poleL, pole = _pole;
+        pole[0] = p0[0] + (p1[0] - p0[0]) * g; pole[1] = p0[1] + (p1[1] - p0[1]) * g; pole[2] = p0[2] + (p1[2] - p0[2]) * g;
         solveArm(sx0, sy0, zs, T.x, T.y, T.z, LEN.ua, LEN.fa, pole);
         exx += (IK[0] - exx) * st; eyy += (IK[1] - eyy) * st; ezz += (IK[2] - ezz) * st;
         hx2 += (IK[3] - hx2) * st; hy2 += (IK[4] - hy2) * st; hz += (IK[5] - hz) * st;

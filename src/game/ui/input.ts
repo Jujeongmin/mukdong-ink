@@ -44,9 +44,6 @@ export class Input {
   holdAtk = false;
   private holdKey = false;
   private holdMouse = false;
-  /** mouse users aim at the cursor; screen position in normalized device coordinates */
-  mouseAim = false;
-  readonly ndc = { x: 0, y: 0 };
 
   constructor(private readonly h: InputHandlers, root: HTMLElement, canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", (e) => this.down(e));
@@ -66,19 +63,10 @@ export class Input {
         else if (!this.h.blocked()) this.h.act(a as Act);
       });
     });
-    // the field itself: left click attacks, right click dashes, the cursor aims
+    // the field itself: left click attacks, right click rolls (targets are picked automatically)
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    canvas.addEventListener("pointermove", (e) => {
-      if (e.pointerType !== "mouse") return;
-      this.mouseAim = true;
-      this.ndc.x = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
-      this.ndc.y = -(e.clientY / Math.max(1, window.innerHeight)) * 2 + 1;
-    });
     canvas.addEventListener("pointerdown", (e) => {
       if (e.pointerType !== "mouse") return;
-      this.mouseAim = true;
-      this.ndc.x = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
-      this.ndc.y = -(e.clientY / Math.max(1, window.innerHeight)) * 2 + 1;
       if (this.h.blocked()) return;
       this.h.manual?.();
       if (e.button === 0) {

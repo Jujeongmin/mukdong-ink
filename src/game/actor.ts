@@ -38,6 +38,14 @@ const ATK = {
 export const IMPACT: number[] = [0, HIT1.impact, HIT2.impact, HIT3.impact, 0.12, 0.05];
 /** cross-fade into a mocap strike so nothing pops */
 const MOCAP_BLEND = 0.08;
+/** a move input cancels a strike's recovery this long after its impact frame */
+const MOVE_CANCEL = 0.08;
+/** after a strike (cancelled or finished) the upper body and brush ease from the clip back to the hold this fast */
+const RECOVER = 0.15;
+/** the low guard (standing only) comes up this slowly when you stop, and drops this fast when you move */
+const GUARD_IN = 0.25, GUARD_OUT = 0.15;
+/** pose channels of the upper body (lean, head, both arms, brush angle); the rest are legs and hip height */
+const IS_UPPER = [true, true, true, true, true, true, false, false, false, false, true, false];
 const AIRSPIN_DUR = BASIC[4].dur;
 /** Per airtime: one air combo (up to three swings), one air dash; each swing may hang for a moment only. */
 const AIR_SWINGS = 3;
@@ -74,10 +82,11 @@ export interface ActorHooks {
   attack(kind: number, a: Actor): void;
   /** a skill should be resolved now at (x, z, head); show its hits after `delay` seconds */
   skill(i: number, a: Actor, delay: number): void;
-  /** returns a heading toward the best target, or null */
-  aim(x: number, z: number, hasIn: boolean, inHead: number): number | null;
-  /** heading toward the mouse cursor on the ground, or null for keyboard/touch players */
-  cursor?(x: number, z: number): number | null;
+  /**
+   * Heading toward the auto-target for this action (kind −1 = basic swing, 0..4 = skill), or null to keep
+   * facing. `dir` is the move direction while moving, else the facing.
+   */
+  aim(x: number, z: number, dir: number, kind: number): number | null;
   /** heading away from the nearest monster that is attacking, or null */
   evade?(x: number, z: number): number | null;
 }
@@ -91,6 +100,7 @@ const LOW_GUARD = Float32Array.from([0.3, -0.18, -0.2, 0.6, 0.6, 0.6, 0.5, -0.82
 /** seconds a fight keeps the low guard after the last attack, skill or roll */
 const GUARD_HOLD = 4;
 const vA = new THREE.Vector3(), vB = new THREE.Vector3();
+const recPose = new Float32Array(12);
 let actorCount = 0;
 
 /**
@@ -133,6 +143,10 @@ export class Actor {
   private swept = false;
   private flipT = -1;
   private runPhase = 0;
+  /** the strike being let go of: its clip keeps playing on the upper body for RECOVER while the legs run */
+  private recClip: MotionClip | null = null;
+  private recT = 0;
+  private recW = 0;
   /** footprints: in the air since the last print (the next one is darker); a roll's smear already laid */
   private printAir = false;
   private printRoll = false;
@@ -201,22 +215,21 @@ export class Actor {
   }
 
   /* ---------- actions ---------- */
-  private aim(): void {
+  /** Snap to face the auto-target at a swing/cast start (the yaw the server gets follows `head`). */
+  private aim(kind: number): void {
     if (!this.hooks) return;
     const inp = this.input, hasIn = Math.hypot(inp.mx, inp.mz) > 0.15, ih = Math.atan2(-inp.mz, inp.mx);
-    const h = this.hooks.aim(this.x, this.z, hasIn, ih);
+    const h = this.hooks.aim(this.x, this.z, hasIn ? ih : this.head, kind);
     if (h !== null) this.head = h;
     else if (hasIn) this.head = ih;
   }
 
-  /** Roll along the move keys if held, else away from whoever is attacking, else toward the cursor. */
+  /** Roll along the move keys if held, else away from whoever is attacking, else straight ahead. */
   private rollFacing(hasIn: boolean): void {
     const inp = this.input;
     if (hasIn) { this.head = Math.atan2(-inp.mz, inp.mx); return; }
     const away = this.hooks?.evade?.(this.x, this.z);
-    if (away != null) { this.head = away; return; }
-    const c = this.hooks?.cursor?.(this.x, this.z);
-    if (c != null) this.head = c;
+    if (away != null) this.head = away;
   }
 
   /** Start a roll if it's ready; returns true when it rolled. */
@@ -233,6 +246,7 @@ export class Actor {
   private start(s: ActState): void {
     this.state = s;
     this.st = 0;
+    this.recW = 0;
     this.swept = false;
     if (s !== "move" && s !== "land" && s !== "hurt" && s !== "dead") this.combatT = GUARD_HOLD;
     this.fired = false;
@@ -267,7 +281,7 @@ export class Actor {
   }
 
   private startSkill(i: number): void {
-    if (this.local) this.aim();
+    if (this.local) this.aim(i);
     this.start(("sk" + i) as ActState);
     actorSound.fn?.(10 + i, this);
     this.skillSeq++;
@@ -408,19 +422,21 @@ export class Actor {
           this.onGround = false;
         }
         if (this.canSkill()) { const s = inp.sk; inp.sk = -1; this.startSkill(s); break; }
-        if (inp.atk > 0 && this.atkGap <= 0 && (this.onGround || this.airSwings < AIR_SWINGS)) { inp.atk = 0; this.aim(); this.start(this.onGround ? "atk1" : "airspin"); }
+        if (inp.atk > 0 && this.atkGap <= 0 && (this.onGround || this.airSwings < AIR_SWINGS)) { inp.atk = 0; this.aim(-1); this.start(this.onGround ? "atk1" : "airspin"); }
         else this.tryRoll(hasIn);
         break;
       }
       case "atk1": case "atk2": case "atk3": {
         const A = ATK[this.state];
-        damp(8);
+        // the lunge carries into the blow; after the impact the feet are planted, so nothing slides
+        damp(this.st < A.clip.impact ? 8 : 18);
         if (this.st > A.act[1] && this.atkGap <= 0) {
-          if (inp.atk > 0 && A.next) { inp.atk = 0; this.aim(); this.start(A.next); break; }
+          if (inp.atk > 0 && A.next) { inp.atk = 0; this.aim(-1); this.start(A.next); break; }
         }
         if (this.tryRoll(hasIn)) break;
         if (this.st > A.act[1] && this.canSkill()) { const s = inp.sk; inp.sk = -1; this.startSkill(s); break; }
-        if (this.st >= A.dur) this.state = "move";
+        // a move input after the impact cancels the recovery straight into the normal run
+        if ((hasIn && this.st > A.clip.impact + MOVE_CANCEL) || this.st >= A.dur) this.endStrike();
         break;
       }
       case "airspin":
@@ -493,9 +509,12 @@ export class Actor {
     this.vy = (this.y - oy) * inv;
     this.onGround = this.y <= 0.05;
     switch (this.state) {
-      case "atk1": case "atk2": case "atk3":
-        if (this.st >= ATK[this.state].dur) this.state = "move";
+      case "atk1": case "atk2": case "atk3": {
+        const A = ATK[this.state];
+        // another player who walks off after the blow runs at once (no sliding in the strike pose)
+        if ((Math.hypot(this.vx, this.vz) > 1.5 && this.st > A.clip.impact + MOVE_CANCEL) || this.st >= A.dur) this.endStrike();
         break;
+      }
       case "airspin": if (this.st >= AIRSPIN_DUR) this.state = "move"; break;
       case "roll":
         this.rollSmear(dt);
@@ -642,6 +661,14 @@ export class Actor {
     }
   }
 
+  /** Leaves a strike for "move"; its clip keeps playing on the upper body while it eases out (render). */
+  private endStrike(): void {
+    this.recClip = ATK[this.state as "atk1" | "atk2" | "atk3"].clip;
+    this.recT = this.st;
+    this.recW = 1;
+    this.state = "move";
+  }
+
   /* ---------- drawing ---------- */
   render(dt: number): void {
     const pose = this.rig.pose;
@@ -668,12 +695,26 @@ export class Actor {
             // now and then a look to the side
             const c = it % 9;
             if (c > 7.2) tmpPose[1] += Math.sin(((c - 7.2) / 1.8) * Math.PI) * 0.22;
-            // the guard: crouch into it
+            // the guard (standing only): crouch into it
             const g = this.rig.guard;
             if (g > 0) for (let k = 0; k < 12; k++) tmpPose[k] += (LOW_GUARD[k] - tmpPose[k]) * g;
           }
-          blend(pose, tmpPose, ease(18));
-        } else blend(pose, this.vy > 0 ? POSE.airUp : POSE.airDown, ease(12));
+          if (this.recW > 0 && this.recClip) {
+            // letting go of a strike: the legs take the run (or stand) at once, the upper body finishes the
+            // clip's follow-through and eases back to the hold; the brush goes mocap -> IK directly (stance 1)
+            this.recT = Math.min(this.recClip.dur, this.recT + dt);
+            const tw = sampleMotion(recPose, this.recClip, this.recT, this.rig.dirs3);
+            const w = this.recW * this.recW * (3 - 2 * this.recW);
+            const kl = ease(40);
+            for (let k = 0; k < 12; k++) {
+              if (IS_UPPER[k]) pose[k] = tmpPose[k] + (recPose[k] - tmpPose[k]) * w;
+              else pose[k] += (tmpPose[k] - pose[k]) * kl;
+            }
+            this.rig.twist = tw * w;
+            this.rig.arm3 = w;
+            this.recW = Math.max(0, this.recW - dt / RECOVER);
+          } else blend(pose, tmpPose, ease(18));
+        } else { this.recW = 0; blend(pose, this.vy > 0 ? POSE.airUp : POSE.airDown, ease(12)); }
         break;
       case "atk1": case "atk2": case "atk3": {
         const clip: MotionClip = ATK[this.state].clip;
@@ -709,11 +750,15 @@ export class Actor {
     // the brush is held by IK while moving, rolling, landing or hurt; strikes use mocap, skills their poses
     this.combatT = Math.max(0, this.combatT - dt);
     const s0 = this.state;
-    const held = s0 === "move" || s0 === "roll" || s0 === "land" || s0 === "hurt";
+    const striking = s0 === "atk1" || s0 === "atk2" || s0 === "atk3";
+    // strikes keep the IK hold underneath the mocap arms, so blending out of a clip goes straight to the hold
+    const held = s0 === "move" || s0 === "roll" || s0 === "land" || s0 === "hurt" || striking;
     rig.stance += ((held ? 1 : 0) - rig.stance) * ease(held ? 10 : 30);
-    const guardOn = this.threat || this.combatT > 0;
-    rig.guard = Math.max(0, Math.min(1, rig.guard + (guardOn ? dt : -dt) / 0.25));
-    if (this.state !== "atk1" && this.state !== "atk2" && this.state !== "atk3") {
+    // the low guard is a standing pose only: moving always runs with the normal shoulder carry
+    const still = s0 === "move" && this.onGround && Math.hypot(this.vx, this.vz) < 0.8;
+    const guardOn = (this.threat || this.combatT > 0) && (still || striking);
+    rig.guard = Math.max(0, Math.min(1, rig.guard + (guardOn ? dt / GUARD_IN : -dt / GUARD_OUT)));
+    if (!striking && this.recW <= 0) {
       rig.twist += (0 - rig.twist) * ease(16);
       rig.arm3 = Math.max(0, rig.arm3 - dt / MOCAP_BLEND);
     }

@@ -12,6 +12,7 @@ import type { MView } from "./monsters";
 import { mainStatus, readyByTalk } from "./quests";
 import { overlay } from "./render/gfx";
 import { gameSettings } from "./ui/settings";
+import { attackingMe, targetable } from "./targeting";
 
 export interface AutoSettings {
   skills: boolean[];
@@ -34,7 +35,8 @@ export interface AutoCtx {
   sinceManual(): number;
   skillReady(i: number): boolean;
   drinkPotion(): void;
-  travel(to: string, from: string): Promise<void>;
+  /** true on arrival; false (quietly, on too_far) means keep walking and try again */
+  travel(to: string, from: string): Promise<boolean>;
   talk(npc: Npc): Promise<void>;
   think(id: string, text: string): void;
   changed(): void;
@@ -71,7 +73,6 @@ export class AutoPlay {
   private anchorZ = 0;
   private target: MView | null = null;
   private tick = 0;
-  private castAimUntil = 0;
   /* ---------- auto-travel ---------- */
   traveling = false;
   private goal: Goal | null = null;
@@ -79,6 +80,8 @@ export class AutoPlay {
   private wpZ = 0;
   private hasWp = false;
   private gateTo = "";
+  /** after a too_far at a gate: when to ask again */
+  private gateRetryAt = 0;
   private stuckT = 0;
   private stuckX = 0;
   private stuckZ = 0;
@@ -110,16 +113,6 @@ export class AutoPlay {
   /** Is the driver steering this frame (used to aim swings at its target and keep gates closed)? */
   active(): boolean {
     return (this.on || this.traveling) && this.ctx.canAct() && !this.ctx.paused() && this.ctx.sinceManual() > (this.traveling ? 0 : RESUME_MS);
-  }
-
-  /** Heading toward the current target, for swings and casts while auto-battle drives. */
-  aimHeading(x: number, z: number): number | null {
-    const t = this.target;
-    if (!t) return null;
-    // a skill fired on its own in manual play turns toward its target for that cast
-    if (performance.now() < this.castAimUntil) return Math.atan2(-(t.z - z), t.x - x);
-    if (!this.on || !this.active()) return null;
-    return Math.atan2(-(t.z - z), t.x - x);
   }
 
   /** Picks the first enabled, ready skill whose reach covers distance d; returns true if one was queued. */
@@ -259,10 +252,11 @@ export class AutoPlay {
       if (this.clearVines(pl, gate.x, gate.z)) return;
       this.setWp(gate.x, gate.z);
       this.gateTo = gate.to;
-      if (Math.hypot(gate.x - pl.x, gate.z - pl.z) < PORTAL_REACH - 0.8) {
+      // walk right up to the gate's centre (well inside the server's reach) before asking to cross;
+      // if the server hasn't seen us there yet (too_far), keep walking and ask again shortly
+      if (Math.hypot(gate.x - pl.x, gate.z - pl.z) < PORTAL_REACH - 0.8 && performance.now() > this.gateRetryAt) {
         this.busy = true;
-        this.hasWp = false;
-        void this.ctx.travel(gate.to, zone.id).finally(() => { this.busy = false; });
+        void this.ctx.travel(gate.to, zone.id).then((ok) => { if (!ok) this.gateRetryAt = performance.now() + 500; }).finally(() => { this.busy = false; });
       }
       return;
     }
@@ -325,10 +319,10 @@ export class AutoPlay {
     const questKind = this.settings.questFirst ? questKill(p) : null;
     let best: MView | null = null, bestScore = 1e9;
     for (const v of this.ctx.monsters().values()) {
-      if (v.mode === "dead" || v.drop > 0 || v.def.skillOnly) continue;
+      if (!targetable(v) || v.def.skillOnly) continue;
       const fromAnchor = Math.hypot(v.x - this.anchorX, v.z - this.anchorZ);
       const d = Math.hypot(v.x - pl.x, v.z - pl.z);
-      const engaged = v.mode !== "idle" && d < 7;
+      const engaged = attackingMe(v, pl.x, pl.z) || (v.mode !== "idle" && d < 7);
       if (!engaged && (fromAnchor > RANGE || v.level >= p.level + 5)) continue;
       let score = d;
       if (engaged) score -= 100;
@@ -375,7 +369,7 @@ export class AutoPlay {
     if (d > 2.6) this.setWp(block.x - dx * (block.def.radius + 2), block.z - dz * (block.def.radius + 2));
     else {
       this.hasWp = false;
-      if (this.fireSkill(pl, d, weak)) this.castAimUntil = performance.now() + 400;
+      this.fireSkill(pl, d, weak); // 화염선풍's targeting takes the vine when nothing else is in reach
     }
     return true;
   }
