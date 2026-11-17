@@ -10,6 +10,7 @@ import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
 import { newNav, questNav } from "./questnav";
 import { RoutePreview } from "./render/route";
+import { ALBUM_PAGES, PAGE_FOR_BOSS, album, pageEarned, paintFrame } from "./album";
 import { TargetRing } from "./render/target-ring";
 import { aimFor, pickTarget, targetable } from "./targeting";
 import type { MView as TargetView } from "./monsters";
@@ -151,6 +152,7 @@ export class Game {
       potion: () => void this.drinkPotion(),
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
+      album: () => this.openAlbum(),
       interact: () => this.interact(),
       skill: (i) => this.pressSkill(i),
       respawn: () => void this.respawn(),
@@ -182,6 +184,7 @@ export class Game {
       interact: () => this.interact(),
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
+      album: () => this.openAlbum(),
       help: () => this.hud.help(),
       escape: () => this.onEscape(),
       chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
@@ -338,7 +341,22 @@ export class Game {
       if (kind === "slam" && this.zone.def.id === "censer" && this.questIs("c2q10")) this.hints.think("gate10", "고리가 넓다… 끝까지!", { key: KEYS.roll, urgent: true });
     };
     this.auto.bind(this.api.account);
-    for (const part of ["growth", "gear", "potion", "auto"] as const) if (this.hints.has(`ui:${part}`)) this.hud.reveal(part, false);
+    // 화첩: a chapter boss falling near you paints the color bloom's fullest moment into the album
+    album.onChange = () => { if (album.count() > 0) this.revealAlbum(); if (this.sheets.current === "album") this.sheets.refresh(); };
+    void album.bind(this.api.account);
+    this.monsters.onBossFall = (kind, x, z) => {
+      const page = PAGE_FOR_BOSS[kind];
+      const pl = this.player;
+      if (!page || !pl || this.dead || album.has(page.id) || Math.hypot(pl.x - x, pl.z - z) > 30) return null;
+      return (canvas) => {
+        void paintFrame(canvas).then(async (blob) => {
+          if (!blob || !(await album.keep(page.id, blob))) return;
+          audio.play("pickup");
+          toast(`화첩에 한 장이 남았다: ${page.title} [${KEYS.album}]`);
+        });
+      };
+    };
+    for (const part of ["growth", "gear", "potion", "auto", "album"] as const) if (this.hints.has(`ui:${part}`)) this.hud.reveal(part, false);
     this.profile = profile;
     const zoneId = ZONES[profile.zone] ? profile.zone : START_ZONE;
     this.entry = await this.api.enterZone(zoneId);
@@ -417,7 +435,7 @@ export class Game {
 
   /** HUD parts appear the first time they matter. */
   private revealParts(p: ProfileView): void {
-    const open = (part: "growth" | "gear" | "potion" | "auto") => {
+    const open = (part: "growth" | "gear" | "potion" | "auto" | "album") => {
       if (this.hints.has(`ui:${part}`)) return;
       this.hints.mark(`ui:${part}`);
       this.hud.reveal(part, true);
@@ -426,6 +444,13 @@ export class Game {
     if (p.main > questIndex("c1q3")) open("auto");
     if (p.pigment > 0 || p.jade > 0 || p.main > questIndex("c1q3")) open("gear");
     if (p.potions > 0 && p.hp < p.maxHp) open("potion");
+    if (ALBUM_PAGES.some((pg) => pageEarned(pg, p.main))) open("album");
+  }
+
+  private revealAlbum(): void {
+    if (this.hints.has("ui:album")) return;
+    this.hints.mark("ui:album");
+    this.hud.reveal("album", true);
   }
 
   private onHp(before: number, after: number, dead: boolean): void {
@@ -666,6 +691,13 @@ export class Game {
     else if (this.hints.has("gate8") && !this.hints.has("gate8-open")) { this.hints.mark("gate8-open"); this.sheets.openGrowth("skills", "awaken1"); }
     else if (this.hints.has("gate9") && !this.hints.has("gate9-open")) { this.hints.mark("gate9-open"); this.sheets.openGrowth("enhance", "odds"); }
     else this.sheets.openGrowth();
+  }
+
+  private openAlbum(): void {
+    if (!this.profile || this.transitioning || this.dead) return;
+    if (!this.hints.has("ui:album")) return;
+    this.input.clear();
+    this.sheets.openAlbum();
   }
 
   private openGear(): void {

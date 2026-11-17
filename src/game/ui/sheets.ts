@@ -19,6 +19,7 @@ import { attempt, el, esc, itemIcon, resBar, resChip, resIcon, tipAttr, toast, t
 import { enhanceHtml, growthAction, growthLocal, skillsHtml, type GrowthState } from "./growth";
 import { audio } from "../audio";
 import { SETTINGS_TABS, bindSettings, settingsHtml, type SettingsCtx } from "./settings";
+import { ALBUM_PAGES, album, pageEarned } from "../album";
 
 export interface SheetCtx {
   api: GameApi;
@@ -38,7 +39,7 @@ const GROWTH_FIRST: Record<string, string> = {
   enhance: "먹돌로 붓을 다듬는다. 너무 욕심내면 붓이 부서질 수도.",
 };
 
-type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings";
+type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings" | "album";
 const SLOT_NAME: Record<SlotId, string> = { weapon: "무기", hat: "머리", sash: "띠" };
 /** what an item is called in a line of text: 검 / 붓 for weapons, else its slot */
 const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ? "검" : "붓") : SLOT_NAME[it.slot]);
@@ -88,6 +89,8 @@ export class Sheets {
   /** gear sheet: the picked tile and the slot filter */
   private gearSel = "";
   private gearFilter: SlotId | "" = "";
+  /** 화첩: the page shown large, if any */
+  private albumSel = "";
   /** the first-open line stays while that tab stays open */
   private firstNote = "";
   private firstTab = "";
@@ -137,6 +140,13 @@ export class Sheets {
     this.show("gear");
   }
 
+  /** 화첩: the pictures of each recovered color. */
+  openAlbum(page = ""): void {
+    if (this.current === "album" && !page) { this.close(); return; }
+    this.albumSel = page;
+    this.show("album");
+  }
+
   private show(id: SheetId, tab?: string): void {
     if (!this.current) audio.play("ui-open");
     this.current = id;
@@ -167,6 +177,7 @@ export class Sheets {
     else if (this.current === "dyer") html = this.dyer(p);
     else if (this.current === "altar") html = this.altar(p);
     else if (this.current === "gear") html = this.gear(p);
+    else if (this.current === "album") html = this.album(p);
     else if (this.current === "settings" && this.ctx.settings) html = this.head("설정") + settingsHtml(this.tab, this.ctx.settings);
     else if (this.current === "growth") {
       const first = `growth-${this.tab}`;
@@ -192,6 +203,10 @@ export class Sheets {
       this.render();
     }));
     this.card.querySelectorAll<HTMLElement>("[data-do]").forEach((b) => b.addEventListener("click", () => this.act(b)));
+    this.card.querySelectorAll<HTMLElement>("[data-page]").forEach((b) => b.addEventListener("click", () => {
+      this.albumSel = this.albumSel === b.dataset.page ? "" : b.dataset.page ?? "";
+      this.render();
+    }));
     if (this.current === "settings" && this.ctx.settings) bindSettings(this.card, () => this.render(), this.ctx.settings);
     this.card.classList.toggle("is-settings", this.current === "settings");
   }
@@ -202,6 +217,31 @@ export class Sheets {
       ? `<nav class="tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${id === this.tab}" data-tab="${id}">${esc(label)}</button>`).join("")}</nav>`
       : "";
     return `<header><div>${seal ? `<i class="seal-dab" aria-hidden="true"></i>` : ""}<h2>${esc(title)}</h2></div><button class="close btn btn-secondary btn-sm" type="button" data-close aria-label="닫기">닫기</button></header>${nav}`;
+  }
+
+  /* ---------- 화첩 ---------- */
+  private album(p: ProfileView): string {
+    const date = (at: number) => { const d = new Date(at); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`; };
+    const sel = ALBUM_PAGES.find((pg) => pg.id === this.albumSel && album.has(pg.id));
+    if (sel) {
+      const pic = album.picture(sel.id)!;
+      return `${this.head("화첩")}<figure class="album-big" style="--hue:${sel.hue}">
+        <button type="button" class="album-pic" data-page="${sel.id}" aria-label="작게 보기"><img src="${pic.url}" alt="${esc(sel.title)}"></button>
+        <figcaption><b class="sec">${esc(sel.chapter)} · ${esc(sel.title)}</b><span class="cap">${esc(sel.place)} · ${date(pic.at)}</span></figcaption></figure>`;
+    }
+    const got = ALBUM_PAGES.filter((pg) => album.has(pg.id) || pageEarned(pg, p.main)).length;
+    const pages = ALBUM_PAGES.map((pg) => {
+      const pic = album.picture(pg.id);
+      const earned = !!pic || pageEarned(pg, p.main);
+      const body = pic
+        ? `<button type="button" class="album-pic" data-page="${pg.id}" aria-label="${esc(pg.title)} 크게 보기"><img src="${pic.url}" alt="" loading="lazy"></button>`
+        : `<div class="album-pic empty"><span>${earned ? "그림이 비어 있다.<br>다시 베면 이 날이 남는다." : pg.boss ? "아직 되찾지 못한 색" : "아직 이어지지 않은 이야기"}</span></div>`;
+      const sub = pic ? `${pg.place} · ${date(pic.at)}` : pg.place;
+      return `<li class="album-page${pic ? " has" : earned ? " earned" : " locked"}" style="--hue:${pg.hue}">${body}
+        <div class="album-cap"><b class="sec">${esc(pg.chapter)} · ${esc(earned || pic ? pg.title : pg.boss ? "?" : pg.title)}</b><span class="cap">${esc(sub)}</span></div></li>`;
+    }).join("");
+    return `${this.head("화첩")}<p class="say">보스를 벤 순간 잠깐 돌아온 색을 그림으로 남긴다. 세상은 아직 먹빛이지만, 이 그림들은 네 것이다.</p>
+      <p class="cap album-count">${got} / ${ALBUM_PAGES.length}장</p><ol class="album-grid">${pages}</ol>`;
   }
 
   /* ---------- 먹노인 ---------- */

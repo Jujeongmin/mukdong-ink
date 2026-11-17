@@ -1,6 +1,6 @@
 // Controls (user layout): WASD/arrows move, left click on the field attacks (hold to keep the combo; J as a
 // keyboard fallback), Space / Shift / right click rolls (구르기, the dodge), Z auto-battle, 1 potion, G talk,
-// I gear, K training, H help, Esc closes. Skills fire on their own (their rings can be clicked to fire early).
+// I gear, K training, P 화첩, H help, Esc closes. Skills fire on their own (their rings can be clicked to fire early).
 // Mouse users aim at the cursor on the ground; touch keeps the joystick and on-screen buttons.
 
 /** "dash" is the roll (sent to the server as the dash action) */
@@ -15,6 +15,8 @@ export interface InputHandlers {
   gear(): void;
   help(): void;
   growth(): void;
+  /** P: 화첩 */
+  album?(): void;
   escape(): void;
   /** any manual input (auto-battle yields to it) */
   manual?(): void;
@@ -28,7 +30,7 @@ export interface InputHandlers {
 
 /** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
 export const KEYS = {
-  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", help: "H", mute: "M", chat: "Enter",
+  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", album: "P", help: "H", mute: "M", chat: "Enter",
 } as const;
 
 const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
@@ -127,6 +129,7 @@ export class Input {
     if (e.code === "KeyI") { this.h.gear(); return; }
     if (e.code === "KeyH") { this.h.help(); return; }
     if (e.code === "KeyK") { this.h.growth(); return; }
+    if (e.code === "KeyP") { this.h.album?.(); return; }
     if (this.h.blocked()) return;
     if (move) {
       e.preventDefault();

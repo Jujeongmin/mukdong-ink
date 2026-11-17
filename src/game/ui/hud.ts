@@ -23,6 +23,7 @@ export interface HudHandlers {
   potion(): void;
   gear(): void;
   growth(): void;
+  album(): void;
   auto(): void;
   travel(): void;
   autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean };
@@ -62,6 +63,7 @@ const MARKUP = `
   <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><span>장비</span><kbd>${KEYS.gear}</kbd></button>
+  <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="화첩 (${KEYS.album})" data-tip="보스를 벤 순간 돌아온 색을 그림으로 모아 둔다."><span>화첩</span><kbd>${KEYS.album}</kbd></button>
 </div>
 <aside class="jokja" data-quest hidden></aside>
 <div class="zone-paint passive" data-zonepaint hidden><b data-zpname></b><span class="seal" data-zpch></span></div>
@@ -175,6 +177,7 @@ export class Hud {
     this.wireGourd(el("[data-potion]", root));
     el("[data-gear]", root).addEventListener("click", () => this.h.gear());
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
+    el("[data-album]", root).addEventListener("click", () => this.h.album());
     el("[data-auto]", root).addEventListener("click", () => this.h.auto());
     el("[data-autoset]", root).addEventListener("click", () => this.toggleAutoPop());
     el("[data-sound]", root).addEventListener("click", () => this.h.settings("sound"));
@@ -508,7 +511,7 @@ export class Hud {
   }
 
   /** Show a HUD part that was waiting for its moment; `bloom` plays the ink-bloom intro. */
-  reveal(part: "growth" | "gear" | "potion" | "auto", bloom: boolean): void {
+  reveal(part: "growth" | "gear" | "potion" | "auto" | "album", bloom: boolean): void {
     this.root.querySelectorAll<HTMLElement>(`[data-ui="${part}"]`).forEach((e) => {
       if (!e.classList.contains("ui-later")) return;
       e.classList.remove("ui-later");

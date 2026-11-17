@@ -190,18 +190,28 @@ function updateLights(dt: number): void {
 const bloomU = { uBloom: { value: new THREE.Vector4(0, 0, 0, 0) }, uBloomCol: { value: new THREE.Vector3(1, 1, 1) } };
 const BLOOM_GROW = 1.4, BLOOM_HOLD = 1.6, BLOOM_FADE = 2.2, BLOOM_R = 70;
 let bloomT = -1;
-export function colorBloom(x: number, z: number, col: readonly number[]): void {
+/** one-shot: called with the game canvas right after the frame where the bloom is at its fullest (화첩) */
+let bloomPeak: ((canvas: HTMLCanvasElement) => void) | null = null;
+let peakDue = false;
+export function colorBloom(x: number, z: number, col: readonly number[], onPeak: ((canvas: HTMLCanvasElement) => void) | null = null): void {
   bloomU.uBloom.value.set(x, z, 0, 0);
   bloomU.uBloomCol.value.set(col[0], col[1], col[2]);
   bloomT = 0;
+  bloomPeak = onPeak;
+  peakDue = false;
 }
 export function clearBloom(): void {
   bloomT = -1;
   bloomU.uBloom.value.w = 0;
+  bloomPeak = null;
+  peakDue = false;
 }
 function updateBloom(dt: number): void {
   if (bloomT < 0) return;
+  const before = bloomT;
   bloomT += dt;
+  const peakAt = BLOOM_GROW + BLOOM_HOLD - 0.2; // late in the hold: the kill's ink debris has settled
+  if (bloomPeak && before < peakAt && bloomT >= peakAt) peakDue = true;
   const g = Math.min(1, bloomT / BLOOM_GROW);
   const fade = (bloomT - BLOOM_GROW - BLOOM_HOLD) / BLOOM_FADE;
   const b = bloomU.uBloom.value;
@@ -512,10 +522,11 @@ void main(){
       if (m > reveal) { reveal = m; tint = uLightCol[i]; }
     }
     // boss bloom: a ragged front spreading from the fallen boss, the world's color behind it
+    float bloomM = 0.0;
     if (uBloom.w > 0.0) {
       float bd = length(wp.xz - uBloom.xy) + (nn - 0.5) * 5.0;
-      float bm = (1.0 - smoothstep(uBloom.z - 6.0, uBloom.z, bd)) * uBloom.w;
-      if (bm > reveal) { reveal = bm; tint = uBloomCol; }
+      bloomM = (1.0 - smoothstep(uBloom.z - 6.0, uBloom.z, bd)) * uBloom.w;
+      if (bloomM > reveal) { reveal = bloomM; tint = uBloomCol; }
     }
     float Lc = luma(src);
     vec3 chroma = src / max(Lc, 0.02);
@@ -527,6 +538,8 @@ void main(){
     vec3 lit = mix(wc * (1.0 + 0.25 * dyed), clamp(wc * (0.7 + tint), 0.0, 1.0), 0.5 * reveal * (1.0 - dyed));
     vec3 colImg = mix(lit, uInk * 0.85, clamp(edge, 0.0, 1.0) * 0.8);
     col = mix(inkImg, colImg, max(reveal, dyed));
+    // the bloom also lays a wash of the chapter's color over everything it reaches (muted zones still glow)
+    col = mix(col, clamp(col * (0.55 + 0.9 * uBloomCol), 0.0, 1.0), 0.4 * bloomM);
 
     if (water > 0.5) {
       // still water: the painted sky turned upside down (horizon glow, silhouettes, the moon's light),
@@ -683,6 +696,13 @@ export function renderFrame(dt: number): void {
   renderer.autoClear = false;
   renderer.render(overlay, camera);
   renderer.autoClear = true;
+  if (peakDue && bloomPeak) {
+    // read the drawing buffer now, before the browser presents (and clears) it
+    const fn = bloomPeak;
+    bloomPeak = null;
+    peakDue = false;
+    fn(renderer.domElement);
+  }
 }
 
 export function setLoop(fn: (() => void) | null): void {

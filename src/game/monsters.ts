@@ -377,6 +377,8 @@ export class Monsters {
   onSound: ((ev: "shot" | "land" | "slam", src: string, x: number, z: number) => void) | null = null;
   /** a monster changed mode (wind, attack, dead…), for sounds */
   onMode: ((v: MView, prev: string) => void) | null = null;
+  /** a chapter boss fell in view; may return a hook for the canvas at the color bloom's peak (화첩) */
+  onBossFall: ((kind: string, x: number, z: number) => ((canvas: HTMLCanvasElement) => void) | null) | null = null;
 
   serverNow(): number {
     return Date.now() + this.offset;
@@ -482,7 +484,7 @@ export class Monsters {
       inkBurst(v.x, h, v.z, v.def.boss ? 60 : 24, 0, 0, v.def.boss ? 2 : 1.2);
       // a chapter boss falls: the stolen color floods back over the field for a few seconds
       const bloom = BOSS_BLOOM[v.kind];
-      if (bloom) colorBloom(v.x, v.z, bloom);
+      if (bloom) colorBloom(v.x, v.z, bloom, this.onBossFall?.(v.kind, v.x, v.z) ?? null);
       for (let k = 0; k < (v.def.boss ? 5 : 2); k++) addDecal(v.x + (Math.random() - 0.5) * 2 * v.def.radius * 2, v.z + (Math.random() - 0.5) * 2 * v.def.radius * 2, 0.2 + Math.random() * 0.35);
       if (Math.hypot(v.x - px, v.z - pz) < 9) {
         screenSplash(v.x, h, v.z, v.def.boss ? 0.14 : 0.06);
