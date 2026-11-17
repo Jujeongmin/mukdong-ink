@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { clamp, type RGB, type Spot } from "../util";
 import { G, dyeCloth } from "./materials";
-import { addLight, camFwd, feel, overlay, scene, screenSplash } from "./gfx";
+import { addLight, camFwd, feel, onQuality, overlay, scene, screenSplash } from "./gfx";
 import { Rig } from "./rig";
 
 export const INK_TRAIL: RGB = [0.08, 0.075, 0.07];
@@ -329,7 +329,10 @@ class Particles {
       if (colored) this.mesh.setColorAt(i, cTmp.setRGB(1, 1, 1));
     }
   }
+  /** 0..1: the share of emits kept (graphics quality thins the ink droplets) */
+  density = 1;
   emit(x: number, y: number, z: number, vx: number, vy: number, vz: number, size: number, life: number, col: RGB | null = null, drag = 0): void {
+    if (this.density < 1 && Math.random() > this.density) return;
     const i = this.next;
     this.next = (this.next + 1) % this.n;
     this.x[i] = x; this.y[i] = y; this.z[i] = z; this.vx[i] = vx; this.vy[i] = vy; this.vz[i] = vz;
@@ -429,6 +432,7 @@ for (let i = 0; i < DN; i++) decals.setMatrixAt(i, ZERO);
 let dNext = 0;
 /** An ink stain at (x, z), radius ~s (drawn a little smaller), fading out over `life` seconds. */
 export function addDecal(x: number, z: number, s: number, life = D_LIFE): void {
+  if (decalDensity < 1 && life < 4 && Math.random() > decalDensity) return; // big lingering blots always stay
   s *= 0.7;
   dummy.position.set(x, 0.03, z);
   dummy.rotation.set(0, Math.random() * Math.PI, 0);
@@ -442,6 +446,11 @@ export function addDecal(x: number, z: number, s: number, life = D_LIFE): void {
   dBirth.needsUpdate = true;
   dLife.needsUpdate = true;
 }
+let decalDensity = 1;
+onQuality((l) => {
+  inkDrops.density = l === "low" ? 0.5 : 1;
+  decalDensity = l === "low" ? 0.5 : 1;
+});
 const decalOnLand = (x: number, z: number, s: number): void => {
   if (Math.random() < 0.18) addDecal(x, z, s * 2.5);
 };

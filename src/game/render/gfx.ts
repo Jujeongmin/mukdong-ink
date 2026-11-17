@@ -94,6 +94,10 @@ const moodU = {
   tFrame: { value: null as THREE.Texture | null },
   uFrameOn: { value: 0 },
   uFrameOff: { value: new THREE.Vector2(0, 0) },
+  /** quality: backdrop silhouette layers (2..4), distance haze bands (1..3), fine paper/stroke noise (0/1) */
+  uLayers: { value: 4 },
+  uBands: { value: 3 },
+  uFine: { value: 1 },
 };
 export function setMood(m: Mood): void {
   moodU.uPaper.value.fromArray(m.paper as number[]);
@@ -138,7 +142,10 @@ export function setFlash(v: number): void {
  */
 export function setFraming(tex: THREE.Texture | null): void {
   moodU.tFrame.value = tex;
-  moodU.uFrameOn.value = tex ? 1 : 0;
+  syncFraming();
+}
+function syncFraming(): void {
+  moodU.uFrameOn.value = moodU.tFrame.value && framingOn && level !== "low" ? 1 : 0;
 }
 /** Slight drift of the framing (screen-height units), so the foreground moves against the scene. */
 export function setFramingOffset(x: number, y: number): void {
@@ -215,7 +222,7 @@ uniform vec4 uSplash[6];
 uniform vec3 uPaper, uInk, uSkyTop, uSkyLow, uMist;
 uniform vec4 uMoon;
 uniform float uFogLow, uHazeNear, uHazeFar, uFlash, uHorizon, uCamX, uEdgeR, uPillars, uPillarH;
-uniform float uStalks, uGlow, uClouds, uFgDark, uFrameOn;
+uniform float uStalks, uGlow, uClouds, uFgDark, uFrameOn, uLayers, uBands, uFine;
 uniform vec2 uFrameOff;
 varying vec2 vUv;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -313,6 +320,7 @@ vec3 skyAt(vec2 uv){
   s += vec3(0.5, 0.58, 0.78) * uFlash * (0.45 + 0.55 * t);
   for (int k = 0; k < 4; k++) {
     float fk = float(k);
+    if (fk < 4.0 - uLayers) continue; // lower quality drops the farthest layers (and their mist banks)
     float scale = 1.8 + fk * 1.25;
     float par = 0.003 + fk * 0.005;
     float x = uv.x * uAspect * scale + uCamX * par * scale + fk * 13.7;
@@ -369,7 +377,9 @@ float frameA(vec2 uv){
 
 void main(){
   vec2 uv = vUv, px = 1.0 / uRes;
-  vec2 wob = vec2(fbm(uv * vec2(6.0, 9.0) + uTime * 0.02), fbm(uv * vec2(7.0, 5.0) - uTime * 0.015)) - 0.5;
+  vec2 wob = uFine > 0.5
+    ? vec2(fbm(uv * vec2(6.0, 9.0) + uTime * 0.02), fbm(uv * vec2(7.0, 5.0) - uTime * 0.015)) - 0.5
+    : vec2(fbm3(uv * vec2(6.0, 9.0) + uTime * 0.02), fbm3(uv * vec2(7.0, 5.0) - uTime * 0.015)) - 0.5;
   vec2 suv = uv + wob * px * 16.0 * uBleed;
   vec4 s4 = texture2D(tColor, suv);
   vec3 src = toSRGB(s4.rgb);
@@ -390,7 +400,7 @@ void main(){
   vec3 sky = skyAt(uv);
   vec3 col = sky;
   if (!isSky) {
-    float strokeVar = 0.5 + 1.0 * fbm(uv * vec2(3.0, 14.0) + 3.1);
+    float strokeVar = uFine > 0.5 ? 0.5 + 1.0 * fbm(uv * vec2(3.0, 14.0) + 3.1) : 1.0;
     vec2 o = px * uEdge * strokeVar;
     float izC = 1.0 / d;
     float izL = 1.0 / linDepth(suv - vec2(o.x, 0.0)), izR = 1.0 / linDepth(suv + vec2(o.x, 0.0));
@@ -457,6 +467,7 @@ void main(){
     fd = max(fd, edgeFade);
     // three drifting haze bands in the distance layer the silhouettes
     for (int k = 0; k < 3; k++) {
+      if (float(k) >= uBands) break;
       float D = 40.0 + float(k) * 22.0;
       float band = exp(-pow((d - D) / 8.0, 2.0));
       float drift = fbm3(vec2(wp.x * 0.025 + uTime * (0.01 + 0.006 * float(k)), wp.y * 0.05 + float(k) * 5.0));
@@ -514,7 +525,7 @@ void main(){
 /** Creates the WebGL renderer on the canvas. Throws if WebGL is unavailable. */
 export function initRenderer(canvas: HTMLCanvasElement): void {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
-  DPR = Math.min(window.devicePixelRatio || 1, 1.25);
+  DPR = dprFor(level);
   renderer.setPixelRatio(DPR);
   renderer.info.autoReset = false; // counts cover the whole frame (scene, normals, post, overlay)
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // the post shader writes display values itself
@@ -550,6 +561,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   quad.frustumCulled = false;
   postScene.add(quad);
   resize();
+  setQuality(setting);
 }
 
 export function resize(): void {
@@ -569,6 +581,7 @@ export function resize(): void {
 
 export function renderFrame(dt: number): void {
   if (!renderer) return;
+  watchdog(dt);
   updateLights(dt);
   renderer.info.reset();
   postMat.uniforms.uTime.value = feel.time;
@@ -684,11 +697,27 @@ export function sunDir(sun: readonly number[], out: THREE.Vector3): THREE.Vector
  * [-half, half]^2. Meshes with userData.noCast (ground, water, path, grass) are left out. Returns the mask
  * and its box, or null without a renderer (tests). The previous mask is disposed.
  */
-export function bakeShadows(roots: THREE.Object3D[], half: number, sun: readonly number[], shade: readonly number[]): { tex: THREE.Texture; box: THREE.Vector3 } | null {
+export function bakeShadows(roots: THREE.Object3D[], half: number, sun: readonly number[], shade: readonly number[]): ShadowBake | null {
   clearShadows();
-  if (!renderer) return null;
+  lastBake = { roots, half, sun, shade };
+  return doBake();
+}
+export type ShadowBake = { tex: THREE.Texture; box: THREE.Vector3 };
+let lastBake: { roots: THREE.Object3D[]; half: number; sun: readonly number[]; shade: readonly number[] } | null = null;
+let shadowSink: ((b: ShadowBake | null) => void) | null = null;
+/** world.ts hands the ground its mask through this when a quality change re-bakes the current zone. */
+export function setShadowSink(fn: ((b: ShadowBake | null) => void) | null): void {
+  shadowSink = fn;
+}
+function doBake(): ShadowBake | null {
+  shadeRT?.dispose();
+  shadeRT = null;
+  const bake = lastBake;
+  // low quality: actor contact shadows only, no baked cast shadows
+  if (!renderer || !bake || level === "low") return null;
+  const { roots, half, sun, shade } = bake;
   const caps = renderer.capabilities;
-  const N = Math.min(caps.maxTextureSize, coarseShadows ? 1024 : 2048);
+  const N = Math.min(caps.maxTextureSize, level === "high" && !coarseShadows ? 2048 : 1024);
   const depthRT = new THREE.WebGLRenderTarget(N, N, { depthBuffer: true });
   depthRT.depthTexture = new THREE.DepthTexture(N, N);
   // fit an ortho camera, looking down the light, around the field
@@ -721,7 +750,7 @@ export function bakeShadows(roots: THREE.Object3D[], half: number, sun: readonly
   }
   for (const o of hidden) o.visible = true;
   // paint the mask in world space
-  const M = 1024;
+  const M = level === "high" ? 1024 : 512;
   shadeRT = new THREE.WebGLRenderTarget(M, M, { format: THREE.RedFormat, depthBuffer: false });
   const u = shadeQuadMat.uniforms;
   u.tDepth.value = depthRT.depthTexture;
@@ -743,6 +772,7 @@ export function bakeShadows(roots: THREE.Object3D[], half: number, sun: readonly
 export function clearShadows(): void {
   shadeRT?.dispose();
   shadeRT = null;
+  lastBake = null;
 }
 
 /** For debugging leaks from the console: window.__ink.info(). */
@@ -750,4 +780,101 @@ export function memoryInfo(): { geometries: number; textures: number; programs: 
   if (!renderer) return null;
   const i = renderer.info;
   return { geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0, calls: i.render.calls, triangles: i.render.triangles };
+}
+
+/* ---------- graphics quality ----------
+   One setting for the settings menu: "low" | "mid" | "high" | "auto". Auto picks a level from the device
+   (touch, memory, cores, GPU hints) and then watches the frame rate: if it averages under 45 fps for 5 s
+   it steps down one level (never up during a session). Each level sets the pixel-ratio cap, the baked
+   scenery shadow (off / 512 / 1024 mask), the backdrop's silhouette layers and haze bands, the framing
+   overlay, the fine noise in the ink pass, and (through onQuality hooks in fx.ts / ambient.ts) the
+   droplet, stain, firefly and rain counts. Switching is live: the current zone's shadow is re-baked and
+   the old targets are freed. */
+export type QualityLevel = "low" | "mid" | "high";
+export type QualitySetting = QualityLevel | "auto";
+let setting: QualitySetting = "auto";
+let level: QualityLevel = "high";
+let framingOn = true;
+/** settings toggles that live with the feel of the screen */
+export const feelFlags = { shake: true };
+const qualityHooks: ((l: QualityLevel) => void)[] = [];
+/** Render modules subscribe to level changes (fx.ts, ambient.ts); called once right away. */
+export function onQuality(fn: (l: QualityLevel) => void): void {
+  qualityHooks.push(fn);
+  fn(level);
+}
+function dprFor(l: QualityLevel): number {
+  const dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1;
+  return l === "low" ? 1 : l === "mid" ? Math.min(dpr, 1.25) : Math.min(dpr, 2);
+}
+/** A level for this device from what the browser tells us (used by "auto"). */
+function detectLevel(): QualityLevel {
+  if (typeof window === "undefined") return "mid";
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const coarse = !!window.matchMedia?.("(pointer: coarse)").matches;
+  const mem = nav.deviceMemory ?? 8, cores = nav.hardwareConcurrency ?? 8;
+  let gpu = "", maxTex = 8192;
+  if (renderer) {
+    maxTex = renderer.capabilities.maxTextureSize;
+    try {
+      const gl = renderer.getContext();
+      const ext = gl.getExtension("WEBGL_debug_renderer_info");
+      if (ext) gpu = String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL));
+    } catch {
+      // the hint is optional
+    }
+  }
+  const software = /swiftshader|llvmpipe|software|basic render/i.test(gpu);
+  const weakGpu = software || /mali-[4t]|adreno \(tm\) [1-5]\d\d|powervr|intel.*(hd|uhd) graphics( \d{3})?\b/i.test(gpu);
+  if (software || (coarse && (mem <= 4 || cores <= 4)) || maxTex < 4096) return "low";
+  if (coarse || weakGpu || mem <= 4 || cores <= 4 || maxTex < 8192) return "mid";
+  return "high";
+}
+function applyLevel(l: QualityLevel): void {
+  level = l;
+  moodU.uLayers.value = l === "low" ? 2 : l === "mid" ? 3 : 4;
+  moodU.uBands.value = l === "low" ? 1 : l === "mid" ? 2 : 3;
+  moodU.uFine.value = l === "low" ? 0 : 1;
+  syncFraming();
+  if (renderer) {
+    DPR = dprFor(l);
+    renderer.setPixelRatio(DPR);
+    lastW = lastH = 0; // force the targets to the new size
+    resize();
+    // re-bake the current zone's shadow at the new resolution (or drop it) and hand it to the ground
+    if (lastBake) shadowSink?.(doBake());
+  }
+  for (const fn of qualityHooks) fn(l);
+  wdT = 0; wdFrames = 0; wdWarm = 3;
+}
+/** Graphics quality for the settings menu; "auto" decides from the device and the frame rate. */
+export function setQuality(q: QualitySetting): void {
+  setting = q;
+  applyLevel(q === "auto" ? detectLevel() : q);
+}
+export function getQuality(): { setting: QualitySetting; level: QualityLevel } {
+  return { setting, level };
+}
+/** The painted framing at the screen corners (always off on "low"). */
+export function setFramingEnabled(on: boolean): void {
+  framingOn = on;
+  syncFraming();
+}
+/** Camera shake on hits, kills and slams (the camera reads feelFlags.shake). */
+export function setShake(on: boolean): void {
+  feelFlags.shake = on;
+}
+// fps watchdog for "auto": 5 s windows while the page is visible, after a short warm-up
+let wdT = 0, wdFrames = 0, wdWarm = 3;
+function watchdog(dt: number): void {
+  if (setting !== "auto" || level === "low") return;
+  if (typeof document !== "undefined" && document.hidden) { wdT = 0; wdFrames = 0; return; }
+  if (wdWarm > 0) { wdWarm -= dt; return; }
+  wdT += dt;
+  wdFrames++;
+  if (wdT >= 5) {
+    const fps = wdFrames / wdT;
+    wdT = 0; wdFrames = 0;
+    if (fps < 45) applyLevel(level === "high" ? "mid" : "low");
+  }
 }

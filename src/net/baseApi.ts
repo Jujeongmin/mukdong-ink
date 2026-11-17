@@ -4,6 +4,7 @@
 
 import type { Pose, RoomPlayer } from "../shared/types";
 import type { AttackReq, EnhanceResult, GachaResult, GameApi, HitResult, ProfileView, RoomView, SkillReq, ZoneEntry } from "./api";
+import { readChatLines, type ChatMessage } from "../shared/chat";
 import { sleep } from "./errors";
 import { membersOf, playersOf, profileOf, roomViewOf } from "./feed";
 import { PoseThrottle } from "./poseThrottle";
@@ -15,7 +16,7 @@ export interface Link {
   /** Fire and forget (no answer awaited, failures dropped). */
   send(name: string, args?: unknown[]): void;
   joinRoom(roomId: string): Promise<void>;
-  watchRoom(roomId: string, onState: (state: Json) => void, onUsers: (users: Json[]) => void): () => void;
+  watchRoom(roomId: string, onState: (state: Json) => void, onUsers: (users: Json[]) => void, onChat?: (line: unknown) => void): () => void;
   watchProfile(onState: (state: Json) => void): () => void;
 }
 
@@ -36,6 +37,9 @@ export abstract class BaseGameApi implements GameApi {
   private readonly roomCbs = new Set<(room: RoomView) => void>();
   private readonly playerCbs = new Set<(players: Record<string, RoomPlayer>) => void>();
   private readonly profileCbs = new Set<(p: ProfileView) => void>();
+  private readonly chatCbs = new Set<(line: ChatMessage) => void>();
+  // Lines already handed out (room state and the room message both bring each one).
+  private readonly chatSeen = new Set<string>();
   private roomOff: (() => void) | null = null;
   private profileOff: (() => void) | null = null;
   private members: string[] | null = null;
@@ -162,12 +166,41 @@ export abstract class BaseGameApi implements GameApi {
         this.lastRoom = view;
         for (const cb of this.roomCbs) cb(view);
         this.pushPlayers();
+        this.pushChat(readChatLines(state.chat));
       },
       (users) => {
         this.users = users;
         this.pushPlayers();
       },
+      (line) => this.pushChat(readChatLines([line])),
     );
+  }
+
+  private pushChat(lines: ChatMessage[]): void {
+    const fresh = lines.filter((l) => !this.chatSeen.has(l.id)).sort((a, b) => a.at - b.at);
+    for (const line of fresh) {
+      this.chatSeen.add(line.id);
+      for (const cb of this.chatCbs) cb(line);
+    }
+    // Remember only so many ids (the room keeps 30 lines).
+    if (this.chatSeen.size > 300) {
+      const keep = [...this.chatSeen].slice(-150);
+      this.chatSeen.clear();
+      for (const id of keep) this.chatSeen.add(id);
+    }
+  }
+
+  async chatSay(text: string): Promise<ChatMessage> {
+    const line = await this.call<ChatMessage>("chatSay", [text]);
+    this.pushChat([line]);
+    return line;
+  }
+
+  onChat(cb: (line: ChatMessage) => void): () => void {
+    this.chatCbs.add(cb);
+    return () => {
+      this.chatCbs.delete(cb);
+    };
   }
 
   private pushPlayers(): void {

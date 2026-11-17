@@ -34,6 +34,13 @@ describe("the local GameApi (server code in the page)", () => {
     expect([village.zone, village.x, village.z]).toEqual(["village", START_POS.x, START_POS.z]);
     expect(players.at(-1)?.["local-test"]?.name).toBe(made.name);
 
+    // Chat: said once, heard once (room state and the room message both carry it), masked.
+    const heard: string[] = [];
+    api.onChat((line) => heard.push(line.text));
+    await api.chatSay("안녕 씨발");
+    await api.world.idle();
+    expect(heard).toEqual(["안녕 **"]);
+
     // A watched mock ad pays through the server's own claim; a skipped one pays nothing.
     expect((await api.watchAdForJade())?.jade).toBe(AD_REWARD_JADE);
     // A mock purchase arrives as $onItemPurchased.

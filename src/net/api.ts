@@ -2,7 +2,10 @@
 // Two implementations: Verse8 (real server over @agent8/gameserver) and Local (the same server code
 // running in the page, for offline play and the demo build). See docs/API.md.
 
+import type { ChatMessage } from "../shared/chat";
 import type { MonsterState, Pose, Profile, RoomPlayer } from "../shared/types";
+
+export type { ChatMessage } from "../shared/chat";
 
 export interface ProfileView extends Profile {
   account: string;
@@ -118,6 +121,10 @@ export interface GameApi {
   /** Hand the current main quest in to its turn-in NPC (stand within NPC_REACH). */
   claimMain(npcId?: string): Promise<ProfileView>;
   claimDaily(index: number): Promise<ProfileView>;
+  /** Say a line in your room (zone + channel). Errors: bad_args (empty/too long), on_cooldown (pace), rate_limited (same line again), not_ready. */
+  chatSay(text: string): Promise<ChatMessage>;
+  /** Each new line of your room, once, oldest first (the room's recent lines arrive on entering it). */
+  onChat(cb: (line: ChatMessage) => void): () => void;
   onRoom(cb: (room: RoomView) => void): () => void;
   onPlayers(cb: (players: Record<string, RoomPlayer>) => void): () => void;
   onProfile(cb: (p: ProfileView) => void): () => void;

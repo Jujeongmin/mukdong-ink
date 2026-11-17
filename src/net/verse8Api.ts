@@ -78,12 +78,14 @@ export class Verse8GameApi extends BaseGameApi {
         Promise.resolve(server().remoteFunction(name, args, { needResponse: false })).catch(() => undefined);
       },
       joinRoom: (roomId) => store.getState().joinRoom(roomId),
-      watchRoom: (roomId, onState, onUsers) => {
+      watchRoom: (roomId, onState, onUsers, onChat) => {
         const offState = server().subscribeRoomState(roomId, (state: Json) => onState(state ?? {}));
         const offUsers = server().subscribeRoomAllUserStates(roomId, (users: unknown) => onUsers(Array.isArray(users) ? (users as Json[]) : []));
+        const offChat = server().onRoomMessage(roomId, "chat", (line: unknown) => onChat?.(line));
         return () => {
           offState();
           offUsers();
+          offChat();
           mendCounts(server());
         };
       },

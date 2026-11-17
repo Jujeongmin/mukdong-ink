@@ -22,11 +22,13 @@ export interface InputHandlers {
   auto?(): void;
   /** M: sound on/off */
   mute?(): void;
+  /** Enter: open the chat box */
+  chat?(): void;
 }
 
 /** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
 export const KEYS = {
-  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "1", talk: "G", gear: "I", growth: "K", help: "H", mute: "M",
+  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "1", talk: "G", gear: "I", growth: "K", help: "H", mute: "M", chat: "Enter",
 } as const;
 
 const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
@@ -131,6 +133,7 @@ export class Input {
     if (tgt && tgt.tagName === "TEXTAREA") return;
     if (tgt && tgt.tagName === "INPUT" && (tgt as HTMLInputElement).type !== "range") return;
     if (e.code === "KeyM" && !e.repeat) { this.h.mute?.(); return; }
+    if ((e.code === "Enter" || e.code === "NumpadEnter") && !e.repeat && !this.h.blocked()) { e.preventDefault(); this.h.chat?.(); return; }
     const move = MOVE[e.code];
     if (e.repeat && !move) return;
     if (e.code === "KeyI") { this.h.gear(); return; }

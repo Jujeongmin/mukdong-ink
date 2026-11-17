@@ -60,6 +60,12 @@ export class Hints {
     return this.seen.has(id);
   }
 
+  /** 힌트 다시 보기: forget every thought and gate shown (the HUD parts already revealed stay). */
+  reset(): void {
+    for (const id of [...this.seen]) if (!id.startsWith("ui:")) this.seen.delete(id);
+    try { window.localStorage.setItem(this.key, JSON.stringify([...this.seen])); } catch { /* not persisted */ }
+  }
+
   mark(id: string): void {
     if (this.seen.has(id)) return;
     this.seen.add(id);

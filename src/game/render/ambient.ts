@@ -7,7 +7,7 @@
 import * as THREE from "three";
 import type { ZoneDef } from "../../shared/world";
 import { G, setActorShadow } from "./materials";
-import { camera, overlay, setFlash, setFraming, setFramingOffset, setMood, type Mood } from "./gfx";
+import { camera, onQuality, overlay, setFlash, setFraming, setFramingOffset, setMood, type Mood } from "./gfx";
 
 type Theme = ZoneDef["theme"];
 interface ThemeMood extends Mood {
@@ -97,6 +97,16 @@ rain.frustumCulled = false;
 rain.visible = false;
 overlay.add(rain);
 const rx = new Float32Array(RAIN_N), ry = new Float32Array(RAIN_N), rz = new Float32Array(RAIN_N), rv = new Float32Array(RAIN_N);
+/** graphics quality: share of fireflies and rain streaks drawn (low halves them) */
+let ambDensity = 1;
+let rainActive = RAIN_N;
+let curFlies = 0;
+onQuality((l) => {
+  ambDensity = l === "low" ? 0.5 : 1;
+  rainActive = Math.round(RAIN_N * ambDensity);
+  rainGeo.setDrawRange(0, rainActive * 2);
+  flies.count = Math.round(curFlies * ambDensity);
+});
 
 /* ---------- lightning: a jagged bolt far to the north + the post-pass flash ---------- */
 const BOLT_N = 12;
@@ -373,7 +383,8 @@ export class Ambient {
     setFraming(this.frameTex); // after setMood, which clears it (title and creation scenes have none)
     setActorShadow(this.mood.sun, this.mood.shade);
     setFlash(0);
-    flies.count = this.mood.fireflies;
+    curFlies = this.mood.fireflies;
+    flies.count = Math.round(curFlies * ambDensity);
     rain.visible = this.mood.rain;
     bolt.visible = false;
     this.flashT = 0;
@@ -402,7 +413,7 @@ export class Ambient {
     setFramingOffset(Math.max(-0.03, Math.min(0.03, (cx - this.lagX) * 0.012)), Math.max(-0.02, Math.min(0.02, (this.lagZ - cz) * 0.008)));
     // fireflies wander around the player and wrap back when left behind
     if (m.fireflies > 0) {
-      for (let i = 0; i < m.fireflies; i++) {
+      for (let i = 0; i < flies.count; i++) {
         fph[i] += dt * (0.4 + (i % 5) * 0.08);
         fx[i] += Math.sin(fph[i] * 1.3 + i) * dt * 0.8;
         fz[i] += Math.cos(fph[i] * 0.9 + i * 2.1) * dt * 0.8;
@@ -416,7 +427,7 @@ export class Ambient {
       flies.instanceMatrix.needsUpdate = true;
     }
     if (m.rain) {
-      for (let i = 0; i < RAIN_N; i++) {
+      for (let i = 0; i < rainActive; i++) {
         ry[i] -= rv[i] * dt;
         rx[i] += 3 * dt;
         if (ry[i] < 0) this.dropRain(i, cx, cz, false);

@@ -6,12 +6,15 @@ import type { GameApi, HitResult, ProfileView, RoomView, ZoneEntry } from "../ne
 import type { Look, Pose, RoomPlayer } from "../shared/types";
 import { MONSTERS, SKILLS } from "../shared/combat";
 import { NPC_REACH, START_ZONE, ZONES, type Npc, type Portal } from "../shared/world";
-import { Actor, IMPACT, actorSound, type ActorHooks } from "./actor";
+import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
+import { Chat } from "./ui/chat";
+import { gameSettings } from "./ui/settings";
+import type { ChatMessage } from "../net/api";
 import { audio, SKILL_SFX, type SfxName } from "./audio";
 import { Monsters } from "./monsters";
 import { ZoneScene } from "./world";
 import * as THREE from "three";
-import { camFocus, camFwd, camera, clearLights, feel, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight } from "./render/gfx";
+import { camFocus, camFwd, camera, feelFlags, clearLights, feel, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setFramingEnabled, setQuality, setShake } from "./render/gfx";
 import { SKILL_COL, clearFx, hitFeel, inkHit, killBurst, ring, updateFx, sparkBurst } from "./render/fx";
 import { Ambient } from "./render/ambient";
 import { Hud } from "./ui/hud";
@@ -70,6 +73,9 @@ export class Game {
   private readonly dialogue: Dialogue;
   private readonly story: Story;
   private readonly hints: Hints;
+  private readonly chat: Chat;
+  /** the soft keyboard is up: don't resize the renderer under it */
+  private layoutLocked = false;
   /* discovery-hint bookkeeping (docs/TUTORIAL.md); checked on events and at ~4 Hz */
   private hintTick = 0;
   private lastHurtAt = -1e9;
@@ -114,8 +120,15 @@ export class Game {
       travel: () => this.autoTravel(),
       autoSettings: () => this.auto.settings,
       saveAutoSettings: () => this.auto.saveSettings(),
+      settings: (tab) => this.openSettings(tab),
+      chat: () => this.chat.openInput(),
     });
-    this.sheets = new Sheets(root, { api, profile: () => this.profile, apply: (p) => this.applyProfile(p), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id) });
+    this.sheets = new Sheets(root, { api, profile: () => this.profile, apply: (p) => this.applyProfile(p), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id),
+      settings: {
+        name: () => this.profile?.name ?? "",
+        resetHints: () => { this.hints.reset(); toast("안내 혼잣말을 처음부터 다시 본다"); },
+        openAuto: () => { this.sheets.close(); this.hud.toggleAutoPop(); },
+      } });
     this.dialogue = new Dialogue(root, () => this.profile?.name || "먹동이");
     this.hints = new Hints(root);
     this.hints.busy = () => {
@@ -124,7 +137,7 @@ export class Game {
     };
     this.story = new Story({ api, dialogue: this.dialogue, sheets: this.sheets, hints: this.hints, profile: () => this.profile, apply: (p) => this.applyProfile(p) });
     this.input = new Input({
-      blocked: () => this.sheets.isOpen() || this.dialogue.isOpen() || this.transitioning || !this.player,
+      blocked: () => this.sheets.isOpen() || this.dialogue.isOpen() || this.transitioning || !this.player || this.chat.isOpen(),
       act: (a) => this.pressAct(a),
       skill: (i) => this.pressSkill(i),
       potion: () => void this.drinkPotion(),
@@ -132,7 +145,8 @@ export class Game {
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       help: () => this.hud.help(),
-      escape: () => { this.hud.closeSoundPop(); this.sheets.close(); },
+      escape: () => this.onEscape(),
+      chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
       mute: () => { toast(audio.toggleMute() ? "소리를 껐습니다 (M)" : "소리를 켰습니다 (M)"); },
       manual: () => this.onManual(),
       auto: () => this.toggleAuto(),
@@ -157,9 +171,88 @@ export class Game {
       const name = code >= 10 ? SKILL_SFX[code - 10] : ACT_SFX[code];
       if (!name) return;
       if (a.local) audio.play(name);
-      else audio.play(name, a.x, a.z, 0.8, true);
+      else if (!gameSettings.v.lowRemote) audio.play(name, a.x, a.z, 0.8, true);
     };
     this.monsters.onSound = (name, x, z) => audio.play(name, x, z);
+    this.chat = new Chat(root, { send: (t) => this.sayChat(t), typing: (on) => this.lockLayout(on) });
+    gameSettings.onChange((s) => {
+      setQuality(s.quality);
+      setShake(s.shake);
+      setFramingEnabled(s.framing);
+      actorFx.remoteLow = s.lowRemote;
+      this.hud.showDmg = s.dmgNumbers;
+      this.chat.filter = s.chatFilter;
+      root.classList.toggle("names-mine", s.names === "mine");
+      root.classList.toggle("names-off", s.names === "off");
+      root.classList.toggle("chat-off", !s.chat);
+      if (!s.chat) this.chat.close();
+    });
+  }
+
+  /** Esc: close what's open (auto popover, a sheet); with nothing open, the settings menu. */
+  private onEscape(): void {
+    if (this.hud.autoPopOpen()) { this.hud.closeSoundPop(); return; }
+    if (this.sheets.isOpen()) { this.sheets.close(); return; }
+    if (this.dialogue.isOpen() || this.transitioning || this.dead) return;
+    this.openSettings();
+  }
+
+  private openSettings(tab?: string): void {
+    if (this.dialogue.isOpen()) return;
+    this.input.clear();
+    this.hud.closeSoundPop();
+    this.sheets.openSettings(tab);
+  }
+
+  /* ---------- chat ---------- */
+  /** room the chat log currently shows (cleared with a label line on a change) */
+  private chatRoom = "";
+
+  private wireChat(): void {
+    this.api.onChat((m) => this.onChatLine(m));
+  }
+
+  /** A new room (zone or channel): clear the log and say where we are. */
+  private chatRoomChanged(zone: string, channel: number): void {
+    const key = `${zone}:${channel}`;
+    if (key === this.chatRoom) return;
+    this.chatRoom = key;
+    // the log was cleared when we left; the new room's recent lines may already be in, so the label goes first
+    this.chat.label(`— ${ZONES[zone]?.name ?? zone} ${channel}채널 —`);
+  }
+
+  private async sayChat(text: string): Promise<void> {
+    try {
+      await this.api.chatSay(text);
+    } catch (e) {
+      const code = errorCode(e);
+      toast(code === "on_cooldown" ? "잠시 후에 다시 말할 수 있다" : code === "rate_limited" ? "같은 말을 너무 자주 했다" : code === "bad_args" ? "말이 너무 길거나 비었다" : errorText(e), true);
+      throw e;
+    }
+  }
+
+  private onChatLine(m: ChatMessage): void {
+    if (!gameSettings.v.chat) return;
+    this.chat.push(m);
+    if (m.sys || (gameSettings.v.chatFilter && /\*{2,}/.test(m.text))) return;
+    // the bubble goes over the speaker if they're in this room (matched by nickname; ids are never shown)
+    if (this.profile && m.name === this.profile.name) { this.hud.say(this, m.text); return; }
+    for (const r of this.remotes.values()) if (r.name === m.name) { this.hud.say(r, m.text); return; }
+  }
+
+  /** While the chat box has the keyboard, the game keeps its size (a phone's keyboard shrinks the iframe). */
+  private lockLayout(on: boolean): void {
+    const html = document.documentElement;
+    if (on) {
+      html.style.setProperty("--lock-h", `${window.innerHeight}px`);
+      html.classList.add("typing-lock");
+      this.layoutLocked = true;
+      this.input.clear();
+    } else {
+      html.classList.remove("typing-lock");
+      this.layoutLocked = false;
+      resize();
+    }
   }
 
   /** Any manual move/attack/skill: auto-battle steps aside for a moment, auto-travel stops. */
@@ -213,6 +306,7 @@ export class Game {
     this.camZ = this.entry.z;
     this.hud.setZone(this.entry.zone, this.entry.channel);
     this.loading.channel(this.entry.channel);
+    this.chatRoomChanged(this.entry.zone, this.entry.channel);
     audio.musicForZone(this.entry.zone);
     audio.ambience(this.entry.zone);
     this.applyProfile(profile);
@@ -220,7 +314,8 @@ export class Game {
     this.api.onProfile((p) => this.applyProfile(p));
     this.api.onRoom((r) => this.onRoom(r));
     this.api.onPlayers((pl) => this.onPlayers(pl));
-    window.addEventListener("resize", resize);
+    window.addEventListener("resize", () => { if (!this.layoutLocked) resize(); });
+    this.wireChat();
     (window as unknown as { __ink?: unknown }).__ink = { info: memoryInfo, game: this, audio };
     this.lastFrame = performance.now();
     setLoop(() => this.frame());
@@ -343,7 +438,7 @@ export class Game {
       r.level = rp.level;
       r.dead = rp.dead;
       r.actor.setNet(rp.pose, rp.look, rp.dead);
-      this.hud.tag(r, `${esc(rp.name || "먹동이")}<small>Lv ${rp.level}</small>`, rp.dead ? "dead" : "");
+      this.hud.tag(r, `${esc(rp.name || "먹동이")}<small>Lv ${rp.level}</small>`, rp.dead ? "pc dead" : "pc");
     }
     for (const [id, r] of this.remotes) {
       if (id in pl) continue;
@@ -352,6 +447,7 @@ export class Game {
   }
 
   private dropRemote(id: string, r: Remote): void {
+    this.hud.dropSay(r);
     r.actor.dispose();
     this.hud.dropTag(r);
     this.remotes.delete(id);
@@ -508,6 +604,7 @@ export class Game {
     this.sheets.close();
     this.input.clear();
     if (viaPortal) audio.play("portal");
+    this.chat.clear();
     this.loading.show(to, "길을 건너는 중…");
     try {
       const entry = await this.api.enterZone(to, viaPortal);
@@ -543,6 +640,7 @@ export class Game {
       this.zoneTags();
       this.hud.setZone(entry.zone, entry.channel);
       this.loading.channel(entry.channel);
+      this.chatRoomChanged(entry.zone, entry.channel);
       audio.musicForZone(entry.zone);
       audio.ambience(entry.zone);
       this.auto.zoneChanged();
@@ -574,6 +672,7 @@ export class Game {
     try {
       this.transitioning = true;
       this.loading.show("village", "다시 일어나는 중");
+      this.chat.clear();
       const entry = await this.api.respawn();
       this.loading.progress(0.7);
       this.rebuild(entry);
@@ -660,6 +759,8 @@ export class Game {
     // tags every frame (they follow the camera); text changes only when needed
     this.hud.placeTag(this, p.x, p.y + 2.55, p.z);
     for (const r of this.remotes.values()) this.hud.placeTag(r, r.actor.x, r.actor.y + 2.55, r.actor.z);
+    this.hud.placeSay(this, p.x, p.y + 3.15, p.z);
+    for (const r of this.remotes.values()) this.hud.placeSay(r, r.actor.x, r.actor.y + 3.15, r.actor.z);
     for (const a of this.zone.anchors) this.hud.placeTag(a, a.x, a.y, a.z);
     // elites carry a name plate (arrays reused; no per-frame allocation)
     const el = this.monsters.elites;
@@ -782,7 +883,8 @@ export class Game {
     this.camX += (p.x + p.fx * 1.2 - this.camX) * Math.min(1, dt * 4);
     this.camZ += (p.z + p.fz * 1.2 - this.camZ) * Math.min(1, dt * 4);
     feel.shake = Math.max(0, feel.shake - dt * 2.5);
-    const sx = (Math.random() - 0.5) * feel.shake, sy = (Math.random() - 0.5) * feel.shake;
+    const shake = feelFlags.shake ? feel.shake : 0; // settings: camera shake off
+    const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
     // a low quarter view: the player stays lower-middle, the field ahead reads, and the upper part of the
     // frame opens onto the field's far edge, the painted backdrop and the moon
     camera.position.set(this.camX + sx, 8.4 * k + sy, this.camZ + 15 * k);
@@ -805,6 +907,7 @@ export async function boot(): Promise<void> {
   const title = new Title(root);
   try {
     initRenderer(canvas);
+    setQuality(gameSettings.v.quality); // the player's choice from the start (title scene too)
     title.startScene();
   } catch (e) {
     console.error(e);

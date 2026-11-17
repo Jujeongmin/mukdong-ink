@@ -1163,3 +1163,108 @@ button:focus-visible, input:focus-visible { outline: none; filter: drop-shadow(0
 .ink-check input:checked + i { background: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink), inset 0 0 0 3.5px #ece3cf; }
 .ink-check input:focus-visible + i { box-shadow: inset 0 0 0 1.5px var(--cinnabar); }
 .ink-check kbd { font-size: 11px; color: var(--ink-soft); }
+
+/* ==========================================================================================
+   Settings sheet: rows of label + ink control (toggle, segmented choice, slider), the key table, info.
+   ========================================================================================== */
+.set-list { display: grid; gap: 4px; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 2px; border-bottom: 1px solid rgba(43, 38, 34, 0.12); font-size: 15px; }
+.set-row > span:first-child { display: grid; gap: 2px; font-family: var(--f-brush); font-weight: 700; }
+.set-row small { font-family: var(--f-body); font-weight: 400; font-size: 12.5px; color: var(--ink-soft); }
+.set-slider { padding: 8px 2px; border-bottom: 1px solid rgba(43, 38, 34, 0.12); grid-template-columns: 5.4em 1fr 2.6em; font-size: 15px; }
+/* toggle: a little ink-ruled tablet with a dab that slides */
+.ink-toggle { cursor: pointer; }
+.ink-toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.ink-toggle i { position: relative; flex: none; width: 46px; height: 24px; border-radius: 3px; background: #ece3cf;
+  box-shadow: inset 0 0 0 1.5px var(--ink), inset 0 0 0 4px #ece3cf, inset 0 0 0 4.5px rgba(43, 38, 34, 0.4); transition: background-color 0.15s; }
+.ink-toggle i::after { content: ""; position: absolute; top: 5px; left: 6px; width: 14px; height: 14px; background: var(--ink); border-radius: 47% 53% 44% 56% / 55% 46% 54% 45%; transition: transform 0.18s ease-out, background-color 0.15s; }
+.ink-toggle input:checked + i { background: var(--ink); box-shadow: inset 0 0 0 1.5px var(--ink), inset 0 0 0 4px var(--ink), inset 0 0 0 4.5px rgba(239, 229, 209, 0.55); }
+.ink-toggle input:checked + i::after { transform: translateX(20px); background: #efe5d1; }
+.ink-toggle input:focus-visible + i { outline: 2px solid var(--cinnabar); outline-offset: 2px; }
+.ink-toggle.off { cursor: not-allowed; opacity: 0.5; }
+/* segmented choice */
+.seg { display: inline-flex; flex-wrap: wrap; gap: 0; border-radius: 3px; box-shadow: inset 0 0 0 1.5px var(--ink); padding: 3px; }
+.seg-b { border: 0; background: none; cursor: pointer; padding: 5px 11px 6px; font-family: var(--f-brush); font-weight: 700; font-size: 13.5px; color: var(--ink); border-radius: 2px; letter-spacing: 0.04em; }
+.seg-b[aria-checked="true"] { background: var(--ink); color: #efe5d1; box-shadow: inset 0 0 0 1px rgba(239, 229, 209, 0.5); }
+.seg-b:hover:not([aria-checked="true"]) { background: rgba(43, 38, 34, 0.1); }
+.seg-b:focus-visible { outline: 2px solid var(--cinnabar); outline-offset: 1px; filter: none; }
+.set-confirm { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; color: var(--cinnabar); }
+.set-confirm[hidden] { display: none; }
+/* key table */
+.key-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.key-table th { text-align: left; padding: 7px 12px 7px 0; white-space: nowrap; width: 1%; vertical-align: top; border-bottom: 1px solid rgba(43, 38, 34, 0.1); }
+.key-table td { padding: 7px 0; border-bottom: 1px solid rgba(43, 38, 34, 0.1); color: var(--ink); }
+.key-table kbd { display: inline-block; padding: 2px 8px 3px; font-family: var(--f-body); font-size: 12.5px; font-weight: 700; border-radius: 2px; background: #ece3cf;
+  box-shadow: inset 0 0 0 1px var(--ink), inset 0 0 0 2.5px #ece3cf, inset 0 0 0 3px rgba(43, 38, 34, 0.4); }
+/* info */
+.info-list { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; font-size: 15px; }
+.info-list dt { font-family: var(--f-brush); font-weight: 700; }
+.info-list dd { margin: 0; }
+.credits { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 14px; line-height: 1.55; }
+.credits b { font-family: var(--f-brush); margin-right: 6px; }
+.sheet-card.is-settings .tabs { gap: 16px; }
+
+/* ==========================================================================================
+   Chat: log strip bottom-left, input bar, mobile 말 button, speech bubbles, name-tag modes.
+   ========================================================================================== */
+.chat-log { position: fixed; left: calc(16px + var(--safe-l)); bottom: calc(18px + var(--safe-b)); width: min(380px, 70vw); display: grid; gap: 1px; z-index: 6;
+  padding: 7px 12px 8px; border-radius: 3px; background: linear-gradient(90deg, rgba(236, 227, 207, 0.86), rgba(236, 227, 207, 0.55) 70%, rgba(236, 227, 207, 0));
+  transition: opacity 0.8s ease; }
+.chat-log:empty { display: none; }
+.chat-log.idle { opacity: 0; }
+.chat-log p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
+.chat-log p b { font-family: var(--f-brush); margin-right: 4px; }
+.chat-log p.sys { color: var(--cinnabar); font-weight: 700; }
+.chat-log p.room { color: var(--ink-soft); font-size: 12.5px; letter-spacing: 0.06em; }
+.chat-in { position: fixed; left: calc(16px + var(--safe-l)); bottom: calc(18px + var(--safe-b)); z-index: 26; width: min(460px, calc(100vw - 32px)); display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px 7px 12px; border-radius: 3px; background: #ece3cf;
+  box-shadow: inset 0 0 0 1.5px #2b2622, inset 0 0 0 4.5px #ece3cf, inset 0 0 0 5px rgba(43, 38, 34, 0.5), 0 6px 18px rgba(0, 0, 0, 0.3); }
+.chat-in[hidden] { display: none; }
+.chat-in input { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-size: 16px; color: var(--ink); padding: 6px 2px; outline: none; }
+.chat-in input:focus-visible { filter: none; }
+.chat-in small { font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+#ui:has(.chat-in:not([hidden])) .chat-log { bottom: calc(76px + var(--safe-b)); opacity: 1; }
+.btn.btn.btn.chat-btn { position: fixed; left: calc(150px + var(--safe-l)); bottom: calc(28px + var(--safe-b)); min-width: 40px; min-height: 34px; font-size: 15px; display: none; }
+@media (pointer: coarse) {
+  .btn.btn.btn.chat-btn { display: inline-grid; }
+  .chat-log { bottom: calc(150px + var(--safe-b)); width: min(300px, 64vw); }
+  .chat-log p { font-size: 13px; }
+}
+#ui.chat-off .chat-log, #ui.chat-off .chat-btn { display: none !important; }
+#ui.talking .chat-btn { display: none !important; }
+/* the soft keyboard is up: the game keeps its size */
+html.typing-lock #ui { bottom: auto; height: var(--lock-h); }
+/* speech bubble over a head: a small paper tablet, brush font, at most two lines */
+.tag.say { max-width: 200px; white-space: normal; text-align: center; padding: 5px 10px 6px; border-radius: 3px; font-family: var(--f-brush); font-size: 13.5px; line-height: 1.35; color: var(--ink); text-shadow: none;
+  background: #f1e8d5; box-shadow: inset 0 0 0 1px #2b2622, 0 2px 6px rgba(0, 0, 0, 0.3);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; z-index: 1; }
+/* name-tag modes */
+#ui.names-mine .tag.pc { display: none !important; }
+#ui.names-off .tag.pc, #ui.names-off .tag.me, #ui.names-off .tag.npc { display: none !important; }
+
+/* ---------- daily quest card under the main one ---------- */
+.jokja { display: grid; gap: 22px; }
+.qcard.daily { padding: 8px 12px 9px; gap: 4px; }
+.qcard.daily h4 { font-size: 14px; }
+.qcard.daily .qch { color: var(--ink-soft); }
+.qdaily { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.qdaily li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12.5px; }
+.qdaily li b { font-variant-numeric: tabular-nums; font-size: 12px; }
+.qdaily li.done span { color: var(--ink-soft); }
+.qdaily li .qtag { font-size: 11.5px; }
+@media (max-width: 520px) { .jokja.folded .qcard.daily { display: none; } }
+
+/* ---------- skill HUD: labels you can read ---------- */
+.ring-btn b { color: #f6eedf; font-size: 12.5px; letter-spacing: 0.03em; text-shadow: 0 0 2px #120f0c, 0 0 3px #120f0c, 0 1px 3px rgba(0, 0, 0, 0.9); }
+.ring-btn.sk b { top: auto; bottom: -3px; transform: translate(-50%, 50%); padding: 0 5px 1px; border-radius: 2px; background: rgba(27, 23, 20, 0.62); text-shadow: 0 1px 2px #000; }
+.ring-btn.locked b { opacity: 0.85; }
+.ring-btn .lock { color: #f6eedf; font-size: 13.5px; text-shadow: 0 0 2px #120f0c, 0 0 4px #120f0c, 0 1px 3px #000; }
+.ring-btn.roll b, .ring-btn.atk b, .ring-btn.small.auto b { color: #f6eedf; text-shadow: 0 0 2px #120f0c, 0 0 4px #120f0c, 0 1px 3px #000; }
+.gourd b { color: #f6eedf; }
+/* phones: the purse becomes a compact two-column grid (currency, sound + settings, 수련 + 장비) */
+@media (max-width: 520px) {
+  .purse { display: grid; grid-template-columns: auto auto; justify-items: end; align-items: center; gap: 4px 6px; }
+  .purse > span { grid-column: span 1; }
+  .btn.btn.btn.chat-btn { left: calc(18px + var(--safe-l)); bottom: calc(148px + var(--safe-b)); }
+  .chat-log { bottom: calc(250px + var(--safe-b)); width: min(240px, 62vw); }
+}

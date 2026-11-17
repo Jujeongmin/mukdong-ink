@@ -97,6 +97,8 @@ let actorCount = 0;
  * 1..3 combo swings, 4 air spin, 5 roll, 10 + i skill i.
  */
 export const actorSound: { fn: ((code: number, a: Actor) => void) | null } = { fn: null };
+/** "다른 유저 효과 줄이기": remote actors skip their roll/skill flourishes (rings, lights, bursts). */
+export const actorFx = { remoteLow: false };
 
 export class Actor {
   readonly rig = new Rig();
@@ -239,7 +241,7 @@ export class Actor {
       this.inv = Math.max(this.inv, ROLL_IFRAME);
       this.ghostT = 0;
       this.setGhost(true);
-      inkBurst(this.x, 0.2, this.z, 6, -this.fx, -this.fz, 0.5);
+      if (this.local || !actorFx.remoteLow) inkBurst(this.x, 0.2, this.z, 6, -this.fx, -this.fz, 0.5);
     }
     if (!this.local) return;
     const fx = this.fx, fz = this.fz;
@@ -263,14 +265,17 @@ export class Actor {
     this.skillSeq++;
     this.skill = i;
     const col = SKILL_COL[i], fx = this.fx, fz = this.fz;
+    const flourish = this.local || !actorFx.remoteLow;
     if (i === 0) this.trail.col = col;
     if (i === 1) {
       this.trail.col = col;
-      ring(this.x, this.z, 3.6 + (this.aw(1)?.area ?? 0), col, 0.8, 0, null, this);
-      addLight(this.x, this.z, 8, 1.0, col, this);
+      if (flourish) {
+        ring(this.x, this.z, 3.6 + (this.aw(1)?.area ?? 0), col, 0.8, 0, null, this);
+        addLight(this.x, this.z, 8, 1.0, col, this);
+      }
     }
     if (i === 2) { this.trail.col = col; this.sk2Air = false; }
-    if (i === 3) { this.trail.col = SILVER_TRAIL; addLight(this.x, this.z, 7, 0.8, WHITE, this); this.windX = this.x; this.windZ = this.z; }
+    if (i === 3) { this.trail.col = SILVER_TRAIL; if (flourish) addLight(this.x, this.z, 7, 0.8, WHITE, this); this.windX = this.x; this.windZ = this.z; }
     if (!this.local) return;
     this.cd[i] = this.skillCd(i);
     if (i === 0) { this.vx = fx * 3; this.vz = fz * 3; }

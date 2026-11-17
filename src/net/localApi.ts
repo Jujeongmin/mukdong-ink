@@ -75,10 +75,11 @@ export class LocalGameApi extends BaseGameApi {
         this.roomId = roomId;
         await world.join(account, roomId);
       },
-      watchRoom: (roomId, onState, onUsers) => {
+      watchRoom: (roomId, onState, onUsers, onChat) => {
         const off = world.subscribe((e) => {
           if (e.kind === "roomState" && e.roomId === roomId) onState(e.state);
           else if (e.kind === "roomUsers" && e.roomId === roomId) onUsers(e.users);
+          else if (e.kind === "message" && e.roomId === roomId && e.type === "chat" && (e.to === null || e.to === account)) onChat?.(e.message);
         });
         onState(world.roomState(roomId));
         onUsers(world.roomUsers(roomId));

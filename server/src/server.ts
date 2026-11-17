@@ -6,6 +6,10 @@ import {
   DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
   type Awakening, type EnhanceOutcome,
 } from "../../src/shared/growth";
+import {
+  CHAT_REPEAT_MS, CHAT_WINDOW_MS, chatPaceOk, keepChat, readChat, readChatLines, type ChatMessage,
+} from "../../src/shared/chat";
+import { chatName } from "../../src/shared/filter";
 import { forwardX, forwardZ } from "../../src/shared/hit";
 import { COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, STARTER_EQUIP, rollGacha } from "../../src/shared/items";
 import {
@@ -307,7 +311,34 @@ async function swing(
     return result;
   });
   const paid = await reward(account, here.roomId, here.zone, struck.felled, skillUse, Math.random);
+  // A boss felled is told to the room.
+  for (const f of struck.felled) {
+    if (!MONSTERS[f.kind]?.boss) continue;
+    const at = Date.now();
+    const line: ChatMessage = { id: chatId(at), account: "", name: "", text: `${chatName(p.name)} 님이 ${MONSTERS[f.kind].name}를 쓰러뜨렸다`, at, sys: true };
+    await withRoomLock(here.roomId, () => postLine(line, at));
+  }
   return { hits: struck.hits, ...paid };
+}
+
+// ---------- chat ----------
+
+function chatId(now: number): string {
+  return `${now.toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** A short fingerprint of a line, so the repeat check keeps no chat text in room user state. */
+function lineHash(text: string): number {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h * 33) ^ text.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/** Adds a line to the room's last lines and tells everyone in the room (call under the room's lock). */
+async function postLine(line: ChatMessage, now: number): Promise<void> {
+  const state = await $room.getRoomState(["chat"]);
+  await $room.updateRoomState({ chat: keepChat(readChatLines(state.chat), line, now) }, { returnState: false });
+  $room.broadcastToRoom("chat", line);
 }
 
 // ---------- the room tick ----------
@@ -785,6 +816,35 @@ export class Server {
     if (!npc) throw new RuleViolation("bad_args");
     if (Math.hypot(mine.pose.x - npc.x, mine.pose.z - npc.z) > NPC_REACH + PROXIMITY_SLACK) throw new RuleViolation("too_far");
     return npc;
+  }
+
+  /**
+   * A line said in your room (your zone and channel): tidied, masked, held to the pace (on_cooldown), the
+   * same line twice within CHAT_REPEAT_MS refused (rate_limited). The name is your profile's. Kept only in
+   * the room's memory (its last CHAT_KEEP lines), never saved.
+   */
+  async chatSay(raw: unknown): Promise<ChatMessage> {
+    const said = readChat(raw);
+    if (!said) throw new RuleViolation("bad_args");
+    const account = $sender.account;
+    const here = currentRoom();
+    if (!here) throw new RuleViolation("not_ready");
+    const p = await myProfile(account);
+    const now = Date.now();
+    return withRoomLock(here.roomId, async () => {
+      const mine = await $room.getMyState();
+      if (!present(readMine(mine))) throw new RuleViolation("not_ready");
+      const times = Array.isArray(mine.chatAt) ? mine.chatAt.filter((t: unknown): t is number => finite(t)) : [];
+      const hash = lineHash(said.plain);
+      if (mine.chatHash === hash && finite(mine.chatHashAt) && now - mine.chatHashAt < CHAT_REPEAT_MS) throw new RuleViolation("rate_limited");
+      if (!chatPaceOk(times, now)) throw new RuleViolation("on_cooldown");
+      const line: ChatMessage = { id: chatId(now), account, name: chatName(p.name), text: said.text, at: now };
+      await postLine(line, now);
+      await $room.updateMyState(
+        { chatAt: [...times.filter((t: number) => now - t < CHAT_WINDOW_MS), now], chatHash: hash, chatHashAt: now }, { returnState: false },
+      );
+      return line;
+    });
   }
 
   /** Talking to an NPC of the zone you stand in, within NPC_REACH. */

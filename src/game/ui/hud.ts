@@ -7,11 +7,11 @@ import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { ITEM } from "../../shared/items";
 import { pointsEarned, pointsSpent } from "../../shared/growth";
-import { ZONES } from "../../shared/world";
+import { DAILY_QUESTS, ZONES } from "../../shared/world";
 import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
 import { fmt, hexCss } from "../util";
-import { chapterOf, mainStatus, npcName, npcZone, objective, progressText } from "../quests";
+import { chapterOf, dailyStatus, mainStatus, npcName, npcZone, objective, progressText } from "../quests";
 import { el, esc, skillIconPos } from "./dom";
 import { KEYS } from "./input";
 import { audio } from "../audio";
@@ -27,6 +27,10 @@ export interface HudHandlers {
   interact(): void;
   skill(i: number): void;
   respawn(): void;
+  /** the settings menu, optionally on one tab */
+  settings(tab?: string): void;
+  /** open the chat input (mobile 말 button) */
+  chat(): void;
 }
 
 // Bottom-right thumb arc: the basic attack is the big ring at the pivot; skills sit on an arc around it
@@ -50,7 +54,8 @@ const MARKUP = `
 <div class="purse">
   <span class="ui-later" data-ui="gear" title="안료: 사냥으로 얻는 재화"><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
   <span class="ui-later" data-ui="gear" title="묵옥: 뽑기에 쓰는 재화"><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
-  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 (${KEYS.mute} 음소거)" aria-haspopup="dialog"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 설정 (${KEYS.mute} 음소거)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear><span>장비</span><kbd>${KEYS.gear}</kbd></button>
 </div>
@@ -70,10 +75,11 @@ const MARKUP = `
   <p><kbd>WASD</kbd> 걷기 <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>우클릭</kbd> 구르기, 구르는 동안은 맞지 않는다</p>
   <p><kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기. 오방 검법은 닿는 적이 있으면 저절로 나간다</p>
   <p><kbd>Z</kbd> 자동 사냥 <kbd>1</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기</p>
+  <p><kbd>Enter</kbd> 채팅 <kbd>M</kbd> 소리 끄기 <kbd>Esc</kbd> 설정</p>
 </div>
 <button class="prompt btn" type="button" data-prompt hidden></button>
 <div class="auto-pop" data-autopop hidden role="dialog" aria-label="자동 사냥 설정"></div>
-<div class="auto-pop sound-pop" data-soundpop hidden role="dialog" aria-label="소리"></div>
+<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅">말</button>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
 <div class="levelup passive" data-lvup hidden><i class="spr-enso"></i><b>경지 상승</b><small data-lvtext></small></div>
@@ -101,6 +107,10 @@ export class Hud {
   private lastLevel = 0;
   private zoneKey = "";
   private travelling = false;
+  /** 데미지 숫자 (settings) */
+  showDmg = true;
+  /** speech bubbles over heads: owner → its own tag entry and when it goes */
+  private readonly says = new Map<object, { key: object; until: number }>();
   /** quest tracker folded into a chip (phones); decided on first show */
   private questFolded: boolean | null = null;
   private zoneId = "";
@@ -143,7 +153,9 @@ export class Hud {
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
     el("[data-auto]", root).addEventListener("click", () => this.h.auto());
     el("[data-autoset]", root).addEventListener("click", () => this.toggleAutoPop());
-    el("[data-sound]", root).addEventListener("click", () => this.toggleSoundPop());
+    el("[data-sound]", root).addEventListener("click", () => this.h.settings("sound"));
+    el("[data-settings]", root).addEventListener("click", () => this.h.settings());
+    el("[data-chatbtn]", root).addEventListener("click", () => this.h.chat());
     audio.onChange(() => this.syncSound());
     this.syncSound();
     el("[data-prompt]", root).addEventListener("click", () => this.h.interact());
@@ -210,7 +222,7 @@ export class Hud {
     box.classList.toggle("folded", this.questFolded);
     const s = mainStatus(p);
     if (!s) {
-      box.innerHTML = `<div class="qcard"><header data-qfold><span class="qch">1장</span><h4>1장을 마쳤다</h4></header><div class="qbody"><p class="qobj"><span>먹노인의 날마다 새 일</span></p></div></div>`;
+      box.innerHTML = `<div class="qcard"><header data-qfold><span class="qch">1장</span><h4>1장을 마쳤다</h4></header><div class="qbody"><p class="qobj"><span>먹노인의 날마다 새 일</span></p></div></div>${this.dailyCard(p)}`;
       box.querySelector("[data-qfold]")?.addEventListener("click", () => this.foldQuest());
       return;
     }
@@ -229,9 +241,20 @@ export class Hud {
       <div class="qbody">
         <p class="qobj" aria-label="${esc(progressText(s))}"><span>${esc(o.text)}</span>${o.count ? `<b>${o.count}</b>` : ""}</p>${bar}
         <footer>${tag}<button type="button" class="qgo btn btn-sm${this.travelling ? " on" : ""}" data-go aria-pressed="${this.travelling}">${this.travelling ? "이동 중" : "자동 진행"}</button></footer>
-      </div></div>`;
+      </div></div>${this.dailyCard(p)}`;
     box.querySelector("[data-go]")?.addEventListener("click", () => this.h.travel());
     box.querySelector("[data-qfold]")?.addEventListener("click", () => this.foldQuest());
+  }
+
+  /** The day's quests that are still open, under the main card: title + progress, or who to report to. */
+  private dailyCard(p: ProfileView): string {
+    let rows = "";
+    for (let i = 0; i < DAILY_QUESTS.length; i++) {
+      const d = dailyStatus(p, i);
+      if (d.claimed) continue;
+      rows += `<li class="${d.done ? "done" : ""}"><span>${esc(d.q.title)}</span>${d.done ? `<b class="qtag done">먹노인에게 보고</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
+    }
+    return rows ? `<div class="qcard daily"><header><span class="qch">오늘</span><h4>오늘의 의뢰</h4></header><ul class="qbody qdaily">${rows}</ul></div>` : "";
   }
 
   /** Phones: the tracker folds to a one-line chip and back. */
@@ -307,6 +330,7 @@ export class Hud {
 
   /* ---------- floating numbers ---------- */
   number(x: number, y: number, z: number, text: string, cls: "" | "kill" | "hurt" | "gain" | "resist"): void {
+    if (!this.showDmg && (cls === "" || cls === "kill" || cls === "hurt")) return;
     vProj.set(x, y, z).project(camera);
     if (vProj.z > 1) return;
     const d = this.dmgPool[this.dmgNext];
@@ -345,6 +369,24 @@ export class Hud {
     t.lx = sx; t.ly = sy;
     t.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -100%)`;
   }
+  /** A speech bubble over `owner`'s head for 4 s (placed by placeSay each frame). */
+  say(owner: object, text: string): void {
+    let s = this.says.get(owner);
+    if (!s) { s = { key: {}, until: 0 }; this.says.set(owner, s); }
+    s.until = performance.now() + 4000;
+    this.tag(s.key, esc(text), "say");
+  }
+  placeSay(owner: object, x: number, y: number, z: number): void {
+    const s = this.says.get(owner);
+    if (!s) return;
+    if (performance.now() > s.until) { this.dropTag(s.key); this.says.delete(owner); return; }
+    this.placeTag(s.key, x, y, z);
+  }
+  dropSay(owner: object): void {
+    const s = this.says.get(owner);
+    if (s) { this.dropTag(s.key); this.says.delete(owner); }
+  }
+
   dropTag(key: object): void {
     const t = this.tags.get(key);
     if (!t) return;
@@ -397,44 +439,24 @@ export class Hud {
     }
   }
 
-  /** The sound settings: master, music, effects, ambience (0–100) and mute; saved and applied live. */
-  private toggleSoundPop(): void {
-    const pop = el("[data-soundpop]", this.root);
-    if (!pop.hidden) { pop.hidden = true; return; }
-    el("[data-autopop]", this.root).hidden = true;
-    const st = audio.settings;
-    const row = (k: "master" | "music" | "sfx" | "amb", label: string) =>
-      `<label class="ink-slider"><span>${label}</span><span class="rng" style="--v:${st[k]}"><input type="range" min="0" max="100" step="1" value="${st[k]}" data-vol="${k}" aria-label="${label}"></span><b data-volv="${k}">${st[k]}</b></label>`;
-    pop.innerHTML = `<h4>소리</h4>
-      ${row("master", "전체")}${row("music", "음악")}${row("sfx", "효과음")}${row("amb", "주변 소리")}
-      <label class="ink-check"><input type="checkbox" data-mute ${st.muted ? "checked" : ""}><i aria-hidden="true"></i> 음소거 <kbd>${KEYS.mute}</kbd></label>
-      <button type="button" class="close btn btn-secondary btn-sm" data-soundclose>닫기</button>`;
-    pop.hidden = false;
-    pop.querySelectorAll<HTMLInputElement>("[data-vol]").forEach((r) => r.addEventListener("input", () => {
-      const k = r.dataset.vol as "master" | "music" | "sfx" | "amb", v = Number(r.value);
-      r.parentElement?.style.setProperty("--v", String(v));
-      el(`[data-volv="${k}"]`, pop).textContent = String(v);
-      audio.set({ [k]: v });
-    }));
-    el<HTMLInputElement>("[data-mute]", pop).addEventListener("change", (e) => audio.set({ muted: (e.target as HTMLInputElement).checked }));
-    el("[data-soundclose]", pop).addEventListener("click", () => { pop.hidden = true; });
+  autoPopOpen(): boolean {
+    return !el("[data-autopop]", this.root).hidden;
   }
 
   closeSoundPop(): void {
-    el("[data-soundpop]", this.root).hidden = true;
+    el("[data-autopop]", this.root).hidden = true;
   }
 
   /** The speaker shows a cross while muted; an open panel follows M. */
   private syncSound(): void {
     el("[data-sound]", this.root).classList.toggle("muted", audio.settings.muted);
-    const m = this.root.querySelector<HTMLInputElement>("[data-soundpop] [data-mute]");
+    const m = this.root.querySelector<HTMLInputElement>(".sheet-card [data-mute]");
     if (m) m.checked = audio.settings.muted;
   }
 
-  private toggleAutoPop(): void {
+  toggleAutoPop(): void {
     const pop = el("[data-autopop]", this.root);
     if (!pop.hidden) { pop.hidden = true; return; }
-    this.closeSoundPop();
     const st = this.h.autoSettings();
     pop.innerHTML = `<h4>자동 사냥</h4>
       <div class="auto-skills">${SKILLS.map((sk, i) => `<label><input type="checkbox" data-sk="${i}" ${st.skills[i] ? "checked" : ""}> ${esc(sk.name)}</label>`).join("")}</div>

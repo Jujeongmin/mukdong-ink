@@ -12,7 +12,7 @@ import { ZONES, type Npc, type Portal, type ZoneDef } from "../shared/world";
 import { ITEM, type ItemDef } from "../shared/items";
 import { fbm3, rng } from "./util";
 import { G, G2, M, M_blade, M_bladeDark, dyeMat, gateFadeMat, groundMat, lam, setGround, setGroundShade, waterMat } from "./render/materials";
-import { bakeShadows, camFocus, clearShadows, noNormalPass, overlay, scene } from "./render/gfx";
+import { bakeShadows, camFocus, clearShadows, noNormalPass, overlay, scene, setShadowSink } from "./render/gfx";
 import { QUAD_VERT } from "./render/fx";
 import { MOODS, flatGeo, glowMat, moonStreakMat } from "./render/ambient";
 import { POSE, Rig, type Build } from "./render/rig";
@@ -165,8 +165,9 @@ export class ZoneScene {
     const mood = MOODS[def.theme] ?? MOODS.village;
     const roots: THREE.Object3D[] = [this.group];
     for (const n of this.npcRigs) roots.push(n.rig.group);
-    const baked = bakeShadows(roots, def.radius + 12, mood.sun, mood.shade);
-    setGroundShade(baked ? baked.tex : null, baked ? baked.box : null, mood.shade[0]);
+    const sink = (b: { tex: THREE.Texture; box: THREE.Vector3 } | null) => setGroundShade(b ? b.tex : null, b ? b.box : null, mood.shade[0]);
+    setShadowSink(sink); // a quality change re-bakes this zone and hands the mask over here
+    sink(bakeShadows(roots, def.radius + 12, mood.sun, mood.shade));
   }
 
   update(dt: number, time: number): void {
@@ -204,6 +205,7 @@ export class ZoneScene {
     for (const m of this.glows) overlay.remove(m); // SHARED glow geometry/material
     for (const g of this.gates) noNormalPass.delete(g.mesh); // gate geometry is in `owned`
     setGroundShade(null, null, 0);
+    setShadowSink(null);
     clearShadows(); // OWNED shadow mask
   }
 

@@ -15,6 +15,7 @@ import { fmt, hexCss } from "../util";
 import { attempt, el, esc, itemIcon, toast } from "./dom";
 import { enhanceHtml, growthAction, skillsHtml, type GrowthState } from "./growth";
 import { audio } from "../audio";
+import { SETTINGS_TABS, bindSettings, settingsHtml, type SettingsCtx } from "./settings";
 
 export interface SheetCtx {
   api: GameApi;
@@ -24,6 +25,8 @@ export interface SheetCtx {
   hint?(id: string, text: string): void;
   seen?(id: string): boolean;
   mark?(id: string): void;
+  /** the settings menu's hooks */
+  settings?: SettingsCtx;
 }
 
 /** One short line the first time each growth tab is opened. */
@@ -32,7 +35,7 @@ const GROWTH_FIRST: Record<string, string> = {
   enhance: "먹돌로 붓을 다듬는다. 너무 욕심내면 붓이 부서질 수도.",
 };
 
-type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth";
+type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings";
 const SLOT_NAME: Record<SlotId, string> = { weapon: "붓", hat: "머리", sash: "띠" };
 const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", 일반: "c" };
 
@@ -45,6 +48,7 @@ const TABS: Partial<Record<SheetId, [string, string][]>> = {
   dyer: [["dye", "염색"], ["potion", "물약"]],
   altar: [["pull", "뽑기"], ["odds", "확률표"], ["jade", "묵옥 얻기"]],
   growth: [["skills", "검법 단련"], ["enhance", "붓 강화"]],
+  settings: SETTINGS_TABS,
 };
 
 /** NPC and gear sheets unroll as a hanging scroll (rods top and bottom, paper with a loose ink frame). */
@@ -69,6 +73,12 @@ export class Sheets {
 
   isOpen(): boolean {
     return this.current !== null;
+  }
+
+  /** The settings menu (Esc, the gear button, or the speaker button for the sound tab). */
+  openSettings(tab?: string): void {
+    if (this.current === "settings" && (!tab || tab === this.tab)) { this.close(); return; }
+    this.show("settings", tab);
   }
 
   /** Opens an NPC's own sheet (the conversation itself happens in story.ts). */
@@ -108,7 +118,8 @@ export class Sheets {
 
   /** Re-render after a profile change (keeps the gacha results on screen). */
   refresh(): void {
-    if (this.current) this.render();
+    // the settings sheet doesn't depend on the profile (and must not redraw under a dragged slider)
+    if (this.current && this.current !== "settings") this.render();
   }
 
   private render(): void {
@@ -118,6 +129,7 @@ export class Sheets {
     else if (this.current === "dyer") html = this.dyer(p);
     else if (this.current === "altar") html = this.altar(p);
     else if (this.current === "gear") html = this.gear(p);
+    else if (this.current === "settings" && this.ctx.settings) html = this.head("설정") + settingsHtml(this.tab, this.ctx.settings);
     else if (this.current === "growth") {
       const first = `growth-${this.tab}`;
       let intro = "";
@@ -140,6 +152,8 @@ export class Sheets {
       this.render();
     }));
     this.card.querySelectorAll<HTMLElement>("[data-do]").forEach((b) => b.addEventListener("click", () => this.act(b)));
+    if (this.current === "settings" && this.ctx.settings) bindSettings(this.card, () => this.render(), this.ctx.settings);
+    this.card.classList.toggle("is-settings", this.current === "settings");
   }
 
   private head(title: string, seal = false): string {

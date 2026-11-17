@@ -1,3 +1,4 @@
+import { isBannedName } from "../../src/shared/filter";
 import { freshDay, readProfile, starterProfile } from "../../src/shared/profile";
 import { RuleViolation, type Profile } from "../../src/shared/types";
 import { CHANNELS, CHANNEL_CAPACITY, parseRoomId, roomIdFor } from "../../src/shared/world";
@@ -72,7 +73,7 @@ export const NAME_PATTERN = /^[가-힣a-zA-Z0-9]{2,8}$/;
 export function parseName(raw: unknown): { name: string; key: string } | null {
   if (typeof raw !== "string") return null;
   const name = raw.normalize("NFC").trim();
-  if (!NAME_PATTERN.test(name)) return null;
+  if (!NAME_PATTERN.test(name) || isBannedName(name)) return null;
   return { name, key: name.toLowerCase() };
 }
 
