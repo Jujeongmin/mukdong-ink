@@ -208,7 +208,9 @@ export class Hud {
       b.classList.toggle("locked", locked);
       b.classList.toggle("aw1", lv >= 5 && lv < 10);
       b.classList.toggle("aw2", lv >= 10);
-      el("[data-sklv]", b).textContent = String(lv);
+      const lvEl = el("[data-sklv]", b);
+      lvEl.textContent = String(lv);
+      lvEl.toggleAttribute("data-lv1", lv <= 1); // a level-1 badge says nothing; show it once trained
       const sk = SKILLS[i];
       const aw = lv >= 10 ? AWAKENINGS[i][10] : lv >= 5 ? AWAKENINGS[i][5] : null;
       b.dataset.tip = locked ? `Lv ${sk.unlock}에 열림 · 재사용 ${sk.cd}초`

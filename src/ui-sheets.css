@@ -459,3 +459,14 @@
   .ring-btn.auto { left: calc(cos(100deg) * 208px - var(--sm) / 2); top: calc(sin(100deg) * -208px - var(--sm) / 2); }
   .btn.btn.btn.auto-set { left: calc(cos(100deg) * 208px + var(--sm) / 2 + 6px); top: calc(sin(100deg) * -208px - 11px); transform: none; }
 }
+
+/* ---------- skill ring badges: say what the numbers are ---------- */
+/* key shortcut: a small keycap tablet tucked on the ring's upper-left edge (PC only; hidden on touch elsewhere) */
+.ring-btn kbd { left: 2px; top: 2px; min-width: 15px; height: 15px; padding: 0 3px; display: grid; place-items: center;
+  font: 700 10px/1 var(--f-body, inherit); color: #f4efe5; background: rgba(43, 38, 34, 0.86);
+  border: 1px solid rgba(244, 239, 229, 0.55); border-radius: 3px; text-shadow: none; }
+/* training level: "Lv n" chip on the upper-right edge, only once trained past 1 */
+.ring-btn .sklv { right: -2px; top: 0; height: 15px; min-width: 0; padding: 0 4px; border-radius: 3px;
+  font: 700 10px/15px var(--f-body, inherit); color: #f4efe5; background: rgba(43, 38, 34, 0.86); text-shadow: none; }
+.ring-btn .sklv::before { content: "Lv"; margin-right: 1px; opacity: 0.8; font-weight: 600; }
+.ring-btn .sklv[data-lv1] { display: none; }
