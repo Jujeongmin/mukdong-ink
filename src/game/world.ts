@@ -12,9 +12,10 @@ import { ZONES, type Npc, type Portal, type ZoneDef } from "../shared/world";
 import { ITEM, type ItemDef } from "../shared/items";
 import { fbm3, rng } from "./util";
 import { G, G2, M, M_blade, M_bladeDark, dyeMat, gateFadeMat, groundMat, lam, setGround, setGroundShade, waterMat } from "./render/materials";
-import { bakeShadows, camFocus, clearShadows, noNormalPass, overlay, scene, setShadowSink } from "./render/gfx";
+import { bakeShadows, camFocus, clearShadows, noNormalPass, overlay, scene, setOcclusion, setShadowSink } from "./render/gfx";
 import { QUAD_VERT } from "./render/fx";
 import { clearPrints, setPrintWater } from "./render/prints";
+import { clearStrokes } from "./render/strokes";
 import { MOODS, flatGeo, glowMat, moonStreakMat } from "./render/ambient";
 import { POSE, Rig, type Build } from "./render/rig";
 import type { Collider, Field } from "./actor";
@@ -211,6 +212,8 @@ export class ZoneScene {
     setShadowSink(sink); // a quality change re-bakes this zone and hands the mask over here
     sink(bakeShadows(roots, def.radius + 12, mood.sun, mood.shade));
     clearPrints();
+    clearStrokes();
+    setOcclusion(true);
     setPrintWater(this.waters);
   }
 
@@ -252,6 +255,7 @@ export class ZoneScene {
 
   dispose(): void {
     setPrintWater(null);
+    setOcclusion(false);
     scene.remove(this.group);
     for (const g of this.owned) g.dispose(); // OWNED baked geometry
     this.owned.length = 0;
@@ -599,7 +603,10 @@ export class ZoneScene {
     // thick stands down both flanks
     for (let i = 0; i < 110; i++) {
       const side = this.rand() < 0.5 ? -1 : 1;
-      const x = side * (R - 2 + this.rand() * 13), z = -R - 2 + this.rand() * (R + 6);
+      const z = -R - 2 + this.rand() * (R + 6);
+      // the camera sits south of the player: in the southern half the stands step back from the rim so their
+      // stalks don't stand between the camera and a player walking the edge
+      const x = side * (z > -8 ? R + 3 + this.rand() * 10 : R - 2 + this.rand() * 13);
       if (!this.clear(x, z, 0.4, false)) continue;
       this.bamboo(x, z, 8 + this.rand() * 9);
       if (Math.hypot(x, z) < R + 0.5) this.colliders.push({ x, z, r: 0.25 });

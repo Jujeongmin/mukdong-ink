@@ -9,7 +9,10 @@ flash of color across the monochrome field. The hero, 먹동이, fights with a l
 - RPG, 3D quarter-view camera, multiplayer, Verse8 first (paid store later if it does well).
 - Channel MMO like Grove Hunters: zones × channels, each zone-channel one Verse8 room.
 - Color only in skills and gear. World coloring / region purification was dropped. No party color combos.
-- Monetization: paid currency 묵옥 → gacha for brushes/hats/sashes (published odds, pity), dyes with free 안료,
+- Monetization: paid currency 묵옥 → one gacha pool (published odds, pity; no rate-up banners, no cosmetic-only gacha):
+  brushes, swords, hats, sashes, plus enhancement-material bundles in the 일반 tier (먹돌 꾸러미 +6, 큰 먹돌 꾸러미 +12,
+  색 조각 +1). Starter gear is never drawn. Duplicate gear becomes materials (weapons → 먹돌 4/8/16/30, hats and sashes
+  → 색 조각 1/1/2/4 by rarity). Pity always gives 전설 gear. Dyes with free 안료,
   rewarded ads only. No interstitials ever. Color restoration / progress is never sold.
 - No hanja anywhere. Readable fonts (Gowun Batang headings, Gowun Dodum body).
 

@@ -79,10 +79,26 @@ export interface RoomView {
   now: number; // server ms when this state was written
 }
 
+/** One drawn entry, as the altar shows it. */
+export interface GachaPull {
+  id: string; // ITEM id (kind "item") or GACHA_EXTRA id (kind "material")
+  name: string;
+  r: import("../shared/types").Rarity;
+  kind: "item" | "material";
+  /** gear you already had */
+  dupe: boolean;
+  /** what you got besides gear: the bundle's materials, or what a duplicate turned into ("중복 → 먹돌 16") */
+  grant?: import("../shared/items").Grant;
+}
+
 export interface GachaResult {
+  /** every drawn id, in order (gear or material) */
   ids: string[];
+  /** per id: gear you already had (always false for materials) */
   dupes: boolean[];
   pity: number;
+  /** the same draws, ready to show */
+  pulls: GachaPull[];
 }
 
 export interface GameApi {

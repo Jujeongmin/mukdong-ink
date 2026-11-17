@@ -131,7 +131,7 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
   if (!owned.some((i) => i.id === st.brush)) st.brush = p.equip.weapon;
   const tiles = owned.map((it) => {
     const plus = p.enh?.[it.id] ?? 0;
-    return `<button type="button" class="tile${it.id === st.brush ? " on" : ""}${p.equip.weapon === it.id ? " eq" : ""}" data-do="pickBrush" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} 붓 · 공격 ${enhancedAtk(it.atk ?? 10, plus)}${p.equip.weapon === it.id ? " · 착용 중" : ""}`)}>
+    return `<button type="button" class="tile${it.id === st.brush ? " on" : ""}${p.equip.weapon === it.id ? " eq" : ""}" data-do="pickBrush" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} ${it.kind === "sword" ? "검" : "붓"} · 공격 ${enhancedAtk(it.atk ?? 10, plus)}${p.equip.weapon === it.id ? " · 착용 중" : ""}`)}>
       ${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}<span class="nm">${esc(it.name)}</span></button>`;
   }).join("");
   const it = ITEM[st.brush];
@@ -175,7 +175,7 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
   const help = `+${DESTROY_FROM}부터는 실패하면 붓이 부서질 수 있다.\n${MATERIALS.protect.name}을 쓰면 부서지지 않는다. 처음 받은 먹붓은 +0으로 돌아갈 뿐.`;
   return `${resBar([["stone", p.stones ?? 0], ["protect", p.protects ?? 0], ["pigment", p.pigment], ["jade", p.jade]], help)}
     <div class="enh2">
-      <div class="enh2-pick"><h4 class="sec">붓 고르기</h4><div class="tiles">${tiles}</div></div>
+      <div class="enh2-pick"><h4 class="sec">무기 고르기</h4><div class="tiles">${tiles}</div></div>
       <section class="enh2-main">${stage}<h3 class="ttl enh2-name">${esc(it?.name ?? "")}</h3>${detail}</section>
     </div>
     <details class="rate-detail"${odds ? " open" : ""}><summary>강화 확률표</summary>

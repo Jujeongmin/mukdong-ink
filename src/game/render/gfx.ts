@@ -202,6 +202,43 @@ let postMat: THREE.ShaderMaterial;
 const postScene = new THREE.Scene();
 const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide });
+
+/* ---------- camera occlusion ----------
+   Scenery between the camera and the player (bamboo stalks, trunks, pillars at the near rim) is cut away:
+   a soft, dithered-edged hole along the camera->player line, in the colour pass and the normal pass alike
+   (so no outline is left behind). Done in view space in every lit (Lambert) material and the normal pass;
+   materials with their own onBeforeCompile (the ground, the figures' bodies) are untouched, and the last
+   2.5 m before the player stay solid, so what is next to the player never vanishes. */
+const occU = { uOccP: { value: new THREE.Vector3() }, uOccOn: { value: 0 } };
+const OCC_FRAG = `
+  if (uOccOn > 0.5) {
+    float L2 = dot(uOccP, uOccP);
+    float t = dot(vOccV, uOccP) / L2;
+    float tMax = 1.0 - 2.5 / sqrt(L2);
+    if (t > 0.0 && t < tMax) {
+      float r = mix(2.6, 1.0, t);
+      float k = (1.0 - smoothstep(r * 0.7, r, length(vOccV - uOccP * t))) * (1.0 - smoothstep(tMax - 0.1, tMax, t));
+      if (k > fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453)) discard;
+    }
+  }
+`;
+function addOcclusion(sh: THREE.WebGLProgramParametersWithUniforms): void {
+  sh.uniforms.uOccP = occU.uOccP;
+  sh.uniforms.uOccOn = occU.uOccOn;
+  // declared just before main (the normal pass's fragment shader has no <common> include)
+  sh.vertexShader = sh.vertexShader
+    .replace("void main() {", "varying vec3 vOccV;\nvoid main() {")
+    .replace("#include <project_vertex>", "#include <project_vertex>\nvOccV = mvPosition.xyz;");
+  sh.fragmentShader = sh.fragmentShader
+    .replace("void main() {", "varying vec3 vOccV;\nuniform vec3 uOccP;\nuniform float uOccOn;\nvoid main() {" + OCC_FRAG);
+}
+THREE.MeshLambertMaterial.prototype.onBeforeCompile = addOcclusion;
+normalMat.onBeforeCompile = addOcclusion;
+const _occ = new THREE.Vector3();
+/** In the field the camera cuts scenery away between itself and the player (off on the title screen). */
+export function setOcclusion(on: boolean): void {
+  occU.uOccOn.value = on ? 1 : 0;
+}
 let DPR = 1;
 let lastW = 0, lastH = 0;
 
@@ -566,6 +603,11 @@ export function renderFrame(dt: number): void {
   updateLights(dt);
   renderer.info.reset();
   postMat.uniforms.uTime.value = feel.time;
+  if (occU.uOccOn.value > 0) {
+    // the player's chest (the camera's focus) in view space
+    camera.updateMatrixWorld();
+    occU.uOccP.value.copy(_occ.set(camFocus.x, 1.1, camFocus.z).applyMatrix4(camera.matrixWorldInverse));
+  }
   renderer.setRenderTarget(colorRT);
   renderer.render(scene, camera);
   scene.overrideMaterial = normalMat;

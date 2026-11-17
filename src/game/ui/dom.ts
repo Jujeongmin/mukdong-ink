@@ -37,10 +37,11 @@ export function installSprites(): void {
   style.textContent = `
     .ic-item { background-image: url("${url("./assets/items_v2.png")}"); }
     .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills_v2.png")}"); }
-    .ic-mat { background-image: url("${url("./assets/materials.png")}"); }`;
+    .ic-mat { background-image: url("${url("./assets/materials.png")}"); }
+    .ic-item.w2 { background-image: url("${url("./assets/weapons2.png")}"); }`;
   document.head.appendChild(style);
   // a sheet that fails to load would leave empty frames: say so in the console instead of failing silently
-  for (const f of ["items_v2.png", "skills_v2.png", "materials.png"]) {
+  for (const f of ["items_v2.png", "skills_v2.png", "materials.png", "weapons2.png"]) {
     const img = new Image();
     img.onerror = () => console.warn(`[ui] icon sheet failed to load: ${f}`);
     img.src = url(`./assets/${f}`);
@@ -53,8 +54,22 @@ export function installSprites(): void {
  * The element is a plain block sized by CSS (44 px by default; `.ic-item.s` / `.l` / `.xl` for other sizes).
  */
 export function itemIcon(it: ItemDef, size = ""): string {
+  const w2 = weapons2Cell(it);
+  if (w2 >= 0) {
+    // weapons2.png: 3×2, the swords
+    return `<i class="spr ic-item w2${size ? ` ${size}` : ""}" style="background-position:${(w2 % 3) * 50}% ${Math.floor(w2 / 3) * 100}%" aria-hidden="true"></i>`;
+  }
   const col = it.icon % 4, row = Math.floor(it.icon / 4);
   return `<i class="spr ic-item${size ? ` ${size}` : ""}" style="background-position:${col * 33.333}% ${row * 33.333}%" aria-hidden="true"></i>`;
+}
+
+/** The swords' cells in weapons2.png, by id (used until / unless the item names its atlas). */
+const WEAPONS2: Record<string, number> = { w_inkblade: 0, w_reedblade: 1, w_rainblade: 2, w_nightblade: 3, w_voidblade: 4 };
+/** Cell in weapons2.png, or -1 for an items_v2.png item. An `atlas: "weapons2"` field wins and uses `icon` as the cell. */
+function weapons2Cell(it: ItemDef): number {
+  if (it.atlas === "weapons2") return it.icon;
+  if (it.atlas) return -1;
+  return WEAPONS2[it.id] ?? -1;
 }
 
 /* ---------- resources: one picture, name and how-to-get line per currency / material ---------- */

@@ -1,4 +1,4 @@
-import type { AttackReq, EnhanceResult, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
+import type { AttackReq, EnhanceResult, GachaPull, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
   BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, attackFor, killExp, maxHpFor, type HitShape,
 } from "../../src/shared/combat";
@@ -11,7 +11,7 @@ import {
 } from "../../src/shared/chat";
 import { chatName } from "../../src/shared/filter";
 import { forwardX, forwardZ } from "../../src/shared/hit";
-import { COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, STARTER_EQUIP, rollGacha } from "../../src/shared/items";
+import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
 import {
   MAX_POTIONS, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, pointsLeft, profileView, weaponAtk,
   type Felled,
@@ -795,23 +795,35 @@ export class Server {
     if (rawN !== 1 && rawN !== 10) throw new RuleViolation("bad_args");
     const n: 1 | 10 = rawN;
     const account = $sender.account;
-    let ids: string[] = [];
-    let dupes: boolean[] = [];
+    let pulls: GachaPull[] = [];
     const p = await updateProfile(account, (q) => {
       const cost = n === 1 ? COST1 : COST10;
       if (q.jade < cost) throw new RuleViolation("no_currency");
       const rolled = rollGacha(n, q.pity, Math.random);
       const owned = [...q.owned];
-      ids = rolled.ids;
-      dupes = rolled.ids.map((id) => {
-        if (owned.includes(id)) return true;
-        owned.push(id);
-        return false;
+      let stones = 0;
+      let shards = 0;
+      pulls = rolled.ids.map((id): GachaPull => {
+        const extra = GACHA_EXTRA_BY_ID[id];
+        if (extra) {
+          stones += extra.grant.stones ?? 0;
+          shards += extra.grant.shards ?? 0;
+          return { id, name: extra.name, r: extra.r, kind: "material", dupe: false, grant: { ...extra.grant } };
+        }
+        const item = ITEM[id];
+        if (!owned.includes(id)) {
+          owned.push(id);
+          return { id, name: item.name, r: item.r, kind: "item", dupe: false };
+        }
+        // Gear you already have turns into enhancement materials.
+        const grant = dupeGrant(item);
+        stones += grant.stones ?? 0;
+        shards += grant.shards ?? 0;
+        return { id, name: item.name, r: item.r, kind: "item", dupe: true, grant };
       });
-      const refund = dupes.filter(Boolean).length * DUPE_PIGMENT;
-      return { ...q, jade: q.jade - cost, owned, pity: rolled.pity, pigment: q.pigment + refund };
+      return { ...q, jade: q.jade - cost, owned, pity: rolled.pity, stones: q.stones + stones, shards: q.shards + shards };
     });
-    return { ids, dupes, pity: p.pity, profile: profileView(account, p) };
+    return { ids: pulls.map((x) => x.id), dupes: pulls.map((x) => x.dupe), pity: p.pity, pulls, profile: profileView(account, p) };
   }
 
   /** The NPC `npcId` of the zone you stand in, if you are within NPC_REACH of it. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { GACHA_POOL, ITEM, PITY, RARITY_RATES, itemOdds, rollGacha } from "../src/shared/items";
+import { GACHA_ENTRIES, GACHA_EXTRA, NOT_DRAWN, PITY, RARITY_RATES, itemOdds, rollGacha } from "../src/shared/items";
 import type { Rarity } from "../src/shared/types";
 
 // mulberry32: the same rolls every run.
@@ -14,7 +14,8 @@ function seeded(seed: number): () => number {
   };
 }
 
-const rarity = (id: string): Rarity => ITEM[id].r;
+const ENTRY = Object.fromEntries(GACHA_ENTRIES.map((e) => [e.id, e]));
+const rarity = (id: string): Rarity => ENTRY[id].r;
 
 describe("rollGacha", () => {
   test("single pulls follow the published rates", () => {
@@ -39,12 +40,22 @@ describe("rollGacha", () => {
       expect(Math.abs(seen - p)).toBeLessThan(5 * Math.sqrt((p * (1 - p)) / n));
     }
     // Every item of the pool can come, and nothing else.
-    expect(Object.keys(perItem).sort()).toEqual(GACHA_POOL.map((i) => i.id).sort());
+    expect(Object.keys(perItem).sort()).toEqual(GACHA_ENTRIES.map((e) => e.id).sort());
+    for (const id of NOT_DRAWN) expect(perItem[id]).toBeUndefined();
   });
 
-  test("the published odds add up to one", () => {
-    const total = itemOdds().reduce((sum, o) => sum + o.p, 0);
-    expect(total).toBeCloseTo(1, 10);
+  test("the published odds list every entry, materials too, and add up to one", () => {
+    const odds = itemOdds();
+    expect(odds.reduce((sum, o) => sum + o.p, 0)).toBeCloseTo(1, 10);
+    expect(odds.map((o) => o.id).sort()).toEqual(GACHA_ENTRIES.map((e) => e.id).sort());
+    for (const g of GACHA_EXTRA) {
+      const o = odds.find((x) => x.id === g.id)!;
+      expect([o.kind, o.name, o.r]).toEqual(["material", g.name, "일반"]);
+    }
+    // Materials are never 전설, so pity always gives gear.
+    expect(GACHA_ENTRIES.filter((e) => e.r === "전설").every((e) => e.kind === "item")).toBe(true);
+    const rand = seeded(5);
+    for (let i = 0; i < 200; i++) expect(ENTRY[rollGacha(1, PITY - 1, rand).ids[0]]).toMatchObject({ r: "전설", kind: "item" });
   });
 
   test("pity: the PITY-th pull without a legendary is one, and pity starts over", () => {

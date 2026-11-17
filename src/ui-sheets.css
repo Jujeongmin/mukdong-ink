@@ -32,6 +32,7 @@
 .ic-exp { background: radial-gradient(circle, rgba(184, 134, 43, 0.35) 0 30%, transparent 33%); }
 .ic-pts::before, .ic-exp::before { content: ""; position: absolute; inset: 0; background: var(--ink); -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }
 .ic-exp::before { background: var(--gold); }
+.ic-item.w2 { background-size: 300% 200%; background-repeat: no-repeat; }
 .ic-item.s { width: 28px; height: 28px; }
 .ic-item.l { width: 56px; height: 56px; }
 .ic-item.xl { width: 112px; height: 112px; }
@@ -475,3 +476,47 @@
 .ring-btn.aw1 .sklv { background: var(--cinnabar); color: #fff6ec; }
 .ring-btn.aw2 .sklv { background: var(--gold); color: #2b2622; }
 .ring-btn .sklv[data-lv1] { display: none; }
+
+/* =========================== no browser scrollbars on sheets (CLAUDE.md) =========================== */
+/* Chrome 121+ draws a native thin bar (with arrows) whenever `scrollbar-width` is set, so hide it and hint the
+   overflow instead with soft ink shadows at the scrolling edge (covers ride with the content, shadows stay put). */
+.sheet-card, .rate-table, .auto-pop, .gr2-detail { scrollbar-width: none; }
+.sheet-card::-webkit-scrollbar, .rate-table::-webkit-scrollbar, .auto-pop::-webkit-scrollbar { display: none; }
+.sheet-card {
+  background-image:
+    linear-gradient(#ece3cf 40%, rgba(236, 227, 207, 0)), linear-gradient(rgba(236, 227, 207, 0), #ece3cf 60%),
+    radial-gradient(farthest-side at 50% 0, rgba(43, 38, 34, 0.28), rgba(43, 38, 34, 0)), radial-gradient(farthest-side at 50% 100%, rgba(43, 38, 34, 0.28), rgba(43, 38, 34, 0)),
+    var(--paper-wash), var(--paper-tile);
+  background-position: top, bottom, top, bottom, 0 0, 0 0;
+  background-size: 100% 36px, 100% 36px, 100% 14px, 100% 14px, auto, 512px 512px;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat;
+  background-attachment: local, local, scroll, scroll, local, local;
+}
+
+/* =========================== altar: material draws and duplicate ribbons =========================== */
+.ic-res.l { width: 56px; height: 56px; }
+.rv.mat .pic { display: grid; place-items: center; height: 56px; }
+.rv.mat .face small { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.rv .ribbon { position: absolute; left: 6px; right: 6px; top: 6px; z-index: 1; padding: 2px 4px 3px; border-radius: 2px; background: var(--ink); color: #f3ebdc;
+  font-size: 10.5px; font-weight: 700; line-height: 1.25; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 1px rgba(239, 229, 209, 0.35); }
+.rv.dupe .face { padding-top: 26px; }
+.rv.dupe .face .ic-item { opacity: 0.82; }
+@media (max-width: 640px) {
+  .results .ic-res.l { width: 48px; height: 48px; }
+  .rv.mat .pic { height: 48px; }
+  .rv .ribbon { font-size: 10px; left: 4px; right: 4px; }
+}
+/* the odds tables scroll inside the sheet: same edge shadows as the sheet itself */
+.rate-table {
+  background-image: linear-gradient(#ebe1ca 40%, rgba(235, 225, 202, 0)), linear-gradient(rgba(235, 225, 202, 0), #ebe1ca 60%),
+    radial-gradient(farthest-side at 50% 0, rgba(43, 38, 34, 0.25), rgba(43, 38, 34, 0)), radial-gradient(farthest-side at 50% 100%, rgba(43, 38, 34, 0.25), rgba(43, 38, 34, 0));
+  background-position: top, bottom, top, bottom; background-size: 100% 28px, 100% 28px, 100% 12px, 100% 12px;
+  background-repeat: no-repeat; background-attachment: local, local, scroll, scroll;
+}
+.rate-table thead th { position: sticky; top: 0; z-index: 1; background: #ebe1ca; box-shadow: inset 0 -1px 0 var(--line); }
+@media (max-width: 640px) {
+  .rate-table td, .rate-table th { padding: 5px 3px; font-size: 12px; }
+  .rate-table .tcell { gap: 4px; }
+  .rate-table .ic-item.s, .rate-table .ic-res { width: 22px; height: 22px; }
+}

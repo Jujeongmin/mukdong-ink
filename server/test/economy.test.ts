@@ -1,9 +1,16 @@
 import { POTION_COST, POTION_HEAL, maxHpFor } from "../../src/shared/combat";
-import { COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, PITY } from "../../src/shared/items";
+import { COST1, COST10, DUPE_SHARDS, DUPE_STONES, DYES, DYE_COST, GACHA_ENTRIES, GACHA_EXTRA_BY_ID, ITEM, NOT_DRAWN, PITY } from "../../src/shared/items";
 import { MAIN_QUESTS, ZONES } from "../../src/shared/world";
 import { NO_ROOM, editProfile, errorOf, goTo, inVillage, newPlayer, profileOf, rolling, walkTo } from "./helpers";
 
 const questIndex = (id: string) => MAIN_QUESTS.findIndex((q) => q.id === id);
+
+/** The roll that picks `id` within its rarity's entries of the draw. */
+function pick(id: string): number {
+  const r = GACHA_ENTRIES.find((e) => e.id === id)!.r;
+  const list = GACHA_ENTRIES.filter((e) => e.r === r);
+  return (list.findIndex((e) => e.id === id) + 0.5) / list.length;
+}
 
 const dyer = ZONES.village.npcs.find((n) => n.id === "dyer")!;
 
@@ -76,27 +83,68 @@ describe("gear", () => {
 });
 
 describe("the brush altar", () => {
-  test("costs jade, keeps new items, turns repeats into pigment", async (server) => {
+  test("costs jade, keeps new gear, turns repeats into enhancement materials", async (server) => {
     await newPlayer(server, "test-a");
     expect(await errorOf(server.pullGacha(1))).toContain("no_currency");
     expect(await errorOf(server.pullGacha(5))).toContain("bad_args");
-    await editProfile("test-a", (q) => ({ ...q, jade: COST1 * 2 }));
-    // 0.9 → 일반; the second roll picks the item: the first common (w_brush, already owned).
-    const first = await rolling([0.9, 0], () => server.pullGacha(1));
-    expect([first.ids, first.dupes, first.pity]).toEqual([["w_brush"], [true], 1]);
-    expect([first.profile.jade, first.profile.pigment]).toEqual([COST1, DUPE_PIGMENT]);
+    await editProfile("test-a", (q) => ({ ...q, jade: COST1 * 3 }));
+    // 0.9 → 일반, then 대나무붓: new.
+    const first = await rolling([0.9, pick("w_bamboo")], () => server.pullGacha(1));
+    expect([first.ids, first.dupes, first.pity]).toEqual([["w_bamboo"], [false], 1]);
+    expect(first.pulls).toEqual([{ id: "w_bamboo", name: ITEM.w_bamboo.name, r: "일반", kind: "item", dupe: false }]);
+    // Again: a duplicate weapon becomes 먹돌, no 안료.
+    const again = await rolling([0.9, pick("w_bamboo")], () => server.pullGacha(1));
+    expect(again.pulls[0]).toEqual({ id: "w_bamboo", name: ITEM.w_bamboo.name, r: "일반", kind: "item", dupe: true, grant: { stones: DUPE_STONES.일반 } });
+    expect([again.profile.stones, again.profile.pigment]).toEqual([DUPE_STONES.일반, 0]);
     // 0.0 → 전설, the gold brush: new.
-    const second = await rolling([0, 0], () => server.pullGacha(1));
-    expect([second.ids, second.dupes, second.pity]).toEqual([["w_gold"], [false], 0]);
-    expect(second.profile.owned).toContain("w_gold");
+    const legend = await rolling([0, pick("w_gold")], () => server.pullGacha(1));
+    expect([legend.ids, legend.dupes, legend.pity]).toEqual([["w_gold"], [false], 0]);
+    expect(legend.profile.owned).toContain("w_gold");
     expect((await profileOf("test-a")).pity).toBe(0);
+  });
+
+  test("material bundles are granted, not added to the gear", async (server) => {
+    await newPlayer(server, "test-a");
+    await editProfile("test-a", (q) => ({ ...q, jade: COST1 * 2 }));
+    const big = await rolling([0.9, pick("g_stones12")], () => server.pullGacha(1));
+    expect(big.pulls).toEqual([{ id: "g_stones12", name: "큰 먹돌 꾸러미", r: "일반", kind: "material", dupe: false, grant: { stones: 12 } }]);
+    expect([big.profile.stones, big.profile.owned.includes("g_stones12"), big.dupes]).toEqual([12, false, [false]]);
+    const shard = await rolling([0.9, pick("g_shard1")], () => server.pullGacha(1));
+    expect([shard.pulls[0].grant, shard.profile.shards, shard.profile.stones]).toEqual([{ shards: 1 }, 1, 12]);
+  });
+
+  test("duplicates turn into 먹돌 (weapons) or 색 조각 (hats, sashes) by rarity", async (server) => {
+    await newPlayer(server, "test-a");
+    const dupes = ["w_voidblade", "h_gat", "s_gold", "w_rainblade"];
+    await editProfile("test-a", (q) => ({ ...q, jade: COST1 * dupes.length, owned: [...q.owned, ...dupes] }));
+    const tier: Record<string, number> = { 전설: 0, 영웅: 0.05, 희귀: 0.2 };
+    const got = [];
+    for (const id of dupes) got.push((await rolling([tier[ITEM[id].r], pick(id)], () => server.pullGacha(1))).pulls[0]);
+    expect(got.map((g: any) => [g.id, g.dupe, g.grant])).toEqual([
+      ["w_voidblade", true, { stones: DUPE_STONES.전설 }],
+      ["h_gat", true, { shards: DUPE_SHARDS.희귀 }],
+      ["s_gold", true, { shards: DUPE_SHARDS.전설 }],
+      ["w_rainblade", true, { stones: DUPE_STONES.영웅 }],
+    ]);
+    const p = await profileOf("test-a");
+    expect([p.stones, p.shards]).toEqual([30 + 16, 1 + 4]);
+  });
+
+  test("the starter gear is never drawn", async (server) => {
+    for (const id of NOT_DRAWN) expect(GACHA_ENTRIES.some((e) => e.id === id)).toBe(false);
+    await newPlayer(server, "test-a");
+    await editProfile("test-a", (q) => ({ ...q, jade: COST10 * 3 }));
+    for (let i = 0; i < 3; i++) {
+      const r = await server.pullGacha(10);
+      for (const id of r.ids) expect(NOT_DRAWN.includes(id)).toBe(false);
+    }
   });
 
   test("pity: the PITY-th pull without a legendary is one", async (server) => {
     await newPlayer(server, "test-a");
     await editProfile("test-a", (q) => ({ ...q, jade: COST1, pity: PITY - 1 }));
     const r = await rolling(0.99, () => server.pullGacha(1));
-    expect(ITEM[r.ids[0]].r).toBe("전설");
+    expect([ITEM[r.ids[0]].r, r.pulls[0].kind]).toEqual(["전설", "item"]);
     expect(r.pity).toBe(0);
   });
 
@@ -105,8 +153,10 @@ describe("the brush altar", () => {
     await editProfile("test-a", (q) => ({ ...q, jade: COST10 }));
     const r = await rolling(0.99, () => server.pullGacha(10));
     expect(r.ids.length).toBe(10);
-    expect(r.ids.slice(0, 9).every((id: string) => ITEM[id].r === "일반")).toBe(true);
-    expect(ITEM[r.ids[9]].r).toBe("희귀");
+    expect(r.pulls.slice(0, 9).every((x: any) => x.r === "일반")).toBe(true);
+    expect([r.pulls[9].r, r.pulls[9].kind]).toEqual(["희귀", "item"]);
+    // The last commons are 색 조각 bundles: nine of them.
+    expect(r.profile.shards).toBe(9 * (GACHA_EXTRA_BY_ID.g_shard1.grant.shards ?? 0));
     expect(r.profile.jade).toBe(0);
     expect(r.pity).toBe(10);
   });

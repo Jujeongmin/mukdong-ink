@@ -7,12 +7,12 @@ import {
   AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, type Npc, type QuestDef,
 } from "../../shared/world";
 import {
-  COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, ITEMS, PITY, RARITY_RATES, itemOdds, type ItemDef,
+  COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, itemOdds, type Grant, type ItemDef,
 } from "../../shared/items";
 import { enhancedAtk } from "../../shared/growth";
 import { POTION_COST, SKILLS } from "../../shared/combat";
 import type { SlotId } from "../../shared/types";
-import type { GameApi, ProfileView } from "../../net/api";
+import type { GachaPull, GameApi, ProfileView } from "../../net/api";
 import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../quests";
 import { fmt, hexCss } from "../util";
 import { attempt, el, esc, itemIcon, resBar, resChip, resIcon, tipAttr, toast, type ResKind } from "./dom";
@@ -39,11 +39,25 @@ const GROWTH_FIRST: Record<string, string> = {
 };
 
 type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings";
-const SLOT_NAME: Record<SlotId, string> = { weapon: "붓", hat: "머리", sash: "띠" };
+const SLOT_NAME: Record<SlotId, string> = { weapon: "무기", hat: "머리", sash: "띠" };
+/** what an item is called in a line of text: 검 / 붓 for weapons, else its slot */
+const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ? "검" : "붓") : SLOT_NAME[it.slot]);
 const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", 일반: "c" };
 
 function itemStat(it: ItemDef, plus = 0): string {
-  return it.atk ? `공격 ${enhancedAtk(it.atk, plus)}` : it.tint ? "색 있는 장비" : SLOT_NAME[it.slot];
+  return it.atk ? `공격 ${enhancedAtk(it.atk, plus)}` : it.tint ? "색 있는 장비" : kindName(it);
+}
+
+/** "먹돌 16" / "색 조각 1" (a gacha bundle or what a duplicate turned into). */
+function grantText(g?: Grant): string {
+  if (!g) return "";
+  return [g.stones ? `먹돌 ${g.stones}` : "", g.shards ? `색 조각 ${g.shards}` : ""].filter(Boolean).join(" · ");
+}
+/** The picture for a gacha material bundle (materials.png cell: 0 먹돌, 1 색 조각, 2 파괴방지권, 3 물약). */
+const MAT_KIND: ResKind[] = ["stone", "shard", "protect", "potion"];
+function bundleIcon(id: string, size: string): string {
+  const g = GACHA_EXTRA_BY_ID[id];
+  return resIcon(MAT_KIND[g?.icon ?? 0] ?? "stone", size);
 }
 
 /** Reward chips for a quest: 경험 first, then whatever else it gives. */
@@ -69,7 +83,7 @@ export class Sheets {
   private tab = "";
   private busy = false;
   /** the last gacha pull; the reveal runs on a clock from `at`, so re-renders mid-reveal don't restart or cut it */
-  private pull: { ids: string[]; dupes: boolean[]; at: number } | null = null;
+  private pull: { pulls: GachaPull[]; at: number } | null = null;
   private readonly growthState: GrowthState = { brush: "", protect: false, stage: "" };
   /** gear sheet: the picked tile and the slot filter */
   private gearSel = "";
@@ -245,16 +259,21 @@ export class Sheets {
   private altar(p: ProfileView): string {
     const local = this.ctx.api.mode === "local";
     const head = this.head("오방 병기전", true);
-    const help = `50번째 뽑기까지 전설이 없으면 전설을 준다.\n10회 뽑기엔 희귀 이상이 하나. 중복은 안료 ${DUPE_PIGMENT}.`;
-    const bar = resBar([["jade", p.jade], ["pigment", p.pigment]], help);
+    const help = "50번째 뽑기까지 전설이 없으면 전설을 준다. 10회 뽑기엔 희귀 이상이 하나.\n가진 장비가 또 나오면 먹돌(무기)이나 색 조각(머리·띠)으로 바뀐다.";
+    const bar = resBar([["jade", p.jade], ["stone", p.stones ?? 0], ["shard", p.shards ?? 0]], help);
     if (this.tab === "odds") {
       const rates = RARITY_RATES.map((r) => `<span class="rate ${RCLS[r.r]}"><b>${r.r}</b> ${+(r.p * 100).toFixed(2)}%</span>`).join("");
-      const rows = itemOdds().map((o) => {
+      const odds = itemOdds();
+      const rows = odds.map((o) => {
         const it = ITEM[o.id];
-        return `<tr data-r="${o.r}"><td><span class="tcell">${itemIcon(it, "s")}${esc(it.name)}</span></td><td class="${RCLS[o.r]}">${o.r}</td><td>${SLOT_NAME[it.slot]}</td><td>${(o.p * 100).toFixed(3)}%</td></tr>`;
+        const pic = o.kind === "material" ? bundleIcon(o.id, "s") : it ? itemIcon(it, "s") : "";
+        const kind = o.kind === "material" ? `재료 · ${grantText(GACHA_EXTRA_BY_ID[o.id]?.grant)}` : it ? kindName(it) : "";
+        return `<tr data-r="${o.r}"><td><span class="tcell">${pic}${esc(o.name)}</span></td><td class="${RCLS[o.r]}">${o.r}</td><td>${esc(kind)}</td><td>${(o.p * 100).toFixed(3)}%</td></tr>`;
       }).join("");
-      return `${head}${bar}<div class="rates">${rates}</div><p class="cap">전설은 50번째 뽑기에 반드시. 장비 ${itemOdds().length}종의 확률:</p>
-        <div class="rate-table"><table><thead><tr><th>장비</th><th>등급</th><th>부위</th><th>확률</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      const gear = odds.filter((o) => o.kind === "item").length;
+      return `${head}${bar}<div class="rates">${rates}</div><p class="cap">${odds.length}종 · 장비 ${gear}, 재료 ${odds.length - gear}. 전설은 50번째 뽑기에 반드시.</p>
+        <div class="rate-table"><table><thead><tr><th>나오는 것</th><th>등급</th><th>종류</th><th>확률</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="cap">중복 장비는 무기면 먹돌, 머리·띠면 색 조각으로 바뀐다.</p>`;
     }
     if (this.tab === "jade") {
       const shop = JADE_PRODUCTS.map((j, k) => `<button type="button" class="shop-tile" data-do="buy" data-id="${esc(j.productId)}" ${this.busy ? "disabled" : ""}>
@@ -265,14 +284,22 @@ export class Sheets {
         <p class="mock">${local ? "오프라인(로컬) 모드: 충전은 <b>모의 결제</b>로 바로 지급, 실제 돈은 나가지 않는다. 광고도 모의 화면." : "충전은 Verse8 결제 창에서 진행된다."} 광고는 버튼을 누를 때만. 경지와 진행은 팔지 않는다.</p>`;
     }
     const left = Math.max(0, PITY - p.pity);
-    const showcase = ["w_gold", "h_goldgat", "s_gold"].map((id) => ITEM[id]).filter(Boolean).map((it) => `<span class="show"${tipAttr(it.name, `전설 ${SLOT_NAME[it.slot]}`)}>${itemIcon(it, "l")}</span>`).join("");
+    const showcase = ["w_gold", "h_goldgat", "s_gold"].map((id) => ITEM[id]).filter(Boolean).map((it) => `<span class="show"${tipAttr(it.name, `전설 ${kindName(it)}`)}>${itemIcon(it, "l")}</span>`).join("");
     const pull = this.pull;
     const age = pull ? (performance.now() - pull.at) / 1000 : 99;
-    const results = pull ? pull.ids.map((id, k) => {
-      const it = ITEM[id];
+    const results = pull ? pull.pulls.map((d, k) => {
+      const fresh = age < 4 ? " fresh" : "";
+      const delay = `--d:${(k * 0.12 - age).toFixed(2)}s`;
+      if (d.kind === "material") {
+        const what = grantText(d.grant ?? GACHA_EXTRA_BY_ID[d.id]?.grant);
+        return `<div class="rv mat${fresh}" data-r="${d.r}" style="${delay}"${tipAttr(d.name, `재료 · ${what}`)}>
+          <span class="face"><span class="pic">${bundleIcon(d.id, "l")}</span><b>${esc(d.name)}</b><small>${esc(what)}</small></span><i class="back" aria-hidden="true"></i></div>`;
+      }
+      const it = ITEM[d.id];
       if (!it) return "";
-      return `<div class="rv${age < 4 ? " fresh" : ""}" data-r="${it.r}" style="--d:${(k * 0.12 - age).toFixed(2)}s"${tipAttr(it.name, `${it.r} ${SLOT_NAME[it.slot]}`)}>
-        <span class="face">${itemIcon(it, "l")}<b>${esc(it.name)}</b><small>${pull.dupes[k] ? `중복 · 안료 ${DUPE_PIGMENT}` : "새 장비"}</small></span><i class="back" aria-hidden="true"></i></div>`;
+      const got = d.dupe ? grantText(d.grant ?? dupeGrant(it)) : "";
+      return `<div class="rv${d.dupe ? " dupe" : ""}${fresh}" data-r="${it.r}" style="${delay}"${tipAttr(it.name, `${it.r} ${kindName(it)}${d.dupe ? ` · 이미 가진 장비라 ${got}(으)로 바뀌었다` : ""}`)}>
+        <span class="face">${itemIcon(it, "l")}<b>${esc(it.name)}</b><small>${d.dupe ? "이미 가짐" : "새 장비"}</small></span>${d.dupe ? `<span class="ribbon">중복 → ${esc(got)}</span>` : ""}<i class="back" aria-hidden="true"></i></div>`;
     }).join("") : "";
     return `${head}${bar}
       <div class="banner"><div class="showcase">${showcase}</div>
@@ -281,7 +308,7 @@ export class Sheets {
         <button class="pull btn btn-lg" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>1회 뽑기</b><span class="cost">${resIcon("jade")}${fmt(COST1)}</span></button>
         <button class="pull btn btn-lg" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>10회 뽑기</b><span class="cost">${resIcon("jade")}${fmt(COST10)}</span></button>
       </div>
-      <div class="results${pull && pull.ids.length > 1 ? " ten" : ""}" aria-live="polite">${results}</div>`;
+      <div class="results${pull && pull.pulls.length > 1 ? " ten" : ""}" aria-live="polite">${results}</div>`;
   }
 
   /* ---------- 장비 ---------- */
@@ -300,14 +327,14 @@ export class Sheets {
     const tiles = list.map((it) => {
       const on = p.equip[it.slot] === it.id;
       const plus = plusOf(it);
-      return `<button type="button" class="tile${on ? " eq" : ""}${it.id === this.gearSel ? " on" : ""}" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} ${SLOT_NAME[it.slot]} · ${itemStat(it, plus)}${on ? " · 착용 중" : ""}`)}>
+      return `<button type="button" class="tile${on ? " eq" : ""}${it.id === this.gearSel ? " on" : ""}" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} ${kindName(it)} · ${itemStat(it, plus)}${on ? " · 착용 중" : ""}`)}>
         ${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}<span class="nm">${esc(it.name)}</span></button>`;
     }).join("");
     const sel = ITEM[this.gearSel];
     const selOn = sel && p.equip[sel.slot] === sel.id;
-    const detail = sel ? `<div class="gear-detail" data-r="${sel.r}">${itemIcon(sel, "l")}<div><b class="sec">${esc(sel.name)}${plusOf(sel) ? ` +${plusOf(sel)}` : ""}</b><span class="cap"><em class="${RCLS[sel.r]}">${sel.r}</em> ${SLOT_NAME[sel.slot]} · ${itemStat(sel, plusOf(sel))}</span></div>
+    const detail = sel ? `<div class="gear-detail" data-r="${sel.r}">${itemIcon(sel, "l")}<div><b class="sec">${esc(sel.name)}${plusOf(sel) ? ` +${plusOf(sel)}` : ""}</b><span class="cap"><em class="${RCLS[sel.r]}">${sel.r}</em> ${kindName(sel)} · ${itemStat(sel, plusOf(sel))}</span></div>
       ${selOn ? `<span class="qdone">착용 중</span>` : `<button class="btn" type="button" data-do="equip" data-id="${sel.id}" ${this.busy ? "disabled" : ""}>착용</button>`}</div>` : "";
-    const filters = ([["", "전체"], ["weapon", "붓"], ["hat", "머리"], ["sash", "띠"]] as [SlotId | "", string][]).map(([v, l]) =>
+    const filters = ([["", "전체"], ["weapon", "무기"], ["hat", "머리"], ["sash", "띠"]] as [SlotId | "", string][]).map(([v, l]) =>
       `<button type="button" role="radio" class="seg-b" aria-checked="${this.gearFilter === v}" data-do="gearFilter" data-v="${v}">${l}</button>`).join("");
     const nextSkill = SKILLS.find((s) => s.unlock > p.level);
     return `${this.head("장비")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["stone", p.stones ?? 0]], "새 장비는 병기 제단에서, 띠와 목도리 염색은 염색 장인에게.\n붓은 수련 › 붓 강화에서 다듬는다.")}
@@ -352,7 +379,14 @@ export class Sheets {
         const n = b.dataset.n === "10" ? 10 : 1;
         const r = await attempt(api.pullGacha(n));
         if (r) {
-          this.pull = { ids: r.ids, dupes: r.dupes, at: performance.now() };
+          // an older server answers without `pulls`: rebuild the rows from ids / dupes
+          const pulls: GachaPull[] = r.pulls ?? r.ids.map((id, k): GachaPull => {
+            const it = ITEM[id];
+            const g = GACHA_EXTRA_BY_ID[id];
+            return it ? { id, name: it.name, r: it.r, kind: "item", dupe: !!r.dupes[k], grant: r.dupes[k] ? dupeGrant(it) : undefined }
+              : { id, name: g?.name ?? id, r: g?.r ?? "일반", kind: "material", dupe: false, grant: g?.grant };
+          });
+          this.pull = { pulls, at: performance.now() };
           this.ctx.apply(r.profile);
           if (r.ids.some((id) => ITEM[id]?.r === "전설")) toast("전설 장비를 얻었다!");
         }

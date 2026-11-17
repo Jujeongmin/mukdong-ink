@@ -11,7 +11,6 @@ import { Rig } from "./rig";
 
 export const INK_TRAIL: RGB = [0.08, 0.075, 0.07];
 export const SILVER_TRAIL: RGB = [0.78, 0.83, 0.93];
-export const GOLD_TRAIL: RGB = [0.86, 0.64, 0.18];
 export const SKILL_COL: RGB[] = SKILLS.map((s) => s.color);
 
 /* ---------- ribbons (scarf, sash tails) ----------
@@ -558,29 +557,44 @@ export function inkDrop(x: number, y: number, z: number, vx: number, vy: number,
 }
 
 /* ---------- afterimage ghosts ---------- */
-interface Ghost { rig: Rig; mat: THREE.MeshBasicMaterial; life: number }
+interface Ghost { rig: Rig; mat: THREE.MeshBasicMaterial; life: number; max: number; peak: number }
 const ghosts: Ghost[] = [];
 for (let k = 0; k < 12; k++) {
   const mat = new THREE.MeshBasicMaterial({ color: 0x2a2826, transparent: true, opacity: 0, depthWrite: false });
   const rig = new Rig(mat, true);
   rig.group.visible = false;
   scene.add(rig.group);
-  ghosts.push({ rig, mat, life: 0 });
+  ghosts.push({ rig, mat, life: 0, max: 0.3, peak: 0.5 });
 }
 let ghostNext = 0;
-export function spawnGhost(src: Rig, hex: number): void {
+export function spawnGhost(src: Rig, hex: number, life = 0.3, peak = 0.5): void {
   const g = ghosts[ghostNext];
   ghostNext = (ghostNext + 1) % ghosts.length;
   g.rig.copyFrom(src);
   g.mat.color.setHex(hex);
-  g.life = 0.3;
+  g.life = life;
+  g.max = life;
+  g.peak = peak;
   g.rig.group.visible = true;
+}
+/**
+ * An ink afterimage of the figure that bleeds away (바람질주): it holds dark, thins out and runs, with a few
+ * drops falling from it as it goes.
+ */
+export function inkAfterimage(src: Rig, drops: number): void {
+  spawnGhost(src, 0x141210, 0.85, 0.92);
+  const p = src.group.position;
+  for (let k = 0; k < drops; k++) {
+    inkDrops.emit(p.x + (Math.random() - 0.5) * 0.5, 0.4 + Math.random() * 1.5, p.z + (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.6, -0.5 - Math.random(), (Math.random() - 0.5) * 0.6, 0.035 + Math.random() * 0.05, 1.1);
+  }
 }
 function updateGhosts(dt: number): void {
   for (const g of ghosts) {
     if (g.life <= 0) continue;
     g.life -= dt;
-    g.mat.opacity = Math.max(0, g.life / 0.3) * 0.5;
+    const u = Math.max(0, g.life / g.max);
+    const k = Math.min(1, u / 0.55); // holds, then thins out
+    g.mat.opacity = k * k * g.peak;
     g.rig.group.visible = g.life > 0;
   }
 }

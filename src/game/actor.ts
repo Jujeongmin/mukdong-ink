@@ -15,9 +15,10 @@ import { G, M_body, M_shadow, dyeCloth } from "./render/materials";
 import { POSE, KEYS, Rig, blend, runPose, sampleKeys, sampleMotion } from "./render/rig";
 import { HIT1, HIT2, HIT3, type MotionClip } from "./render/motion/sword";
 import {
-  BLOT_DELAY, GOLD_TRAIL, INK_TRAIL, Ribbon, SILVER_TRAIL, SKILL_COL, Trail, earthSlam, fireCrescent, inkBurst, inkDrop, inkSweep, later, ring,
-  sparks, spawnBlot, spawnGhost,
+  BLOT_DELAY, INK_TRAIL, Ribbon, SILVER_TRAIL, SKILL_COL, Trail, earthSlam, fireCrescent, inkBurst, inkDrop, inkSweep, later, ring,
+  inkAfterimage, sparks, spawnBlot, spawnGhost,
 } from "./render/fx";
+import { strokeAdd, strokeBegin, strokeEnd } from "./render/strokes";
 import type { RGB } from "./util";
 
 export type ActState =
@@ -101,6 +102,7 @@ const LOW_GUARD = Float32Array.from([0.3, -0.18, -0.2, 0.6, 0.6, 0.6, 0.5, -0.82
 const GUARD_HOLD = 4;
 const vA = new THREE.Vector3(), vB = new THREE.Vector3();
 const recPose = new Float32Array(12);
+const vC = new THREE.Vector3(), vD = new THREE.Vector3();
 let actorCount = 0;
 
 /**
@@ -143,6 +145,11 @@ export class Actor {
   private swept = false;
   private flipT = -1;
   private runPhase = 0;
+  /** the ink stroke this swing is painting (strokes.ts slot, -1 none) and whether this swing has had one */
+  private strokeId = -1;
+  private stroked = false;
+  /** 바람질주: ink afterimages left so far on this dash */
+  private windGhosts = 0;
   /** the strike being let go of: its clip keeps playing on the upper body for RECOVER while the legs run */
   private recClip: MotionClip | null = null;
   private recT = 0;
@@ -199,7 +206,8 @@ export class Actor {
     this.scarf.mesh.material = dyeCloth(look.scarfDye);
     this.scarf2.mesh.material = dyeCloth(look.scarfDye);
     this.rig.setCollar(dyeCloth(look.scarfDye));
-    this.weaponTrail = w?.trail === "gold" ? GOLD_TRAIL : INK_TRAIL;
+    // basic strokes are always warm black ink, whatever the weapon (colour belongs to the skills)
+    this.weaponTrail = INK_TRAIL;
     this.plus = look.plus ?? 0;
     this.rig.setGlow(this.plus);
   }
@@ -244,6 +252,9 @@ export class Actor {
   }
 
   private start(s: ActState): void {
+    if (this.strokeId >= 0) { strokeEnd(this.strokeId); this.strokeId = -1; }
+    this.stroked = false;
+    this.windGhosts = 0;
     this.state = s;
     this.st = 0;
     this.recW = 0;
@@ -585,7 +596,13 @@ export class Actor {
     }
   }
   private windStep(dt: number): void {
-    this.dashGhosts(dt, 0xf4f2ec, 0.022);
+    // two or three ink afterimages along the path, bleeding away (the pale wind sparks stay the colour)
+    void dt;
+    const every = this.windDur() / 2.4;
+    if (this.st >= this.windGhosts * every && this.windGhosts < 3) {
+      this.windGhosts++;
+      inkAfterimage(this.rig, this.local || !actorFx.remoteLow ? 4 : 0);
+    }
     const fx = this.fx, fz = this.fz;
     for (let n = 0; n < 4; n++) sparks.emit(this.x + (Math.random() - 0.5), 0.3 + Math.random() * 1.7, this.z + (Math.random() - 0.5), -fx * 6, 0.5, -fz * 6, 0.05 + Math.random() * 0.06, 0.35, Math.random() < 0.5 ? WHITE : SILVER_TRAIL, 3);
   }
@@ -658,6 +675,36 @@ export class Actor {
         const ex = this.x - c.x, ez = this.z - c.z, dd = Math.hypot(ex, ez), m = c.r + r;
         if (dd < m && dd > 1e-4) { this.x = c.x + (ex / dd) * m; this.z = c.z + (ez / dd) * m; }
       }
+    }
+  }
+
+  /**
+   * Paints the swing's ink stroke: from just before the blow lands to just after (the whole turn for the
+   * third hit and the air spin, which paint a bigger, heavier circle).
+   */
+  private paintStroke(s: ActState): void {
+    let t0 = -1, t1 = -1, heavy = false;
+    if (s === "atk1" || s === "atk2") { const c = ATK[s].clip; t0 = c.impact - 0.17; t1 = c.impact + 0.1; }
+    else if (s === "atk3") { const c = ATK[s].clip; t0 = c.impact - 0.32; t1 = c.impact + 0.12; heavy = true; }
+    else if (s === "airspin") { t0 = 0.03; t1 = AIRSPIN_DUR * 0.85; heavy = true; }
+    const on = t0 >= 0 && this.st >= t0 && this.st <= t1;
+    if (on) {
+      if (this.strokeId < 0 && !this.stroked) {
+        this.stroked = true;
+        this.strokeId = strokeBegin(this.x, this.z, heavy, !this.local, actorFx.remoteLow);
+      }
+      if (this.strokeId >= 0) {
+        const r = this.rig, L = r.tipLen, d3 = r.dir3;
+        const a0 = L * 0.12, a1 = L + 0.14;
+        vC.set(r.hand.x + d3.x * a0, r.hand.y + d3.y * a0, r.handZ + d3.z * a0);
+        vD.set(r.hand.x + d3.x * a1, r.hand.y + d3.y * a1, r.handZ + d3.z * a1);
+        r.inner.localToWorld(vC);
+        r.inner.localToWorld(vD);
+        strokeAdd(this.strokeId, vC, vD);
+      }
+    } else if (this.strokeId >= 0) {
+      strokeEnd(this.strokeId);
+      this.strokeId = -1;
     }
   }
 
@@ -772,7 +819,10 @@ export class Actor {
     this.shadow.scale.setScalar(0.65 * (1 - Math.min(0.5, this.y * 0.08)));
 
     const s = this.state;
-    const attacking = s !== "move" && s !== "hurt" && s !== "dead" && s !== "land" && s !== "sk4" && s !== "roll";
+    // basic swings paint ink strokes (below); the thin ribbon only follows the skills and the dash
+    const basic = s === "atk1" || s === "atk2" || s === "atk3" || s === "airspin";
+    const attacking = !basic && s !== "move" && s !== "hurt" && s !== "dead" && s !== "land" && s !== "sk4" && s !== "roll";
+    this.paintStroke(s);
     this.trail.strength = attacking ? 1 : Math.max(0, this.trail.strength - dt * 7);
     const hz = rig.handZ, L0 = rig.tipLen * 0.4, L1 = rig.tipLen + 0.03; // a wide calligraphy ribbon
     const d3 = rig.dir3;

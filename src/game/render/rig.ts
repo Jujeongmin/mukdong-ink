@@ -58,6 +58,13 @@ function collarGeometry(): THREE.BufferGeometry {
 // the back (z < 0) so from behind the bristle sits behind the head instead of standing upright like a torch.
 const CARRY = { grip: [0.24, -0.07, 0.04], d: [-0.79, 0.58, -0.21], left: [0.08, -0.6, -0.06], poleR: [0.2, -1, 0.6], poleL: [-0.6, -0.1, -0.5] };
 const GUARD = { grip: [0.32, -0.5, 0.0], d: [0.72, -0.62, -0.12], left: [0, 0, 0], poleR: [0, -0.6, 0.8], poleL: [0, -0.8, -0.6] };
+/**
+ * Swords are not shouldered: out of combat the blade hangs low in the right hand, point trailing back and down
+ * past the hip (a relaxed one-hand hold); the guard is the same low two-hand guard as the brush, the left hand
+ * just below the right on the short grip.
+ */
+const SWORD_CARRY = { grip: [0.06, -0.64, 0.1], d: [-0.62, -0.5, 0.6], left: [0.08, -0.6, -0.06], poleR: [-0.5, 0.1, 0.9], poleL: [-0.6, -0.1, -0.5] };
+type Hold = typeof CARRY;
 /** scratch: the IK pole between carry and guard (no allocation) */
 const _pole = [0, 0, 0];
 /** in the guard the left hand holds the shaft this far below the right */
@@ -194,6 +201,77 @@ function buildBrush(it: Partial<ItemDef>): { group: THREE.Group; bristle: THREE.
   return { group: g, bristle };
 }
 
+/* ---------- swords: a single-edged ink-black blade with a pale edge, an ink-painting guard and grip ----------
+   Geometry is cached per blade length / curve (SHARED, lives all session); materials are module-level or the
+   dye cache. A sword group therefore owns nothing: swapping or dropping it frees nothing. */
+const SWORD_GRIP = 0.26, SWORD_BLADE0 = 0.29;
+/** where the right hand closes on the grip, from the pommel end */
+export const SWORD_HAND = 0.17;
+const M_blade = lam(0x2c2e33), M_bladeEdge = lam(0xd2d6da), M_swordGrip = lam(0x1d1a18), M_swordWrap = lam(0x3b342d), M_swordGuard = lam(0x34312d);
+const swordGeo = new Map<string, { blade: THREE.BufferGeometry; edge: THREE.BufferGeometry; ghost: THREE.BufferGeometry }>();
+function bladeShape(len: number, curve: number, x0: number, x1: number): THREE.Shape {
+  // spine at x0, edge at x1 (across), y along the blade; a slight curve bends both toward the spine near the tip
+  const n = 12, sh = new THREE.Shape();
+  const bend = (y: number) => curve * (y / len) * (y / len) * 0.11;
+  const taper = (y: number) => 1 - 0.28 * (y / len);
+  const tipY = len - 0.14;
+  sh.moveTo(x0, 0);
+  sh.lineTo(x1, 0);
+  for (let i = 1; i <= n; i++) { const y = (tipY * i) / n; sh.lineTo(x1 * taper(y) - bend(y), y); }
+  sh.lineTo(x0 * taper(len) - bend(len) + 0.004, len); // the point: the edge sweeps up into the spine
+  for (let i = n; i >= 1; i--) { const y = (tipY * i) / n; sh.lineTo(x0 * taper(y) - bend(y), y); }
+  sh.closePath();
+  return sh;
+}
+function swordGeometry(len: number, curve: number) {
+  const key = len.toFixed(2) + "|" + curve;
+  let g = swordGeo.get(key);
+  if (!g) {
+    const blade = new THREE.ExtrudeGeometry(bladeShape(len, curve, -0.03, 0.034), { depth: 0.016, bevelEnabled: false, curveSegments: 1 }).translate(0, SWORD_BLADE0, -0.008);
+    // the pale edge: a narrow strip along the cutting edge, a hair thicker than the blade so it shows both sides
+    const edge = new THREE.ExtrudeGeometry(bladeShape(len, curve, 0.022, 0.036), { depth: 0.02, bevelEnabled: false, curveSegments: 1 }).translate(0, SWORD_BLADE0, -0.01);
+    const ghost = mergeGeometries([
+      new THREE.CylinderGeometry(0.03, 0.03, SWORD_GRIP, 6).translate(0, SWORD_GRIP / 2, 0),
+      new THREE.CylinderGeometry(0.07, 0.07, 0.02, 10).translate(0, SWORD_GRIP + 0.01, 0),
+      new THREE.BoxGeometry(0.06, len, 0.02).translate(0, SWORD_BLADE0 + len / 2, 0),
+    ])!;
+    g = { blade, edge, ghost };
+    swordGeo.set(key, g);
+  }
+  return g;
+}
+const G_swordGrip = new THREE.CylinderGeometry(0.026, 0.029, SWORD_GRIP, 8).translate(0, SWORD_GRIP / 2, 0);
+const G_swordWrap = mergeGeometries([0.05, 0.11, 0.17, 0.23].map((y) => new THREE.CylinderGeometry(0.031, 0.031, 0.016, 8).translate(0, y, 0)))!;
+const G_reedNodes = mergeGeometries([0.08, 0.19].map((y) => new THREE.CylinderGeometry(0.034, 0.034, 0.02, 8).translate(0, y, 0)))!;
+const G_pommel = new THREE.SphereGeometry(0.036, 8, 6).scale(1, 0.7, 1);
+const G_guardRound = new THREE.CylinderGeometry(0.075, 0.075, 0.018, 16).translate(0, SWORD_GRIP + 0.01, 0);
+const G_guardSquare = new THREE.BoxGeometry(0.13, 0.02, 0.11).translate(0, SWORD_GRIP + 0.01, 0);
+const G_guardCloud = mergeGeometries([[-0.06, 0.034], [0, 0.05], [0.06, 0.034]].map(([x, r]) => new THREE.SphereGeometry(r, 10, 6).scale(1, 0.32, 0.8).translate(x, SWORD_GRIP + 0.01, 0)))!;
+const G_guardCollar = new THREE.CylinderGeometry(0.036, 0.034, 0.03, 8).translate(0, SWORD_GRIP + 0.012, 0);
+const G_swordCord = new THREE.CylinderGeometry(0.006, 0.006, 0.12, 4).translate(0, -0.06, 0);
+const G_swordTassel = new THREE.ConeGeometry(0.035, 0.18, 7).rotateX(Math.PI).translate(0, -0.2, 0);
+/** curved blades: 달밤검, 칠흑검 */
+const CURVED: Record<string, number> = { w_nightblade: 1, w_voidblade: 0.6 };
+function buildSword(it: Partial<ItemDef>): THREE.Group {
+  const g = new THREE.Group();
+  const len = it.bladeLen ?? 1;
+  const geo = swordGeometry(len, CURVED[it.id ?? ""] ?? 0);
+  g.add(new THREE.Mesh(geo.blade, M_blade), new THREE.Mesh(geo.edge, M_bladeEdge));
+  g.add(new THREE.Mesh(G_swordGrip, M_swordGrip));
+  g.add(new THREE.Mesh(it.id === "w_reedblade" ? G_reedNodes : G_swordWrap, M_swordWrap));
+  g.add(new THREE.Mesh(G_pommel, M_swordGuard));
+  // accents take the item's colour on 영웅/전설 only (dyed, like cloth), sparingly: the guard (no tassel) or the tassel
+  const accent = it.tint && (it.r === "영웅" || it.r === "전설") ? dyeMat(it.tint) : null;
+  const guard = it.guard ?? "round";
+  const gGeo = guard === "round" ? G_guardRound : guard === "square" ? G_guardSquare : guard === "cloud" ? G_guardCloud : G_guardCollar;
+  g.add(new THREE.Mesh(gGeo, accent && !it.tassel ? accent : M_swordGuard));
+  if (it.tassel) {
+    g.add(new THREE.Mesh(G_swordCord, M_swordGrip));
+    g.add(new THREE.Mesh(G_swordTassel, accent ?? M_swordGuard));
+  }
+  return g;
+}
+
 const _sd = new THREE.Vector3(), _sup = new THREE.Vector3(0, 1, 0);
 /** segment between two 3D points (cylinder along +y, oriented with a quaternion) */
 function seg3(m: THREE.Object3D, ax: number, ay: number, az: number, bx: number, by: number, bz: number, r: number): void {
@@ -256,7 +334,14 @@ export class Rig {
   readonly neck = new THREE.Vector2();
   readonly waistBack = new THREE.Vector2();
   handZ = 0.37;
-  readonly weaponLen = BRUSH_LEN;
+  /** the held weapon's length from its butt end (brush or sword) */
+  weaponLen = BRUSH_LEN;
+  /** a sword is held (low one-hand carry, short grip) instead of the brush */
+  sword = false;
+  /** the out-of-combat hold (brush on the shoulder, sword low in the hand) */
+  private hold: Hold = CARRY;
+  private guardLeft = GUARD_LEFT;
+  private readonly isGhost: boolean;
   /** the brush tip's distance from the gripping hand */
   get tipLen(): number { return this.weaponLen - this.grip; }
   private glow = 0;
@@ -268,6 +353,7 @@ export class Rig {
   private hatW = 1;
 
   constructor(bodyMat: THREE.Material = M_body, ghost = false) {
+    this.isGhost = ghost;
     this.group.add(this.inner);
     this.group.scale.setScalar(FIGURE_SCALE);
     for (let i = 0; i < 12; i++) { // 10 body strokes + 2 feet
@@ -323,9 +409,23 @@ export class Rig {
 
   setWeapon(it: ItemDef | undefined): void {
     this.inner.remove(this.weapon);
-    const b = buildBrush(it ?? {});
-    this.weapon = b.group;
-    this.bristle = b.bristle;
+    this.sword = it?.kind === "sword";
+    if (this.sword) {
+      this.weapon = buildSword(it!);
+      this.bristle = null;
+      this.weaponLen = SWORD_BLADE0 + (it!.bladeLen ?? 1);
+      this.grip = SWORD_HAND;
+      this.hold = SWORD_CARRY;
+      this.guardLeft = 0.13;
+    } else {
+      const b = buildBrush(it ?? {});
+      this.weapon = b.group;
+      this.bristle = b.bristle;
+      this.weaponLen = BRUSH_LEN;
+      this.grip = 0.55; // a third of the way up the shaft
+      this.hold = CARRY;
+      this.guardLeft = GUARD_LEFT;
+    }
     this.inner.add(this.weapon);
     this.meshes[this.meshes.length - 1] = this.weapon;
     this.dressBristle();
@@ -468,14 +568,15 @@ export class Rig {
     if (st > 0) {
       const g = this.guard;
       const D = this.ikD;
-      D.set(CARRY.d[0] + (GUARD.d[0] - CARRY.d[0]) * g, CARRY.d[1] + (GUARD.d[1] - CARRY.d[1]) * g, CARRY.d[2] + (GUARD.d[2] - CARRY.d[2]) * g).normalize();
-      const gx = sx0 + CARRY.grip[0] + (GUARD.grip[0] - CARRY.grip[0]) * g;
-      const gy = sy0 + CARRY.grip[1] + (GUARD.grip[1] - CARRY.grip[1]) * g;
-      const gz = 0.18 + CARRY.grip[2] + (GUARD.grip[2] - CARRY.grip[2]) * g;
+      const C = this.hold, GL = this.guardLeft;
+      D.set(C.d[0] + (GUARD.d[0] - C.d[0]) * g, C.d[1] + (GUARD.d[1] - C.d[1]) * g, C.d[2] + (GUARD.d[2] - C.d[2]) * g).normalize();
+      const gx = sx0 + C.grip[0] + (GUARD.grip[0] - C.grip[0]) * g;
+      const gy = sy0 + C.grip[1] + (GUARD.grip[1] - C.grip[1]) * g;
+      const gz = 0.18 + C.grip[2] + (GUARD.grip[2] - C.grip[2]) * g;
       this.ikR.set(gx, gy, gz);
       // left hand: hanging loose (carry) or on the shaft below the right hand (guard)
-      const lx = sx0 + CARRY.left[0], ly = sy0 + CARRY.left[1], lz = -0.18 + CARRY.left[2];
-      const ox = gx - D.x * GUARD_LEFT, oy = gy - D.y * GUARD_LEFT, oz = gz - D.z * GUARD_LEFT;
+      const lx = sx0 + C.left[0], ly = sy0 + C.left[1], lz = -0.18 + C.left[2];
+      const ox = gx - D.x * GL, oy = gy - D.y * GL, oz = gz - D.z * GL;
       this.ikL.set(lx + (ox - lx) * g, ly + (oy - ly) * g, lz + (oz - lz) * g);
     }
     for (let side = 0; side < 2; side++) {
@@ -489,7 +590,7 @@ export class Rig {
       if (st > 0) {
         // the elbow's pole slides with the guard blend (no flip half-way between carry and guard)
         const T = side ? this.ikR : this.ikL, g = this.guard;
-        const p0 = side ? CARRY.poleR : CARRY.poleL, p1 = side ? GUARD.poleR : GUARD.poleL, pole = _pole;
+        const p0 = side ? this.hold.poleR : this.hold.poleL, p1 = side ? GUARD.poleR : GUARD.poleL, pole = _pole;
         pole[0] = p0[0] + (p1[0] - p0[0]) * g; pole[1] = p0[1] + (p1[1] - p0[1]) * g; pole[2] = p0[2] + (p1[2] - p0[2]) * g;
         solveArm(sx0, sy0, zs, T.x, T.y, T.z, LEN.ua, LEN.fa, pole);
         exx += (IK[0] - exx) * st; eyy += (IK[1] - eyy) * st; ezz += (IK[2] - ezz) * st;
@@ -577,6 +678,12 @@ export class Rig {
     this.group.scale.copy(src.group.scale);
     this.inner.position.copy(src.inner.position);
     this.inner.rotation.copy(src.inner.rotation);
+    // an afterimage of a swordsman shows a sword
+    if (this.isGhost) {
+      const w = this.weapon as THREE.Mesh;
+      const want = src.sword ? swordGeometry(src.weaponLen - SWORD_BLADE0, 0).ghost : G_brushGhost;
+      if (want && w.geometry !== want) w.geometry = want;
+    }
     for (let i = 0; i < this.meshes.length; i++) {
       const a = this.meshes[i], b = src.meshes[i];
       a.position.copy(b.position);
