@@ -53,8 +53,10 @@ function collarGeometry(): THREE.BufferGeometry {
  * grip/left are offsets from the right/left shoulder in the figure's frame (x forward, y up, z right);
  * d is the shaft's direction from the grip toward the bristle; poles hint where the elbows point.
  */
-// d leans across the back (z < 0) so from behind the bristle sits behind the head, not upright beside it like a torch
-const CARRY = { grip: [0.2, -0.2, 0.05], d: [-0.76, 0.5, -0.4], left: [0.08, -0.6, -0.06], poleR: [0.2, -1, 0.6], poleL: [-0.6, -0.1, -0.5] };
+// The shaft RESTS ON TOP of the right shoulder: the grip sits 0.3 along the shaft in front of/below the
+// shoulder-top contact point (0, +0.1, -0.02), so the line clears the shoulder and neck. d leans a little across
+// the back (z < 0) so from behind the bristle sits behind the head instead of standing upright like a torch.
+const CARRY = { grip: [0.24, -0.07, 0.04], d: [-0.79, 0.58, -0.21], left: [0.08, -0.6, -0.06], poleR: [0.2, -1, 0.6], poleL: [-0.6, -0.1, -0.5] };
 const GUARD = { grip: [0.32, -0.5, 0.0], d: [0.72, -0.62, -0.12], left: [0, 0, 0], poleR: [0, -0.6, 0.8], poleL: [0, -0.8, -0.6] };
 /** in the guard the left hand holds the shaft this far below the right */
 const GUARD_LEFT = 0.42;
