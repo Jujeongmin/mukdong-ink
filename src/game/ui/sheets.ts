@@ -1,19 +1,22 @@
 // NPC sheets (먹노인 quests, 염색 장인 dyes + potions, 병기 제단 gacha) and the gear sheet.
 // Everything goes through GameApi and the screen refreshes from the returned ProfileView.
+// One component language (ui-sheets.css): a resource bar of icon chips on top with a "?" tablet, picture
+// tiles in rarity frames, cost chips, one big primary tablet per screen, captions instead of paragraphs.
 
 import {
-  AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, type Npc,
+  AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, type Npc, type QuestDef,
 } from "../../shared/world";
 import {
   COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, ITEMS, PITY, RARITY_RATES, itemOdds, type ItemDef,
 } from "../../shared/items";
+import { enhancedAtk } from "../../shared/growth";
 import { POTION_COST, SKILLS } from "../../shared/combat";
 import type { SlotId } from "../../shared/types";
 import type { GameApi, ProfileView } from "../../net/api";
 import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../quests";
 import { fmt, hexCss } from "../util";
-import { attempt, el, esc, itemIcon, toast } from "./dom";
-import { enhanceHtml, growthAction, skillsHtml, type GrowthState } from "./growth";
+import { attempt, el, esc, itemIcon, resBar, resChip, resIcon, tipAttr, toast, type ResKind } from "./dom";
+import { enhanceHtml, growthAction, growthLocal, skillsHtml, type GrowthState } from "./growth";
 import { audio } from "../audio";
 import { SETTINGS_TABS, bindSettings, settingsHtml, type SettingsCtx } from "./settings";
 
@@ -39,8 +42,15 @@ type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings";
 const SLOT_NAME: Record<SlotId, string> = { weapon: "붓", hat: "머리", sash: "띠" };
 const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", 일반: "c" };
 
-function itemStat(it: ItemDef): string {
-  return it.atk ? `공격 ${it.atk}` : it.tint ? "색 있는 장비" : SLOT_NAME[it.slot];
+function itemStat(it: ItemDef, plus = 0): string {
+  return it.atk ? `공격 ${enhancedAtk(it.atk, plus)}` : it.tint ? "색 있는 장비" : SLOT_NAME[it.slot];
+}
+
+/** Reward chips for a quest: 경험 first, then whatever else it gives. */
+function rewardChips(q: QuestDef): string {
+  const r = q.reward;
+  const list: [ResKind, number | undefined][] = [["exp", r.exp], ["pigment", r.pigment], ["jade", r.jade], ["potion", r.potions], ["stone", r.stones], ["shard", r.shards], ["protect", r.protects], ["points", r.points]];
+  return `<span class="chips">${list.filter(([, n]) => n).map(([k, n]) => resChip(k, n as number)).join("")}</span>`;
 }
 
 const TABS: Partial<Record<SheetId, [string, string][]>> = {
@@ -58,8 +68,12 @@ export class Sheets {
   current: SheetId | null = null;
   private tab = "";
   private busy = false;
-  private lastPull = "";
+  /** the last gacha pull; the reveal runs on a clock from `at`, so re-renders mid-reveal don't restart or cut it */
+  private pull: { ids: string[]; dupes: boolean[]; at: number } | null = null;
   private readonly growthState: GrowthState = { brush: "", protect: false, stage: "" };
+  /** gear sheet: the picked tile and the slot filter */
+  private gearSel = "";
+  private gearFilter: SlotId | "" = "";
   /** the first-open line stays while that tab stays open */
   private firstNote = "";
   private firstTab = "";
@@ -82,22 +96,30 @@ export class Sheets {
   }
 
   /** Opens an NPC's own sheet (the conversation itself happens in story.ts). */
-  openNpc(n: Npc, tab?: string): void {
-    this.lastPull = "";
+  openNpc(n: Pick<Npc, "role">, tab?: string): void {
+    this.pull = null;
     if (n.role !== "elder" && n.role !== "dyer" && n.role !== "altar") return;
     this.show(n.role, tab);
   }
 
-  openGrowth(tab?: "skills" | "enhance"): void {
+  openGrowth(tab?: "skills" | "enhance", focus?: GrowthState["focus"]): void {
+    this.growthState.focus = focus;
     if (this.current === "growth") { this.close(); return; }
-    this.growthState.brush = this.ctx.profile().equip.weapon;
+    const p = this.ctx.profile();
+    this.growthState.brush = p.equip.weapon;
     this.growthState.stage = "";
+    this.growthState.detail = focus === "awaken1" ? true : undefined;
+    this.growthState.slide = focus === "awaken1";
+    if (focus === "awaken1") this.growthState.skill = 1;
     this.show("growth", tab);
     if (tab === "enhance") this.card.querySelector('[data-tab="enhance"]')?.classList.add("hint-glow");
+    // gate 9: the odds table sits under the stage; bring the highlighted rows into view
+    if (focus === "odds") this.card.querySelector(".rate-detail tr.focus")?.scrollIntoView({ block: "center" });
   }
 
   openGear(): void {
     if (this.current === "gear") { this.close(); return; }
+    this.gearSel = "";
     this.show("gear");
   }
 
@@ -106,12 +128,14 @@ export class Sheets {
     this.current = id;
     this.tab = tab ?? TABS[id]?.[0][0] ?? "";
     this.wrap.hidden = false;
+    this.wrap.dataset.kind = id;
     this.render();
     this.card.querySelector<HTMLElement>("[data-close]")?.focus();
   }
 
   close(): void {
     this.current = null;
+    this.growthState.focus = undefined;
     this.wrap.hidden = true;
     this.card.innerHTML = "";
   }
@@ -140,8 +164,10 @@ export class Sheets {
       } else if (this.firstNote && this.firstTab === this.tab) intro = this.firstNote;
       this.firstTab = this.tab;
       if (!intro) this.firstNote = "";
-      html = this.head("수련") + intro + (this.tab === "enhance" ? enhanceHtml(p, this.growthState, this.busy) : skillsHtml(p, this.busy));
+      html = this.head("수련") + intro + (this.tab === "enhance" ? enhanceHtml(p, this.growthState, this.busy) : skillsHtml(p, this.busy, this.growthState));
+      this.growthState.slide = false;
     }
+    this.card.dataset.tab = this.tab;
     const scroll = this.card.scrollTop;
     this.card.innerHTML = html;
     this.card.scrollTop = scroll;
@@ -172,89 +198,126 @@ export class Sheets {
     else if (s && s.q.goal.type === "kill") say = `${ZONES[s.q.goal.zone ?? ""]?.name ?? "들판"}으로 가 보거라. 먹이 짙어지고 있다.`;
     else if (s && s.q.goal.type === "dye") say = "염색 장인을 찾아가 보거라. 색을 입은 붓잡이는 멀리서도 보인단다.";
     else if (!s) say = "이제 내가 가르칠 것은 없구나. 날마다 들러 일을 도와다오.";
+    const bar = resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]]);
     if (this.tab === "daily") {
       const daily = DAILY_QUESTS.map((_, i) => {
         const d = dailyStatus(p, i);
-        const label = d.claimed ? "받음" : d.done ? "보상 받기" : `${d.prog} / ${d.target}`;
-        return `<div class="qitem${d.claimed ? " claimed" : ""}"><div><b>${esc(d.q.title)}</b><small>${esc(d.q.text)}</small><span class="reward">${rewardText(d.q)}</span></div>
-          <button class="btn btn-sm" type="button" data-do="claimDaily" data-i="${i}" ${d.done && !d.claimed && !this.busy ? "" : "disabled"}>${label}</button></div>`;
+        const f = d.target > 0 ? Math.min(1, d.prog / d.target) : 0;
+        const btn = d.claimed ? `<span class="qdone">받음</span>`
+          : d.done ? `<button class="btn btn-sm" type="button" data-do="claimDaily" data-i="${i}" ${this.busy ? "disabled" : ""}>보상 받기</button>` : `<span class="qdone">진행 중</span>`;
+        return `<li class="qrow${d.claimed ? " claimed" : d.done ? " ready" : ""}">
+          <div class="qmain"><b class="sec">${esc(d.q.title)}</b><span class="qprog"><i class="bar" style="--f:${f.toFixed(3)}" aria-hidden="true"></i><small>${d.prog} / ${d.target}</small></span>${rewardChips(d.q)}</div>${btn}</li>`;
       }).join("");
-      return `${this.head("먹노인")}<p class="sub">하루에 한 번씩 새로 맡깁니다.</p><div class="qlist">${daily}</div>`;
+      return `${this.head("먹노인")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], "하루에 한 번씩 새로 맡긴다.\n다 하면 여기서 보상을 받는다.")}<ol class="qrows">${daily}</ol>`;
     }
-    let main = `<p class="sub">이어지는 의뢰가 없습니다.</p>`;
+    let main = `<p class="cap">이어지는 의뢰가 없다.</p>`;
     if (s) {
-      main = `<div class="qitem"><div><b>${esc(s.q.title)}</b><small>${esc(s.q.text)}</small><small>진행 ${progressText(s)}</small><span class="reward">${rewardText(s.q)}</span></div>
-        <span class="qstate">${!s.accepted ? "아직 받지 않음" : s.done ? `${esc(npcName(s.q.turnIn))}에게 알리기` : "진행 중"}</span></div>`;
+      const state = !s.accepted ? "아직 받지 않음" : s.done ? `${npcName(s.q.turnIn)}에게 알리기` : "진행 중";
+      main = `<div class="qrow big${s.done ? " ready" : ""}"><div class="qmain"><b class="sec">${esc(s.q.title)}</b><p class="body">${esc(s.q.text)}</p>
+        <span class="cap">진행 ${esc(progressText(s))} · ${esc(state)}</span>${rewardChips(s.q)}</div></div>`;
     }
-    return `${this.head("먹노인")}<p class="say">${esc(say)}</p>${main}`;
+    return `${this.head("먹노인")}${bar}<p class="say">${esc(say)}</p>${main}`;
   }
 
   /* ---------- 염색 장인 ---------- */
   private dyer(p: ProfileView): string {
     if (this.tab === "potion") {
-      const pot = [1, 5, 10].map((n) => `<button type="button" data-do="potion" data-n="${n}" ${p.pigment < n * POTION_COST || this.busy ? "disabled" : ""}><b>물약 ${n}개</b><small>안료 ${fmt(n * POTION_COST)}</small></button>`).join("");
-      return `${this.head("염색 장인")}<p class="sub">물약은 생명을 크게 채웁니다. 지금 ${p.potions}개, 안료 ${fmt(p.pigment)}.</p><div class="shop">${pot}</div>`;
+      const pot = [1, 5, 10].map((n) => {
+        const cost = n * POTION_COST;
+        return `<button type="button" class="shop-tile" data-do="potion" data-n="${n}" ${p.pigment < cost || this.busy ? "disabled" : ""}>
+          <span class="pic">${resIcon("potion", "xl")}${n > 1 ? `<b class="count">×${n}</b>` : ""}</span><b class="sec">물약 ${n}개</b>${resChip("pigment", cost, { need: true, short: p.pigment < cost })}</button>`;
+      }).join("");
+      return `${this.head("염색 장인")}${resBar([["potion", p.potions], ["pigment", p.pigment]], "물약은 생명을 크게 채운다.\nQ 키나 박 그림을 눌러 마신다.")}<div class="shop-tiles">${pot}</div>`;
     }
     const sw = (key: "sash" | "scarf") =>
       DYES.map((d, k) => {
         const on = p.dye[key] === d.hex;
         const poor = d.hex != null && p.pigment < DYE_COST;
-        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}" title="${esc(d.name)}" aria-label="${esc(d.name)}${on ? " (지금 색)" : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(d.name)}</span></button>`;
+        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}"${tipAttr(d.name, on ? "지금 색" : d.hex == null ? "먹빛으로 되돌린다" : `안료 ${DYE_COST}`)} aria-label="${esc(d.name)}${on ? " (지금 색)" : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(d.name)}</span></button>`;
       }).join("");
-    return `${this.head("염색 장인")}<p class="say">색을 들이면 먹빛 세상에서도 네 색이 남는다. 같이 싸우는 이들 눈에도 보이지.</p>
-      <p class="sub">한 번 물들이는 데 안료 ${DYE_COST}. 가진 안료 ${fmt(p.pigment)}.</p>
-      <div class="dye-row"><span>허리띠</span><div class="swatches">${sw("sash")}</div></div>
-      <div class="dye-row"><span>목도리</span><div class="swatches">${sw("scarf")}</div></div>`;
+    return `${this.head("염색 장인")}${resBar([["pigment", p.pigment]], "색을 들이면 먹빛 세상에서도 네 색이 남는다.\n같이 싸우는 이들 눈에도 보인다.")}
+      <div class="dye-cost"><span class="cap">한 번 물들이는 데</span>${resChip("pigment", DYE_COST, { need: true, short: p.pigment < DYE_COST })}</div>
+      <div class="dye-row"><span class="sec">허리띠</span><div class="swatches">${sw("sash")}</div></div>
+      <div class="dye-row"><span class="sec">목도리</span><div class="swatches">${sw("scarf")}</div></div>`;
   }
 
   /* ---------- 병기 제단 ---------- */
   private altar(p: ProfileView): string {
     const local = this.ctx.api.mode === "local";
     const head = this.head("오방 병기전", true);
+    const help = `50번째 뽑기까지 전설이 없으면 전설을 준다.\n10회 뽑기엔 희귀 이상이 하나. 중복은 안료 ${DUPE_PIGMENT}.`;
+    const bar = resBar([["jade", p.jade], ["pigment", p.pigment]], help);
     if (this.tab === "odds") {
-      const rates = RARITY_RATES.map((r) => `<i class="${RCLS[r.r]}">${r.r} ${+(r.p * 100).toFixed(2)}%</i>`).join("");
+      const rates = RARITY_RATES.map((r) => `<span class="rate ${RCLS[r.r]}"><b>${r.r}</b> ${+(r.p * 100).toFixed(2)}%</span>`).join("");
       const rows = itemOdds().map((o) => {
         const it = ITEM[o.id];
-        return `<tr><td>${o.r}</td><td>${esc(it.name)}</td><td>${SLOT_NAME[it.slot]}</td><td>${(o.p * 100).toFixed(3)}%</td></tr>`;
+        return `<tr data-r="${o.r}"><td><span class="tcell">${itemIcon(it, "s")}${esc(it.name)}</span></td><td class="${RCLS[o.r]}">${o.r}</td><td>${SLOT_NAME[it.slot]}</td><td>${(o.p * 100).toFixed(3)}%</td></tr>`;
       }).join("");
-      return `${head}<div class="rates">${rates}</div><p class="sub">50번째 뽑기까지 전설이 없으면 전설을 줍니다. 10회 뽑기에는 희귀 이상이 하나 들어 있습니다. 장비 ${itemOdds().length}종의 확률은 아래와 같습니다.</p>
-        <div class="rate-table"><table><thead><tr><th>등급</th><th>장비</th><th>부위</th><th>확률</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      return `${head}${bar}<div class="rates">${rates}</div><p class="cap">전설은 50번째 뽑기에 반드시. 장비 ${itemOdds().length}종의 확률:</p>
+        <div class="rate-table"><table><thead><tr><th>장비</th><th>등급</th><th>부위</th><th>확률</th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
     if (this.tab === "jade") {
-      const shop = JADE_PRODUCTS.map((j) => `<button type="button" data-do="buy" data-id="${esc(j.productId)}" ${this.busy ? "disabled" : ""}><b>${esc(j.label)}</b><small>${local ? "모의 결제, 바로 지급" : "결제 창이 열립니다"}</small></button>`).join("");
-      return `${head}<p class="sub">가진 묵옥 ${fmt(p.jade)}</p>
-        <div class="row"><button class="ghost-btn btn btn-secondary btn-sm" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>광고 보고 묵옥 ${AD_REWARD_JADE} 받기 (오늘 ${Math.max(0, p.adsLeft)}/${AD_DAILY})</button></div>
-        <div class="shop">${shop}</div>
-        <p class="mock">${local ? "지금은 오프라인(로컬) 모드라 충전은 <b>모의 결제</b>로 바로 지급되고 실제 돈은 나가지 않습니다. 광고도 모의 화면입니다." : "충전은 Verse8 결제 창에서 진행됩니다."} 광고는 버튼을 누를 때만 나옵니다. 경지와 진행은 팔지 않습니다.</p>`;
+      const shop = JADE_PRODUCTS.map((j, k) => `<button type="button" class="shop-tile" data-do="buy" data-id="${esc(j.productId)}" ${this.busy ? "disabled" : ""}>
+        <span class="pic jade-pile n${k + 1}">${resIcon("jade", "xl")}</span><b class="sec">${esc(j.label)}</b><small class="cap">${local ? "모의 결제" : "결제 창"}</small></button>`).join("");
+      return `${head}${bar}
+        <div class="ad-row"><button class="btn btn-secondary" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>광고 보고 ${resIcon("jade")} ${AD_REWARD_JADE}</button><span class="cap">오늘 ${Math.max(0, p.adsLeft)} / ${AD_DAILY}</span></div>
+        <div class="shop-tiles">${shop}</div>
+        <p class="mock">${local ? "오프라인(로컬) 모드: 충전은 <b>모의 결제</b>로 바로 지급, 실제 돈은 나가지 않는다. 광고도 모의 화면." : "충전은 Verse8 결제 창에서 진행된다."} 광고는 버튼을 누를 때만. 경지와 진행은 팔지 않는다.</p>`;
     }
     const left = Math.max(0, PITY - p.pity);
-    return `${head}
-      <div class="banner-art"><b>붓과 갓과 띠를 내리는 제단</b>
-        <div class="pity">전설까지 <b>${left}</b>번 남았습니다. 중복은 안료 ${DUPE_PIGMENT}로 바뀝니다.</div></div>
+    const showcase = ["w_gold", "h_goldgat", "s_gold"].map((id) => ITEM[id]).filter(Boolean).map((it) => `<span class="show"${tipAttr(it.name, `전설 ${SLOT_NAME[it.slot]}`)}>${itemIcon(it, "l")}</span>`).join("");
+    const pull = this.pull;
+    const age = pull ? (performance.now() - pull.at) / 1000 : 99;
+    const results = pull ? pull.ids.map((id, k) => {
+      const it = ITEM[id];
+      if (!it) return "";
+      return `<div class="rv${age < 4 ? " fresh" : ""}" data-r="${it.r}" style="--d:${(k * 0.12 - age).toFixed(2)}s"${tipAttr(it.name, `${it.r} ${SLOT_NAME[it.slot]}`)}>
+        <span class="face">${itemIcon(it, "l")}<b>${esc(it.name)}</b><small>${pull.dupes[k] ? `중복 · 안료 ${DUPE_PIGMENT}` : "새 장비"}</small></span><i class="back" aria-hidden="true"></i></div>`;
+    }).join("") : "";
+    return `${head}${bar}
+      <div class="banner"><div class="showcase">${showcase}</div>
+        <div class="pity"><span class="cap">전설까지</span><b>${left}</b><span class="cap">번</span><i class="bar" style="--f:${(p.pity / PITY).toFixed(3)}" aria-hidden="true"></i></div></div>
       <div class="pull-row">
-        <button class="pull btn" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>1회 뽑기</b><span>묵옥 ${fmt(COST1)}</span></button>
-        <button class="pull btn" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>10회 뽑기</b><span>묵옥 ${fmt(COST10)}</span></button>
+        <button class="pull btn btn-lg" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>1회 뽑기</b><span class="cost">${resIcon("jade")}${fmt(COST1)}</span></button>
+        <button class="pull btn btn-lg" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>10회 뽑기</b><span class="cost">${resIcon("jade")}${fmt(COST10)}</span></button>
       </div>
-      <div class="results" aria-live="polite">${this.lastPull}</div>`;
+      <div class="results${pull && pull.ids.length > 1 ? " ten" : ""}" aria-live="polite">${results}</div>`;
   }
 
   /* ---------- 장비 ---------- */
   private gear(p: ProfileView): string {
+    const plusOf = (it: ItemDef) => (it.slot === "weapon" ? p.enh?.[it.id] ?? 0 : 0);
     const slots = (["weapon", "hat", "sash"] as SlotId[]).map((s) => {
       const it = ITEM[p.equip[s]];
-      if (!it) return `<div class="slot"><div><span>${SLOT_NAME[s]}</span><b>없음</b></div></div>`;
-      return `<div class="slot">${itemIcon(it)}<div><span>${SLOT_NAME[s]}</span><b>${esc(it.name)}</b><span>${it.r} ${itemStat(it)}</span></div></div>`;
+      if (!it) return `<div class="eqslot empty"><span class="cap">${SLOT_NAME[s]}</span><b>없음</b></div>`;
+      const plus = plusOf(it);
+      return `<button type="button" class="eqslot" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"><span class="pic">${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}</span><span class="cap">${SLOT_NAME[s]}</span><b>${esc(it.name)}</b><small class="${RCLS[it.r]}">${it.r} · ${itemStat(it, plus)}</small></button>`;
     }).join("");
     const owned = new Set(p.owned);
-    const inv = ITEMS.filter((i) => owned.has(i.id)).map((it) => {
+    const mine = ITEMS.filter((i) => owned.has(i.id));
+    if (!ITEM[this.gearSel] || !owned.has(this.gearSel)) this.gearSel = p.equip.weapon;
+    const list = mine.filter((i) => !this.gearFilter || i.slot === this.gearFilter);
+    const tiles = list.map((it) => {
       const on = p.equip[it.slot] === it.id;
-      return `<button type="button" class="item${on ? " on" : ""}" data-do="equip" data-id="${it.id}" data-r="${it.r}" ${this.busy ? "disabled" : ""}><span class="g">${itemIcon(it)}</span><b>${esc(it.name)}</b><small>${on ? "착용 중" : `${it.r} ${itemStat(it)}`}</small></button>`;
+      const plus = plusOf(it);
+      return `<button type="button" class="tile${on ? " eq" : ""}${it.id === this.gearSel ? " on" : ""}" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} ${SLOT_NAME[it.slot]} · ${itemStat(it, plus)}${on ? " · 착용 중" : ""}`)}>
+        ${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}<span class="nm">${esc(it.name)}</span></button>`;
     }).join("");
+    const sel = ITEM[this.gearSel];
+    const selOn = sel && p.equip[sel.slot] === sel.id;
+    const detail = sel ? `<div class="gear-detail" data-r="${sel.r}">${itemIcon(sel, "l")}<div><b class="sec">${esc(sel.name)}${plusOf(sel) ? ` +${plusOf(sel)}` : ""}</b><span class="cap"><em class="${RCLS[sel.r]}">${sel.r}</em> ${SLOT_NAME[sel.slot]} · ${itemStat(sel, plusOf(sel))}</span></div>
+      ${selOn ? `<span class="qdone">착용 중</span>` : `<button class="btn" type="button" data-do="equip" data-id="${sel.id}" ${this.busy ? "disabled" : ""}>착용</button>`}</div>` : "";
+    const filters = ([["", "전체"], ["weapon", "붓"], ["hat", "머리"], ["sash", "띠"]] as [SlotId | "", string][]).map(([v, l]) =>
+      `<button type="button" role="radio" class="seg-b" aria-checked="${this.gearFilter === v}" data-do="gearFilter" data-v="${v}">${l}</button>`).join("");
     const nextSkill = SKILLS.find((s) => s.unlock > p.level);
-    return `${this.head("장비")}<div class="slots">${slots}</div>
-      <p class="sub">공격력 ${p.atk}, 생명 ${p.maxHp}.${nextSkill ? ` ${esc(nextSkill.name)}은 ${nextSkill.unlock}경지에 익힙니다.` : ""}</p>
-      <h3>가진 장비 <small>${owned.size}/${ITEMS.length}, 눌러서 착용</small></h3><div class="inv">${inv}</div>
-      <p class="mock">띠와 목도리 염색은 마을의 염색 장인에게, 새 장비는 병기 제단에서 얻습니다.</p>`;
+    return `${this.head("장비")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["stone", p.stones ?? 0]], "새 장비는 병기 제단에서, 띠와 목도리 염색은 염색 장인에게.\n붓은 수련 › 붓 강화에서 다듬는다.")}
+      <div class="gear2">
+        <div class="gear2-eq"><h4 class="sec">착용</h4><div class="eqslots">${slots}</div>
+          <p class="stats"><span${tipAttr("공격력", "붓과 경지로 오른다.")}><small>공격</small><b>${p.atk}</b></span><span${tipAttr("생명", "경지가 오를수록 늘어난다.")}><small>생명</small><b>${p.maxHp}</b></span></p>
+          ${nextSkill ? `<p class="cap">${esc(nextSkill.name)} · Lv ${nextSkill.unlock}에 열림</p>` : ""}</div>
+        <div class="gear2-inv"><div class="inv-head"><h4 class="sec">가진 장비 <small>${owned.size} / ${ITEMS.length}</small></h4><div class="seg" role="radiogroup" aria-label="부위">${filters}</div></div>
+          <div class="tiles">${tiles}</div>${detail}</div>
+      </div>`;
   }
 
   /* ---------- actions ---------- */
@@ -262,11 +325,17 @@ export class Sheets {
     if (this.busy) return;
     const api = this.ctx.api;
     const what = b.dataset.do;
+    // selection only: no server call, no busy flicker
+    if (what && growthLocal(what, b, this.growthState)) { this.render(); return; }
+    if (what === "pickGear") { this.gearSel = b.dataset.id ?? ""; this.render(); return; }
+    if (what === "gearFilter") { this.gearFilter = (b.dataset.v ?? "") as SlotId | ""; this.render(); return; }
     this.busy = true;
     this.render();
     try {
       if (what && (await growthAction(what, b, api, this.ctx.profile(), this.growthState, this.ctx.apply, () => { if (this.current) this.render(); }))) {
-        // handled by the growth sheet
+        // handled by the growth sheet; gate 9b: the first failure while 잿불귀 waits teaches that only stones are lost
+        const ms = mainStatus(this.ctx.profile());
+        if (what === "enhance" && this.growthState.stage === "fail" && ms?.accepted && ms.q.id === "c2q10") this.ctx.hint?.("gate9b", "먹돌만 날아갔다. 붓은 멀쩡하다.");
       } else if (what === "claimDaily") {
         const i = Number(b.dataset.i);
         const p = await attempt(api.claimDaily(i));
@@ -283,11 +352,7 @@ export class Sheets {
         const n = b.dataset.n === "10" ? 10 : 1;
         const r = await attempt(api.pullGacha(n));
         if (r) {
-          this.lastPull = r.ids.map((id, k) => {
-            const it = ITEM[id];
-            if (!it) return "";
-            return `<div class="card" data-r="${it.r}" style="animation-delay:${k * 0.07}s">${itemIcon(it)}<b>${esc(it.name)}</b><small>${it.r}${r.dupes[k] ? ` · 중복 → 안료 ${DUPE_PIGMENT}` : " · 새 장비"}</small></div>`;
-          }).join("");
+          this.pull = { ids: r.ids, dupes: r.dupes, at: performance.now() };
           this.ctx.apply(r.profile);
           if (r.ids.some((id) => ITEM[id]?.r === "전설")) toast("전설 장비를 얻었다!");
         }

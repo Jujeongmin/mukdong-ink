@@ -21,6 +21,13 @@ export const DROPS: Record<string, { stone: [number, number]; shard: [number, nu
   bigblob: { stone: [0.5, 1], shard: [0, 0] },
   shadelord: { stone: [1, 2], shard: [0.3, 1] },
   vine: { stone: [0, 0], shard: [0, 0] },
+  // 2장 「불빛 조각」
+  jar: { stone: [0.3, 1], shard: [0.02, 1] },
+  crow: { stone: [0.25, 1], shard: [0.03, 1] },
+  shademonk: { stone: [0.35, 1], shard: [0.05, 1] },
+  lantern: { stone: [0.6, 2], shard: [0.06, 1] },
+  kilnlord: { stone: [1, 3], shard: [0.5, 1] },
+  ashboss: { stone: [1, 14], shard: [1, 4] },
 };
 
 /* ---------- skill training (오방 검법 단련) ---------- */

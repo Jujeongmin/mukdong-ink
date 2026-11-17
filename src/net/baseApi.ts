@@ -4,7 +4,7 @@
 
 import type { Pose, RoomPlayer } from "../shared/types";
 import type { AttackReq, EnhanceResult, GachaResult, GameApi, HitResult, ProfileView, RoomView, SkillReq, ZoneEntry } from "./api";
-import { readChatLines, type ChatMessage } from "../shared/chat";
+import { readChatLine, type ChatMessage } from "../shared/chat";
 import { sleep } from "./errors";
 import { membersOf, playersOf, profileOf, roomViewOf } from "./feed";
 import { PoseThrottle } from "./poseThrottle";
@@ -156,6 +156,8 @@ export abstract class BaseGameApi implements GameApi {
 
   private listen(roomId: string): void {
     this.unlisten();
+    // Chat is live only: a new room starts with nothing remembered.
+    this.chatSeen.clear();
     this.members = null;
     this.users = [];
     this.roomOff = this.need().watchRoom(
@@ -166,13 +168,15 @@ export abstract class BaseGameApi implements GameApi {
         this.lastRoom = view;
         for (const cb of this.roomCbs) cb(view);
         this.pushPlayers();
-        this.pushChat(readChatLines(state.chat));
       },
       (users) => {
         this.users = users;
         this.pushPlayers();
       },
-      (line) => this.pushChat(readChatLines([line])),
+      (raw) => {
+        const line = readChatLine(raw);
+        if (line) this.pushChat([line]);
+      },
     );
   }
 
@@ -182,9 +186,9 @@ export abstract class BaseGameApi implements GameApi {
       this.chatSeen.add(line.id);
       for (const cb of this.chatCbs) cb(line);
     }
-    // Remember only so many ids (the room keeps 30 lines).
-    if (this.chatSeen.size > 300) {
-      const keep = [...this.chatSeen].slice(-150);
+    // Ids are kept only to drop the second copy of your own line (the answer and the broadcast): a few will do.
+    if (this.chatSeen.size > 64) {
+      const keep = [...this.chatSeen].slice(-16);
       this.chatSeen.clear();
       for (const id of keep) this.chatSeen.add(id);
     }

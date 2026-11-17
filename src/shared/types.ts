@@ -64,6 +64,8 @@ export interface Profile {
   /** brush enhancement level per owned weapon id */
   enh: Record<string, number>;
   main: number; // index into MAIN_QUESTS
+  /** quest-list version the `main` index belongs to (see QUEST_VERSION in profile.ts) */
+  qv: number;
   /** the current main quest was accepted from its giver; progress only counts once accepted */
   mainAccepted: boolean;
   mainProgress: number;

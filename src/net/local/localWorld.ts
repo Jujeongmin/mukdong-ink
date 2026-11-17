@@ -354,6 +354,13 @@ export class LocalWorld {
     };
     return {
       getRoomState: async () => this.roomState(here().roomId),
+      clearRoomState: async (fields?: string[]) => {
+        const { room } = here();
+        if (fields === undefined) room.state = {};
+        else for (const f of fields) delete room.state[f];
+        this.dirtyRooms.add(roomId!);
+        return copy(room.state);
+      },
       updateRoomState: async (patch: Json) => {
         const { room } = here();
         merge(room.state, patch);

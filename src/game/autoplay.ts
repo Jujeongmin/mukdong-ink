@@ -11,6 +11,7 @@ import type { Actor } from "./actor";
 import type { MView } from "./monsters";
 import { mainStatus, readyByTalk } from "./quests";
 import { overlay } from "./render/gfx";
+import { gameSettings } from "./ui/settings";
 
 export interface AutoSettings {
   skills: boolean[];
@@ -70,9 +71,7 @@ export class AutoPlay {
   private anchorZ = 0;
   private target: MView | null = null;
   private tick = 0;
-  private skillTick = 0;
   private castAimUntil = 0;
-  private potionAt = 0;
   /* ---------- auto-travel ---------- */
   traveling = false;
   private goal: Goal | null = null;
@@ -97,6 +96,8 @@ export class AutoPlay {
     try {
       const raw = window.localStorage.getItem(this.settingsKey);
       if (raw) this.settings = { ...this.settings, ...(JSON.parse(raw) as Partial<AutoSettings>) };
+      // the potion choice now lives in the general settings (one source of truth): carry the old one over once
+      if (raw && !gameSettings.hasPotion) { gameSettings.set({ autoPotion: this.settings.potion, potionAt: this.settings.threshold }); gameSettings.hasPotion = true; }
     } catch {
       // defaults
     }
@@ -119,27 +120,6 @@ export class AutoPlay {
     if (performance.now() < this.castAimUntil) return Math.atan2(-(t.z - z), t.x - x);
     if (!this.on || !this.active()) return null;
     return Math.atan2(-(t.z - z), t.x - x);
-  }
-
-  /** Manual play: when something is in reach and a skill is ready (and enabled), it fires by itself. ~5 Hz. */
-  manualSkills(dt: number): void {
-    this.skillTick -= dt;
-    if (this.skillTick > 0) return;
-    this.skillTick = 0.2;
-    const pl = this.ctx.player();
-    if (pl.state !== "move" && !pl.state.startsWith("atk")) return;
-    let best: MView | null = null, bd = 9.5;
-    for (const v of this.ctx.monsters().values()) {
-      if (v.mode === "dead" || v.drop > 0) continue;
-      const d = Math.hypot(v.x - pl.x, v.z - pl.z) - v.def.radius;
-      if (d < bd) { bd = d; best = v; }
-    }
-    if (!best) return;
-    // things only certain techniques can hurt get only those techniques
-    if (this.fireSkill(pl, bd, best.def.skillOnly ? best.def.weakTo : undefined)) {
-      this.target = best;
-      this.castAimUntil = performance.now() + 400;
-    }
   }
 
   /** Picks the first enabled, ready skill whose reach covers distance d; returns true if one was queued. */
@@ -341,11 +321,7 @@ export class AutoPlay {
 
   private decideBattle(pl: Actor): void {
     const p = this.ctx.profile();
-    // potion first
-    if (this.settings.potion && p.potions > 0 && p.hp > 0 && p.hp / Math.max(1, p.maxHp) < this.settings.threshold && performance.now() - this.potionAt > 1600) {
-      this.potionAt = performance.now();
-      this.ctx.drinkPotion();
-    }
+    // potions: the game drinks them (물약 자동 사용, any hunting play), not the driver
     const questKind = this.settings.questFirst ? questKill(p) : null;
     let best: MView | null = null, bestScore = 1e9;
     for (const v of this.ctx.monsters().values()) {

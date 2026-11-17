@@ -1,5 +1,5 @@
 import { BASIC, MONSTERS, SKILLS, attackFor, expToNext, killExp, maxHpFor } from "../../src/shared/combat";
-import { DAILY_QUESTS } from "../../src/shared/world";
+import { DAILY_QUESTS, MAIN_QUESTS } from "../../src/shared/world";
 import { editProfile, errorOf, goTo, inVillage, only, profileOf, walkTo } from "./helpers";
 
 // Facing +x (yaw 0), a blob 1.5 m ahead.
@@ -16,7 +16,7 @@ describe("attacks", () => {
   test("a swing hits what is in its arc and pays for a kill: exp, pigment, quest progress", async (server) => {
     await goTo(server, "test-a", "bamboo");
     // On the (accepted) blob quest.
-    await editProfile("test-a", (p) => ({ ...p, main: 2, mainAccepted: true, mainProgress: 0 }));
+    await editProfile("test-a", (p) => ({ ...p, main: MAIN_QUESTS.findIndex((q) => q.id === "c1q3"), mainAccepted: true, mainProgress: 0 }));
     const blob = await only("bamboo", "blob0", AHEAD.x, AHEAD.z, { hp: 5, level: 2 });
     await readyAt(server);
     const result = await server.attack(swing(1));

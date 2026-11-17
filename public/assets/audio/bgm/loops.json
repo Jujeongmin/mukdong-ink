@@ -3,5 +3,8 @@
   "village": { "start": 49.180, "end": 130.313 },
   "bamboo": { "start": 42.353, "end": 136.423 },
   "pond": { "start": 50.620, "end": 120.426 },
-  "peak": { "start": 42.284, "end": 127.617 }
+  "peak": { "start": 42.284, "end": 127.617 },
+  "kiln": { "start": 43.630, "end": 126.961 },
+  "temple": { "start": 42.818, "end": 116.744 },
+  "censer": { "start": 39.149, "end": 104.010 }
 }

@@ -42,12 +42,14 @@ export interface LocalOptions {
   /** Keep the world in localStorage between visits (default true). */
   persist?: boolean;
   account?: string;
+  /** Share a world with another LocalGameApi (tests: two players in one page). */
+  world?: LocalWorld;
 }
 
 export class LocalGameApi extends BaseGameApi {
   readonly mode = "local" as const;
   readonly account: string;
-  readonly world = new LocalWorld(new Server());
+  readonly world: LocalWorld;
   private roomId: string | null = null;
   private stopTicking: (() => void) | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -57,6 +59,7 @@ export class LocalGameApi extends BaseGameApi {
     super();
     this.persist = opts.persist ?? true;
     this.account = opts.account ?? localAccount();
+    this.world = opts.world ?? new LocalWorld(new Server());
   }
 
   async connect(): Promise<void> {

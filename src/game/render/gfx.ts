@@ -4,8 +4,7 @@
 // color and glow a little against the dark; water (alpha ~0.05) mirrors the painted sky; skill "lights"
 // reveal the world's color. Atmosphere lives here too: a painted sky with a haloed moon and cloud bands,
 // four layers of distant silhouettes (karst, ridges or bamboo) sinking into mist, distance + height haze
-// that fades into that sky, drifting ground mist, a dark foreground wash, painted framing silhouettes at
-// the screen corners, a lightning flash. The overlay scene (skill VFX, rain, fireflies) is drawn on top
+// that fades into that sky, drifting ground mist, a dark foreground wash, a lightning flash. The overlay scene (skill VFX, rain, fireflies) is drawn on top
 // in full color.
 
 import * as THREE from "three";
@@ -70,6 +69,15 @@ export interface Mood {
   sun: readonly number[];
   /** baked scenery shadow: [strength 0..1 (a linear-space multiply), softness, contact fade length in world units] */
   shade: readonly number[];
+  /**
+   * The disc in the sky as a lightless paper-white sun instead of a moon: 0 = moon (halo, maria);
+   * > 0 = flat paper disc with ink bleeding in from its rim, this thick (0.05 thin .. 0.4 heavy)
+   */
+  sunRing?: number;
+  /** how fast the sky darkens above the horizon (0.7 default; small = a thin paper band under dark ink) */
+  skyPow?: number;
+  /** 0..1: fewer mid tones in the ink pass (the boss yard: only deep ink and sharp paper) */
+  contrast?: number;
 }
 const moodU = {
   uPaper: { value: new THREE.Vector3(0.66, 0.7, 0.76) },
@@ -91,13 +99,13 @@ const moodU = {
   uGlow: { value: 0.3 },
   uClouds: { value: 0.6 },
   uFgDark: { value: 0 },
-  tFrame: { value: null as THREE.Texture | null },
-  uFrameOn: { value: 0 },
-  uFrameOff: { value: new THREE.Vector2(0, 0) },
   /** quality: backdrop silhouette layers (2..4), distance haze bands (1..3), fine paper/stroke noise (0/1) */
   uLayers: { value: 4 },
   uBands: { value: 3 },
   uFine: { value: 1 },
+  uSunRing: { value: 0 },
+  uSkyPow: { value: 0.7 },
+  uContrast: { value: 0 },
 };
 export function setMood(m: Mood): void {
   moodU.uPaper.value.fromArray(m.paper as number[]);
@@ -121,7 +129,9 @@ export function setMood(m: Mood): void {
   moodU.uGlow.value = m.glow;
   moodU.uClouds.value = m.clouds;
   moodU.uFgDark.value = m.fgDark;
-  setFraming(null);
+  moodU.uSunRing.value = m.sunRing ?? 0;
+  moodU.uSkyPow.value = m.skyPow ?? 0.7;
+  moodU.uContrast.value = m.contrast ?? 0;
 }
 /** Where the painted backdrop sits: screen uv y of the field's far edge, and the camera x for parallax. */
 export function setHorizon(uvY: number, camX: number): void {
@@ -135,21 +145,6 @@ export function setEdge(r: number): void {
 /** Lightning: 0..1 brightens the sky and lifts the scene for a moment. */
 export function setFlash(v: number): void {
   moodU.uFlash.value = v;
-}
-/**
- * Painted framing silhouettes at the screen corners (alpha = ink), or null for none. The texture is four
- * corner pieces (see POST_FRAG frameA); the caller owns and disposes it.
- */
-export function setFraming(tex: THREE.Texture | null): void {
-  moodU.tFrame.value = tex;
-  syncFraming();
-}
-function syncFraming(): void {
-  moodU.uFrameOn.value = moodU.tFrame.value && framingOn && level !== "low" ? 1 : 0;
-}
-/** Slight drift of the framing (screen-height units), so the foreground moves against the scene. */
-export function setFramingOffset(x: number, y: number): void {
-  moodU.uFrameOff.value.set(x, y);
 }
 
 /* ---------- color lights (skill light reveals the world's color) ---------- */
@@ -212,7 +207,7 @@ let lastW = 0, lastH = 0;
 
 const POST_FRAG = /* glsl */ `
 precision highp float;
-uniform sampler2D tColor, tDepth, tNormal, tFrame;
+uniform sampler2D tColor, tDepth, tNormal;
 uniform vec2 uRes;
 uniform float uAspect, uTime, uNear, uFar, uEdge, uBleed, uTones;
 uniform mat4 uInvProj, uCamWorld;
@@ -222,8 +217,7 @@ uniform vec4 uSplash[6];
 uniform vec3 uPaper, uInk, uSkyTop, uSkyLow, uMist;
 uniform vec4 uMoon;
 uniform float uFogLow, uHazeNear, uHazeFar, uFlash, uHorizon, uCamX, uEdgeR, uPillars, uPillarH;
-uniform float uStalks, uGlow, uClouds, uFgDark, uFrameOn, uLayers, uBands, uFine;
-uniform vec2 uFrameOff;
+uniform float uStalks, uGlow, uClouds, uFgDark, uLayers, uBands, uFine, uSunRing, uSkyPow, uContrast;
 varying vec2 vUv;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -289,10 +283,20 @@ vec3 skyAt(vec2 uv){
   // well below the backdrop everything is the mist bank (most of the ground's haze lands here)
   if (uv.y < uHorizon - 0.035) return uMist * grain;
   float t = smoothstep(uHorizon - 0.04, 1.0, uv.y);
-  vec3 s = mix(uSkyLow, uSkyTop, pow(t, 0.7));
+  vec3 s = mix(uSkyLow, uSkyTop, pow(t, uSkyPow));
   // pale glow hugging the horizon
   s = mix(s, uSkyLow * 1.08 + 0.03, exp(-pow((uv.y - uHorizon - 0.06) / 0.11, 2.0)) * uGlow);
-  if (uMoon.z > 0.0) {
+  if (uMoon.z > 0.0 && uSunRing > 0.0) {
+    // a lightless sun: paper left empty, no glow, ink bleeding in from its rim
+    vec2 p = uv - uMoon.xy; p.x *= uAspect;
+    float r = length(p) / uMoon.z, a = atan(p.y, p.x);
+    float bleed = uSunRing * (0.55 + 0.9 * fbm3(vec2(a * 3.0, uTime * 0.03) + 2.0)) * (0.7 + 0.6 * noise(vec2(a * 14.0, 1.0)));
+    float disc = 1.0 - smoothstep(0.97, 1.0, r);
+    vec3 paperSun = mix(uPaper * 1.12, vec3(0.97, 0.96, 0.93), 0.6);
+    s = mix(s, paperSun, disc * uMoon.w);
+    float ring = smoothstep(1.0 - bleed, 1.0, r) * disc;
+    s = mix(s, mix(uSkyTop, uInk, 0.5), ring * 0.85 * uMoon.w);
+  } else if (uMoon.z > 0.0) {
     vec2 p = uv - uMoon.xy; p.x *= uAspect;
     float r = length(p);
     vec3 mc = vec3(0.97, 0.95, 0.87);
@@ -310,7 +314,7 @@ vec3 skyAt(vec2 uv){
   vec3 cloudCol = mix(uSkyLow, uSkyTop, 0.55 + 0.35 * max(uClouds - 1.0, 0.0));
   // under-lit rims where the clouds pass the moon
   float rim = smoothstep(0.5, 0.6, cl) * (1.0 - smoothstep(0.6, 0.72, cl));
-  if (uMoon.z > 0.0) {
+  if (uMoon.z > 0.0 && uSunRing <= 0.0) {
     vec2 p = uv - uMoon.xy; p.x *= uAspect;
     s = mix(s, vec3(0.95, 0.93, 0.86), rim * exp(-length(p) / (uMoon.z * 2.5)) * 0.5 * uMoon.w);
   }
@@ -355,24 +359,6 @@ vec3 skyAt(vec2 uv){
   float below = 1.0 - smoothstep(uHorizon - 0.03, uHorizon + 0.012, uv.y);
   s = mix(s, uMist, below * 0.85);
   return s * grain;
-}
-
-// Corner framing: four pieces (TL, BL in the texture's left half; TR, BR in its right half), each a
-// square of side S screen heights anchored to its corner, so they never squash on any aspect.
-float frameA(vec2 uv){
-  float S = min(1.0, uAspect * 0.62);
-  float px = uv.x * uAspect + uFrameOff.x, py = uv.y + uFrameOff.y;
-  float ty;
-  float by = py / S, td = (1.0 - py) / S;
-  if (by < 0.5) ty = by; else if (td < 0.5) ty = 1.0 - td; else return 0.0;
-  // leaves and branches at the top sway a little
-  float sway = step(0.5, ty) * sin(uTime * 0.9 + ty * 7.0 + px * 3.0) * 0.004 * (ty - 0.5) * 2.0;
-  float a = 0.0;
-  float lx = px / S;
-  if (lx < 1.0) a = texture2D(tFrame, vec2(clamp(lx * 0.5 + sway, 0.0, 0.499), ty)).a;
-  float rx = (uAspect - px) / S;
-  if (rx < 1.0) a = max(a, texture2D(tFrame, vec2(clamp(1.0 - rx * 0.5 + sway, 0.501, 1.0), ty)).a);
-  return a;
 }
 
 void main(){
@@ -423,6 +409,7 @@ void main(){
     tone *= 0.82 + 0.3 * fbm(uv * uRes / 6.0);
     // value by distance: near ink stays rich, far ink thins toward the paper
     tone *= mix(1.08, 0.62, smoothstep(16.0, 64.0, d));
+    if (uContrast > 0.0) tone = mix(tone, smoothstep(0.18, 0.72, tone), uContrast);
 
     vec3 inkImg = mix(paper, uInk, clamp(tone, 0.0, 1.0) * 0.92);
     inkImg = mix(inkImg, uInk * 0.8, clamp(edge, 0.0, 1.0) * 0.92);
@@ -511,12 +498,6 @@ void main(){
   }
   col = mix(col, uInk, spl);
 
-  if (uFrameOn > 0.5) {
-    float fa = frameA(uv);
-    // dry-brush grain in the framing ink
-    float g = 0.82 + 0.3 * fbm3(uv * uRes / 5.0);
-    col = mix(col, uInk * g + uMist * 0.04, clamp(fa, 0.0, 1.0) * 0.94);
-  }
   vec2 vc = (uv - 0.5) * vec2(1.0, 1.15);
   col *= 1.0 - 0.36 * smoothstep(0.3, 0.8, length(vc));
   gl_FragColor = vec4(col, 1.0);
@@ -786,15 +767,13 @@ export function memoryInfo(): { geometries: number; textures: number; programs: 
    One setting for the settings menu: "low" | "mid" | "high" | "auto". Auto picks a level from the device
    (touch, memory, cores, GPU hints) and then watches the frame rate: if it averages under 45 fps for 5 s
    it steps down one level (never up during a session). Each level sets the pixel-ratio cap, the baked
-   scenery shadow (off / 512 / 1024 mask), the backdrop's silhouette layers and haze bands, the framing
-   overlay, the fine noise in the ink pass, and (through onQuality hooks in fx.ts / ambient.ts) the
+   scenery shadow (off / 512 / 1024 mask), the backdrop's silhouette layers and haze bands, the fine noise in the ink pass, and (through onQuality hooks in fx.ts / ambient.ts) the
    droplet, stain, firefly and rain counts. Switching is live: the current zone's shadow is re-baked and
    the old targets are freed. */
 export type QualityLevel = "low" | "mid" | "high";
 export type QualitySetting = QualityLevel | "auto";
 let setting: QualitySetting = "auto";
 let level: QualityLevel = "high";
-let framingOn = true;
 /** settings toggles that live with the feel of the screen */
 export const feelFlags = { shake: true };
 const qualityHooks: ((l: QualityLevel) => void)[] = [];
@@ -835,7 +814,6 @@ function applyLevel(l: QualityLevel): void {
   moodU.uLayers.value = l === "low" ? 2 : l === "mid" ? 3 : 4;
   moodU.uBands.value = l === "low" ? 1 : l === "mid" ? 2 : 3;
   moodU.uFine.value = l === "low" ? 0 : 1;
-  syncFraming();
   if (renderer) {
     DPR = dprFor(l);
     renderer.setPixelRatio(DPR);
@@ -855,11 +833,6 @@ export function setQuality(q: QualitySetting): void {
 export function getQuality(): { setting: QualitySetting; level: QualityLevel } {
   return { setting, level };
 }
-/** The painted framing at the screen corners (always off on "low"). */
-export function setFramingEnabled(on: boolean): void {
-  framingOn = on;
-  syncFraming();
-}
 /** Camera shake on hits, kills and slams (the camera reads feelFlags.shake). */
 export function setShake(on: boolean): void {
   feelFlags.shake = on;
@@ -877,4 +850,25 @@ function watchdog(dt: number): void {
     wdT = 0; wdFrames = 0;
     if (fps < 45) applyLevel(level === "high" ? "mid" : "low");
   }
+}
+
+/**
+ * Render a small scene into `rt` with the main renderer (never a second context) and read it back into
+ * `out` (RGBA, rt.width × rt.height, bottom row first). The clear is transparent; renderer state is restored.
+ * Used for dialogue portraits (ui/portraits.ts), once per speaker.
+ */
+export function renderOffscreen(s: THREE.Scene, cam: THREE.Camera, rt: THREE.WebGLRenderTarget, out: Uint8Array): boolean {
+  if (!renderer) return false;
+  const prevTarget = renderer.getRenderTarget();
+  const prevColor = new THREE.Color();
+  renderer.getClearColor(prevColor);
+  const prevAlpha = renderer.getClearAlpha();
+  renderer.setRenderTarget(rt);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear(true, true, true);
+  renderer.render(s, cam);
+  renderer.readRenderTargetPixels(rt, 0, 0, rt.width, rt.height, out);
+  renderer.setRenderTarget(prevTarget);
+  renderer.setClearColor(prevColor, prevAlpha);
+  return true;
 }

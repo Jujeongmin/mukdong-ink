@@ -33,6 +33,13 @@ export const BAMBOO_VINES: { x: number; z: number }[] = [
 /** 부푼 먹방울 near the bamboo entrance, and the 그림자 무사's lair behind the vines. */
 export const BAMBOO_BIGBLOB = { x: 0, z: 14 };
 export const BAMBOO_LAIR = { x: 0, z: -21 };
+
+/** 가마 지킴이: 서쪽 비탈 위 큰 가마 입구 (관문 A). */
+export const KILN_LORD = { x: -12, z: -12 };
+/** 북쪽 돌계단 양옆 석등지기 넷 (향로 마당 가는 길을 지킨다). */
+export const TEMPLE_LANTERNS: { x: number; z: number }[] = [
+  { x: -4.5, z: -8 }, { x: 4.5, z: -8 }, { x: -4.5, z: -15 }, { x: 4.5, z: -15 },
+];
 export interface ZoneDef {
   id: string;
   name: string;
@@ -46,7 +53,7 @@ export interface ZoneDef {
   portals: Portal[];
   npcs: Npc[];
   /** scenery theme used by the client */
-  theme: "village" | "bamboo" | "pond" | "peak";
+  theme: "village" | "bamboo" | "pond" | "peak" | "kiln" | "temple" | "censer";
 }
 
 export const ZONES: Record<string, ZoneDef> = {
@@ -87,8 +94,49 @@ export const ZONES: Record<string, ZoneDef> = {
     id: "peak", name: "먹봉우리", radius: 30, safe: false, levels: [15, 20], ground: 0xbfa780, theme: "peak",
     spawns: [{ kind: "shade", count: 5, level: [15, 19] }, { kind: "spitter", count: 4, level: [15, 19] }],
     boss: { kind: "boss", level: 20, respawnMs: 180000, x: 0, z: -12 },
-    portals: [{ to: "pond", x: 0, z: 27, arriveX: 0, arriveZ: -23, label: "연못가로" }],
+    portals: [
+      { to: "pond", x: 0, z: 27, arriveX: 0, arriveZ: -23, label: "연못가로" },
+      // 2장: the east door (not north: arriving there would land beside 대먹귀).
+      { to: "kiln", x: 27, z: 3, arriveX: 0, arriveZ: 25, label: "옛 가마터로" },
+    ],
     npcs: [{ id: "heukwol", name: "흑월", role: "guide", x: -4.5, z: 20 }],
+  },
+  // ---------- 2장 「불빛 조각」 (docs/CHAPTER2.md) ----------
+  kiln: {
+    id: "kiln", name: "옛 가마터", radius: 32, safe: false, levels: [20, 27], ground: 0xa59a8a, theme: "kiln",
+    spawns: [
+      { kind: "jar", count: 10, level: [20, 24] },
+      { kind: "crow", count: 5, level: [21, 26] },
+      { kind: "shade", count: 2, level: [22, 26] }, // 일일 퀘스트 d3(먹그림자)를 2장에서도 할 수 있게
+      { kind: "kilnlord", count: 1, level: [24, 24], at: [KILN_LORD] },
+    ],
+    portals: [
+      { to: "peak", x: 0, z: 29, arriveX: 23, arriveZ: 3, label: "먹봉우리로" },
+      { to: "temple", x: 0, z: -29, arriveX: 0, arriveZ: 25, label: "불탄 절터로" },
+    ],
+    npcs: [{ id: "dalrae", name: "달래", role: "guide", x: 5, z: 21 }],
+  },
+  temple: {
+    id: "temple", name: "불탄 절터", radius: 32, safe: false, levels: [27, 33], ground: 0x8f8c84, theme: "temple",
+    spawns: [
+      { kind: "shademonk", count: 8, level: [27, 31] },
+      { kind: "lantern", count: TEMPLE_LANTERNS.length, level: [29, 32], at: TEMPLE_LANTERNS },
+      { kind: "lantern", count: 2, level: [28, 31] },
+      { kind: "crow", count: 3, level: [27, 30] },
+      { kind: "shade", count: 2, level: [28, 32] },
+    ],
+    portals: [
+      { to: "kiln", x: 0, z: 29, arriveX: 0, arriveZ: -25, label: "옛 가마터로" },
+      { to: "censer", x: 0, z: -29, arriveX: 0, arriveZ: 17, label: "향로 마당으로" },
+    ],
+    npcs: [{ id: "haedam", name: "해담", role: "guide", x: -5, z: 21 }],
+  },
+  censer: {
+    id: "censer", name: "향로 마당", radius: 24, safe: false, levels: [33, 35], ground: 0x7d7870, theme: "censer",
+    spawns: [],
+    boss: { kind: "ashboss", level: 35, respawnMs: 240000, x: 0, z: -7 },
+    portals: [{ to: "temple", x: 0, z: 21, arriveX: 0, arriveZ: -25, label: "절터로" }],
+    npcs: [],
   },
 };
 export const START_ZONE = "village";
@@ -147,9 +195,7 @@ export interface QuestDef {
 
 /** Chapter 1 「물빛 조각」. Dialogue for each step is in story.ts (QUEST_STORY[id]). */
 export const MAIN_QUESTS: QuestDef[] = [
-  { id: "c1q1", title: "깨어난 아이", text: "먹노인의 말대로 염색 장인 단이에게 목도리를 보여 주자.", goal: { type: "talk", npc: "dyer" }, giver: "elder", turnIn: "dyer", reward: { exp: 20, pigment: 40, potions: 3 } },
-  { id: "c1q2", title: "물들이기", text: "단이의 염색통에서 허리띠나 목도리를 한 번 물들여 보자.", goal: { type: "dye" }, giver: "dyer", turnIn: "dyer", reward: { exp: 40, pigment: 30 } },
-  { id: "c1q3", title: "죽림의 먹방울", text: "죽림에서 먹방울 8마리를 베고 바람이를 찾아가자.", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 8 }, giver: "elder", turnIn: "baram", reward: { exp: 100, pigment: 60 } },
+  { id: "c1q3", title: "죽림의 먹방울", text: "죽림에서 먹방울 8마리를 베고 바람이를 찾아가자.", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 8 }, giver: "elder", turnIn: "baram", reward: { exp: 160, pigment: 130, potions: 3 } },
   { id: "c1q4", title: "대숲의 시험", text: "4단계까지 수련해 바람이에게 화염선풍을 인정받자.", goal: { type: "level", level: 4 }, giver: "baram", turnIn: "baram", reward: { exp: 80, pigment: 60, potions: 2 } },
   { id: "c1q5", title: "그림자 무사", text: "죽림 북쪽 문, 덩굴 너머 굴의 그림자 무사를 베자.", goal: { type: "kill", kind: "shadelord", zone: "bamboo", count: 1 }, giver: "baram", turnIn: "baram", reward: { exp: 250, pigment: 80, jade: 40, shards: 1, points: 1 } },
   { id: "c1q6", title: "연못으로", text: "죽림 북쪽 문을 지나 연못가의 노을을 찾아가자.", goal: { type: "reach", zone: "pond" }, giver: "baram", turnIn: "noeul", reward: { exp: 200, pigment: 60 } },
@@ -157,6 +203,17 @@ export const MAIN_QUESTS: QuestDef[] = [
   { id: "c1q8", title: "시든 연꽃", text: "먹봉우리에 오를 만큼, 15단계까지 붓을 깊게 하자.", goal: { type: "level", level: 15 }, giver: "noeul", turnIn: "noeul", reward: { exp: 600, pigment: 150, jade: 40 } },
   { id: "c1q9", title: "봉우리로", text: "연못가 북쪽 문을 지나 먹봉우리의 흑월을 만나자.", goal: { type: "reach", zone: "peak" }, giver: "noeul", turnIn: "heukwol", reward: { exp: 800, pigment: 150 } },
   { id: "c1q10", title: "대먹귀", text: "먹봉우리의 대먹귀를 베고 물빛 조각을 되찾자.", goal: { type: "kill", kind: "boss", zone: "peak", count: 1 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 3000, pigment: 500, jade: 160, shards: 3, protects: 1, points: 2 } },
+  /** Chapter 2 「불빛 조각」. Dialogue for each step is in story.ts (QUEST_STORY[id]). */
+  { id: "c2q1", title: "흑월의 전갈", text: "산을 내려가 먹노인에게 흑월의 말을 전하자.", goal: { type: "talk", npc: "elder" }, giver: "heukwol", turnIn: "elder", reward: { exp: 1000, pigment: 200, potions: 5 } },
+  { id: "c2q2", title: "그을린 천", text: "먹노인이 건넨 그을린 천을 단이에게 보이자.", goal: { type: "talk", npc: "dyer" }, giver: "elder", turnIn: "dyer", reward: { exp: 1000, pigment: 200 } },
+  { id: "c2q3", title: "봉우리 너머", text: "먹봉우리 동쪽 문을 지나 옛 가마터로 가자.", goal: { type: "reach", zone: "kiln" }, giver: "dyer", turnIn: "dalrae", reward: { exp: 1500, pigment: 250, potions: 5 } },
+  { id: "c2q4", title: "깨진 옹기", text: "옛 가마터에서 옹기귀 15마리를 깨자.", goal: { type: "kill", kind: "jar", zone: "kiln", count: 15 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 2500, pigment: 300, stones: 5, shards: 1, points: 1 } },
+  { id: "c2q5", title: "가마 지킴이", text: "큰 가마 입구의 가마 지킴이를 베자. 깨어난 화염선풍이 필요하다.", goal: { type: "kill", kind: "kilnlord", zone: "kiln", count: 1 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 3000, pigment: 400, jade: 40, stones: 5, points: 1 } },
+  { id: "c2q6", title: "하나 남은 등불", text: "27단계까지 붓을 깊게 하고, 불탄 절터의 등지기를 찾자.", goal: { type: "level", level: 27 }, giver: "dalrae", turnIn: "haedam", reward: { exp: 2500, pigment: 300, potions: 5 } },
+  { id: "c2q7", title: "그림자 승병", text: "불탄 절터의 그림자 승병 15명을 쉬게 하자.", goal: { type: "kill", kind: "shademonk", zone: "temple", count: 15 }, giver: "haedam", turnIn: "haedam", reward: { exp: 3500, pigment: 400, shards: 1 } },
+  { id: "c2q8", title: "꺼진 석등", text: "향로 마당 가는 길을 막은 석등지기 6기를 쓰러뜨리자.", goal: { type: "kill", kind: "lantern", zone: "temple", count: 6 }, giver: "haedam", turnIn: "haedam", reward: { exp: 4000, pigment: 450, stones: 10, potions: 5 } },
+  { id: "c2q9", title: "해담의 고백", text: "잿불귀와 맞설 만큼, 32단계까지 붓을 깊게 하자.", goal: { type: "level", level: 32 }, giver: "haedam", turnIn: "haedam", reward: { exp: 3000, pigment: 400, jade: 60, protects: 1, points: 1 } },
+  { id: "c2q10", title: "잿불귀", text: "향로 마당의 잿불귀를 베고 불빛 조각을 되찾자.", goal: { type: "kill", kind: "ashboss", zone: "censer", count: 1 }, giver: "haedam", turnIn: "haedam", reward: { exp: 8000, pigment: 1000, jade: 200, stones: 15, shards: 4, protects: 2, points: 2 } },
 ];
 
 /** Daily quests are given and handed in at 먹노인 (elder). */

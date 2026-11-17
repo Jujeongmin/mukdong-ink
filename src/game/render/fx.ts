@@ -470,6 +470,8 @@ export function sparkBurst(x: number, y: number, z: number, n: number, col: RGB,
    All pooled (droplets, decals, rings, sparks); nothing allocates. Ink is ink; the only color is the
    skill light and dye, so the kill flecks are paper-white. */
 const PAPER: RGB = [0.94, 0.91, 0.84];
+const SHELL: RGB = [0.6, 0.57, 0.52];
+const SHELL_EDGE: RGB = [0.35, 0.33, 0.3];
 const INK_RING: RGB = [0.06, 0.055, 0.06];
 /** A blow lands at (x, y, z) travelling (dx, dz): splatter and droplets, `power` ~0.6 (light) .. 2 (heavy). */
 export function inkHit(x: number, y: number, z: number, dx: number, dz: number, power: number): void {
@@ -498,6 +500,52 @@ export function killBurst(x: number, y: number, z: number, size: number): void {
   ring(x, z, 1.4 + size * 0.5, INK_RING, 0.45, 0, INK_RING);
   screenSplash(x, y, z, 0.06 + size * 0.02);
 }
+/** 가마 지킴이 while its ash shell holds: the blow only knocks flakes of shell off, which bounce. */
+export function shellBounce(x: number, y: number, z: number): void {
+  for (let k = 0; k < 9; k++) {
+    const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 2.5;
+    sparks.emit(x, y, z, Math.cos(a) * s, 2.5 + Math.random() * 2.5, Math.sin(a) * s, 0.05 + Math.random() * 0.05, 0.5, SHELL, 0.5);
+  }
+  ring(x, z, 0.7, SHELL_EDGE, 0.22, 0, SHELL_EDGE);
+}
+/** 가마 지킴이 struck by an awakened 화염선풍: the glaze cracks and the shell falls away in white shards. */
+export function glazeCrack(x: number, y: number, z: number): void {
+  for (let k = 0; k < 18; k++) {
+    const a = Math.random() * Math.PI * 2, s = 2 + Math.random() * 4;
+    sparks.emit(x, y + (Math.random() - 0.5), z, Math.cos(a) * s, 1 + Math.random() * 4, Math.sin(a) * s, 0.04 + Math.random() * 0.07, 0.8, PAPER, 1);
+  }
+  inkBurst(x, y, z, 10, 0, 0, 1);
+  ring(x, z, 1.6, PAPER, 0.3, 0, INK_RING);
+}
+
+/* ---------- the fragment of fire: from the ash ghost's brush tip into the player's brush (pooled, one at a time) ---------- */
+const CINNABAR: RGB = [0.9, 0.27, 0.15];
+const flow = { on: false, t: 0, sx: 0, sy: 0, sz: 0, to: null as Spot | null, dur: 1.8 };
+/**
+ * When 잿불귀 falls: the white fire at its brush tip turns cinnabar and flows into `to` (the player): a
+ * stream of cinnabar along an arc, a burst at the brush, and the skill light reveals colour round the player.
+ */
+export function fireFlow(sx: number, sy: number, sz: number, to: Spot): void {
+  flow.on = true; flow.t = 0; flow.sx = sx; flow.sy = sy; flow.sz = sz; flow.to = to;
+  sparkBurst(sx, sy, sz, 24, CINNABAR, 0.8, 1.2);
+  addLight(sx, sz, 6, 1.6, CINNABAR);
+}
+function updateFlow(dt: number): void {
+  if (!flow.on || !flow.to) return;
+  flow.t += dt;
+  const u = Math.min(1, flow.t / flow.dur), e = u * u * (3 - 2 * u);
+  const tx = flow.to.x, tz = flow.to.z, ty = 2.3;
+  const x = flow.sx + (tx - flow.sx) * e, z = flow.sz + (tz - flow.sz) * e;
+  const y = flow.sy + (ty - flow.sy) * e + Math.sin(u * Math.PI) * 2.2;
+  for (let k = 0; k < 3; k++) sparks.emit(x + (Math.random() - 0.5) * 0.3, y + (Math.random() - 0.5) * 0.3, z + (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.6, (Math.random() - 0.3) * 0.6, (Math.random() - 0.5) * 0.6, 0.05 + Math.random() * 0.06, 0.5, CINNABAR, 1);
+  if (u >= 1) {
+    flow.on = false;
+    sparkBurst(tx, ty, tz, 30, CINNABAR, 0.9, 1.4);
+    addLight(tx, tz, 7, 3.2, CINNABAR, flow.to);
+    flow.to = null;
+  }
+}
+
 /** Hit-stop and shake for a blow (light 0..1 heavy) or a kill. */
 export function hitFeel(weight: number, kill: boolean): void {
   feel.hitstop = Math.max(feel.hitstop, kill ? 0.07 : 0.045 + weight * 0.02);
@@ -630,6 +678,7 @@ function updateEchoes(dt: number): void {
 }
 
 export function updateFx(dt: number): void {
+  updateFlow(dt);
   decalMat.uniforms.uTime.value = feel.time;
   updateEchoes(dt);
   updateCrescents(dt);
@@ -642,6 +691,8 @@ export function updateFx(dt: number): void {
 
 /** Zone change: drop every in-flight effect and stain. */
 export function clearFx(): void {
+  flow.on = false;
+  flow.to = null;
   for (const r of rings) { r.mesh.visible = false; r.follow = null; }
   for (const c of crescents) c.mesh.visible = false;
   for (const b of blots) b.on = false;

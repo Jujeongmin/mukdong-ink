@@ -8,14 +8,19 @@ import { MONSTERS, SKILLS } from "../shared/combat";
 import { NPC_REACH, START_ZONE, ZONES, type Npc, type Portal } from "../shared/world";
 import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
+import { newNav, questNav } from "./questnav";
+import { RoutePreview } from "./render/route";
+import { Portraits } from "./ui/portraits";
+import { Rig } from "./render/rig";
 import { gameSettings } from "./ui/settings";
 import type { ChatMessage } from "../net/api";
 import { audio, SKILL_SFX, type SfxName } from "./audio";
 import { Monsters } from "./monsters";
-import { ZoneScene } from "./world";
+import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
-import { camFocus, camFwd, camera, feelFlags, clearLights, feel, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setFramingEnabled, setQuality, setShake } from "./render/gfx";
-import { SKILL_COL, clearFx, hitFeel, inkHit, killBurst, ring, updateFx, sparkBurst } from "./render/fx";
+import { camFocus, camFwd, camera, feelFlags, clearLights, feel, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
+import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
+import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
 import { Hud } from "./ui/hud";
 import { Input, KEYS, type Act } from "./ui/input";
@@ -28,6 +33,9 @@ import { CharacterCreator } from "./ui/create";
 import { Loading } from "./ui/loading";
 import { Hints } from "./ui/hints";
 import { MAIN_QUESTS } from "../shared/world";
+
+/** A main quest's position by id (the list can change; never hard-code indices). */
+const questIndex = (id: string): number => MAIN_QUESTS.findIndex((q) => q.id === id);
 import type { MView } from "./monsters";
 import { AutoPlay } from "./autoplay";
 import { attempt, el, errorCode, errorText, esc, installSprites, toast } from "./ui/dom";
@@ -41,6 +49,24 @@ const hitV = new THREE.Vector3();
 /** 먹동이's thought when a skill first stirs in his hands (index = skill id). */
 /** actor sound codes (see actorSound) → clips: 1..3 combo, 4 air spin, 5 roll */
 const ACT_SFX: readonly (SfxName | null)[] = [null, "swing-1", "swing-2", "swing-3-spin", "swing-3-spin", "roll"];
+
+/** 먹동이's line on the death screen: what took them, by the kind of monster that hurt them last. */
+const DEATH_BY: Record<string, string> = {
+  "": "먹이 몸을 덮었다",
+  blob: "먹방울 떼에 휩쓸렸다",
+  shade: "먹그림자에 붙들렸다",
+  bigblob: "부푼 먹방울에 짓눌렸다",
+  spitter: "먹두꺼비의 먹물을 뒤집어썼다",
+  shadelord: "그림자 무사의 칼끝에 쓰러졌다",
+  boss: "대먹귀의 주먹에 짓눌렸다",
+  vine: "먹덩굴에 휘감겼다",
+  jar: "옹기귀에 떠밀려 쓰러졌다",
+  crow: "잿까마귀의 재에 덮였다",
+  shademonk: "그림자 승병의 지팡이에 쓰러졌다",
+  lantern: "석등지기에 짓눌렸다",
+  kilnlord: "가마 지킴이의 재 껍데기에 짓눌렸다",
+  ashboss: "잿불귀의 불길에 삼켜졌다",
+};
 
 const SKILL_THOUGHT: Record<number, string> = {
   1: "손끝에 불기운이… 화염선풍?",
@@ -79,6 +105,16 @@ export class Game {
   /* discovery-hint bookkeeping (docs/TUTORIAL.md); checked on events and at ~4 Hz */
   private hintTick = 0;
   private lastHurtAt = -1e9;
+  /** a blow of ours landed (combat state for the quest card) */
+  private lastHitAt = -1e9;
+  /** where the main quest points (4 Hz), and its ground preview */
+  private readonly nav = newNav();
+  private route: RoutePreview | null = null;
+  /** dialogue portraits rendered from the speakers' own rigs, cached */
+  private readonly portraits = new Portraits();
+  /** the kind of monster that hurt us last (for the death line) */
+  private lastHurtKind = "";
+  private nearestKind = "";
   private lastSwingAt = -1e9;
   private swings = 0;
   private lastManualAt = -1e9;
@@ -137,7 +173,7 @@ export class Game {
     };
     this.story = new Story({ api, dialogue: this.dialogue, sheets: this.sheets, hints: this.hints, profile: () => this.profile, apply: (p) => this.applyProfile(p) });
     this.input = new Input({
-      blocked: () => this.sheets.isOpen() || this.dialogue.isOpen() || this.transitioning || !this.player || this.chat.isOpen(),
+      blocked: () => this.sheets.isOpen() || this.dialogue.isOpen() || this.transitioning || !this.player || this.chat.isOpen() || this.dead,
       act: (a) => this.pressAct(a),
       skill: (i) => this.pressSkill(i),
       potion: () => void this.drinkPotion(),
@@ -173,12 +209,26 @@ export class Game {
       if (a.local) audio.play(name);
       else if (!gameSettings.v.lowRemote) audio.play(name, a.x, a.z, 0.8, true);
     };
-    this.monsters.onSound = (name, x, z) => audio.play(name, x, z);
+    this.monsters.onSound = (ev, src, x, z) => {
+      if (ev === "shot") audio.play(src === "crow" ? "crow-caw" : "monster-spit", x, z);
+      else if (ev === "land") { if (src === "crow") audio.play("ash-impact", x, z); }
+      else audio.play(src === "lantern" ? "stone-slam" : src === "ashboss" ? "boss-slam-bronze" : "monster-slam", x, z);
+    };
+    this.monsters.onMode = (v, prev) => {
+      const m = v.mode;
+      if (v.kind === "jar") {
+        if (m === "dead") audio.play("jar-break", v.x, v.z);
+        else if ((m === "chase" && prev === "idle") || m === "attack") audio.play("jar-hop", v.x, v.z, 0.8);
+      } else if (v.kind === "shademonk" && m === "attack") audio.play("monk-staff", v.x, v.z);
+      else if (v.kind === "ashboss") {
+        if (m === "wind") audio.play("boss-windup", v.x, v.z);
+        else if (m === "dead") audio.play("boss-fade", v.x, v.z);
+      }
+    };
     this.chat = new Chat(root, { send: (t) => this.sayChat(t), typing: (on) => this.lockLayout(on) });
     gameSettings.onChange((s) => {
       setQuality(s.quality);
       setShake(s.shake);
-      setFramingEnabled(s.framing);
       actorFx.remoteLow = s.lowRemote;
       this.hud.showDmg = s.dmgNumbers;
       this.chat.filter = s.chatFilter;
@@ -217,6 +267,7 @@ export class Game {
     const key = `${zone}:${channel}`;
     if (key === this.chatRoom) return;
     this.chatRoom = key;
+    this.hud.clearSays();
     // the log was cleared when we left; the new room's recent lines may already be in, so the label goes first
     this.chat.label(`— ${ZONES[zone]?.name ?? zone} ${channel}채널 —`);
   }
@@ -277,9 +328,12 @@ export class Game {
   /* ---------- start ---------- */
   async begin(profile: ProfileView): Promise<void> {
     this.hints.bind(this.api.account);
+    this.dialogue.bindAccount(this.api.account);
+    this.dialogue.portraitFor = (who) => this.portraitOf(who);
     this.monsters.onEffect = (kind) => {
       if (kind === "shot" && this.questIs("c1q7")) this.hints.think("gate5", "떨어질 자리를 보고 굴러야겠다.", { key: KEYS.roll, urgent: true });
       if (kind === "slam" && this.zone.def.id === "peak" && this.questIs("c1q10")) this.hints.think("gate7", "지금이다!", { key: KEYS.roll, urgent: true });
+      if (kind === "slam" && this.zone.def.id === "censer" && this.questIs("c2q10")) this.hints.think("gate10", "고리가 넓다… 끝까지!", { key: KEYS.roll, urgent: true });
     };
     this.auto.bind(this.api.account);
     for (const part of ["growth", "gear", "potion", "auto"] as const) if (this.hints.has(`ui:${part}`)) this.hud.reveal(part, false);
@@ -367,8 +421,8 @@ export class Game {
       this.hud.reveal(part, true);
     };
     if ((p.points ?? 0) > 0) open("growth");
-    if (p.main > 2) open("auto");
-    if (p.pigment > 0 || p.jade > 0 || p.main >= 1) open("gear");
+    if (p.main > questIndex("c1q3")) open("auto");
+    if (p.pigment > 0 || p.jade > 0 || p.main > questIndex("c1q3")) open("gear");
     if (p.potions > 0 && p.hp < p.maxHp) open("potion");
   }
 
@@ -378,19 +432,25 @@ export class Game {
       if (!this.hints.has("ui:potion")) { this.hints.mark("ui:potion"); this.hud.reveal("potion", true); }
 
       // knock away from the nearest monster
-      let nx = 0, nz = 1, best = 1e9;
+      let nx = 0, nz = 1, best = 1e9, nearestScore = 1e9;
+      this.nearestKind = "";
       for (const v of this.monsters.views.values()) {
         if (v.mode === "dead") continue;
         const d = Math.hypot(this.player.x - v.x, this.player.z - v.z);
         if (d < best) { best = d; nx = (this.player.x - v.x) / (d || 1); nz = (this.player.z - v.z) / (d || 1); }
+        // the death line names whoever was swinging at us (nearest one mid-attack), else the nearest
+        const swinging = v.mode === "attack" || v.mode === "wind";
+        if (d < 14 && (swinging ? d - 6 : d) < nearestScore) { nearestScore = swinging ? d - 6 : d; this.nearestKind = v.kind; }
       }
       if (best > 12) { nx = 0; nz = 0; }
+      this.lastHurtKind = this.nearestKind;
       this.player.hurt(nx, nz);
       if (!dead) audio.play("player-hurt");
       this.hud.number(this.player.x, 2.3, this.player.z, `-${Math.round(before - after)}`, "hurt");
     }
     if (dead && !this.dead) {
       this.auto.stop();
+      this.hud.deathCause(performance.now() - this.lastHurtAt < 6000 ? DEATH_BY[this.lastHurtKind] ?? DEATH_BY[""] : DEATH_BY[""]);
       if (!this.hints.has("death")) { this.hints.mark("death"); this.hud.deathThought("물약을 챙길 걸… 단이에게 가 보자."); }
       else this.hud.deathThought(null);
       this.dead = true;
@@ -406,7 +466,6 @@ export class Game {
       this.dialogue.hold(false);
       this.hud.death(false);
       audio.duck(false);
-      audio.play("respawn");
     }
   }
 
@@ -476,6 +535,7 @@ export class Game {
   }
 
   private showHits(res: HitResult): void {
+    if (res.hits.length) this.lastHitAt = performance.now();
     for (const h of res.hits) {
       const hv = this.monsters.views.get(h.id);
       if (h.resisted && hv) {
@@ -483,7 +543,11 @@ export class Game {
         sparkBurst(hv.x, hv.def.height * 0.6, hv.z, 10, GREY, 0.7, 1);
         if (hv.kind === "shadelord" && this.questIs("c1q5")) this.hints.think("gate4", "칼이 미끄러진다…", { key: KEYS.growth, urgent: true });
         if (hv.def.boss && this.questIs("c1q10")) this.hints.think("gate6", "무딘 붓으론 안 된다…", { key: KEYS.growth, urgent: true });
+        if (hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8", "불씨가 얕다… 화염선풍을 깨워야 한다.", { key: KEYS.growth, urgent: true });
+        if (hv.kind === "ashboss" && this.questIs("c2q10")) this.hints.think("gate9", "불길이 붓을 밀어낸다… 붓을 더 벼려야 한다.", { key: KEYS.growth, urgent: true });
       }
+      // 8b: the awakened fire gets through the shell (shown once, also to those who never saw gate 8)
+      if (!h.resisted && hv && hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8b", "깨어난 불이 껍데기를 녹인다.", { urgent: true });
       if (h.kill) {
         this.kills++;
         if (this.zone.def.id === "bamboo" && this.questIs("c1q3")) {
@@ -503,6 +567,16 @@ export class Game {
       if (!v) continue;
       any = true;
       v.flash = 0.12;
+      // 가마 지킴이: its ash shell only bounces the blow, until an awakened 화염선풍 cracks the glaze
+      if (v.kind === "kilnlord") {
+        if (h.resisted) shellBounce(v.x, v.def.height * 0.6, v.z);
+        else glazeCrack(v.x, v.def.height * 0.6, v.z);
+      }
+      // 잿불귀 falls: the white fire at its brush tip turns cinnabar and flows into the player's brush
+      if (h.kill && v.kind === "ashboss") {
+        fireFlow(v.x + Math.cos(v.head) * 1.2, 6.2, v.z - Math.sin(v.head) * 1.2, pl);
+        emberBloom();
+      }
       // ink where the blow lands, flung away from the player, bigger for bigger blows; a burst on a kill
       if (!h.resisted) {
         const dx = v.x - pl.x, dz = v.z - pl.z, d = Math.hypot(dx, dz) || 1;
@@ -511,7 +585,8 @@ export class Game {
         inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power);
         if (h.kill) { killed = true; killBurst(v.x, v.def.height * 0.5, v.z, v.def.radius); }
       }
-      audio.play(h.resisted ? "resisted" : h.kill ? "kill-burst" : "hit-ink", v.x, v.z);
+      if (v.kind === "kilnlord") audio.play(h.resisted ? "armor-clunk" : "glaze-crack", v.x, v.z);
+      else audio.play(h.resisted ? "resisted" : h.kill ? "kill-burst" : "hit-ink", v.x, v.z);
       const def = MONSTERS[v.kind] ?? v.def;
       if (h.resisted) this.hud.number(v.x, def.height + 0.5, v.z, h.dmg > 0 ? `${h.dmg} 먹혀들지 않는다` : "먹혀들지 않는다", "resist");
       else this.hud.number(v.x, def.height + 0.5, v.z, String(h.dmg), h.kill ? "kill" : "");
@@ -546,6 +621,28 @@ export class Game {
     this.player.input.skT = BUF;
   }
 
+  private potionBusy = false;
+  private lastPotionAt = -1e9;
+  /** told once that the gourd is empty (until it's refilled) */
+  private emptyNoted = false;
+
+  /** 물약 자동 사용: below the threshold in a hunting zone, drink (manual play too); never in the village or dead. */
+  private autoPotion(): void {
+    const p = this.profile;
+    if (!p || !gameSettings.v.autoPotion || this.dead || this.zone.def.safe || this.transitioning || p.hp <= 0) return;
+    if (p.potions > 0) this.emptyNoted = false;
+    if (p.hp / Math.max(1, p.maxHp) >= gameSettings.v.potionAt) return;
+    if (p.potions <= 0) {
+      if (!this.emptyNoted) { this.emptyNoted = true; this.hints.think("potion-empty", "물약이 떨어졌다… 단이에게 가 보자", { urgent: true, repeat: true }); }
+      return;
+    }
+    const now = performance.now();
+    if (this.potionBusy || now - this.lastPotionAt < 1600) return;
+    this.lastPotionAt = now;
+    this.potionBusy = true;
+    void this.drinkPotion().finally(() => { this.potionBusy = false; });
+  }
+
   private async drinkPotion(): Promise<void> {
     if (!this.profile || this.dead || this.transitioning) return;
     if (this.profile.potions <= 0) { toast("물약이 없습니다 · 마을 염색 장인에게서 살 수 있습니다"); return; }
@@ -561,14 +658,16 @@ export class Game {
   }
 
   private openGrowth(): void {
-    if (!this.profile || this.transitioning || this.dialogue.isOpen()) return;
+    if (!this.profile || this.transitioning || this.dialogue.isOpen() || this.dead) return;
     this.input.clear();
     if (this.hints.has("gate6") && !this.hints.has("gate6-open")) { this.hints.mark("gate6-open"); this.sheets.openGrowth("enhance"); }
+    else if (this.hints.has("gate8") && !this.hints.has("gate8-open")) { this.hints.mark("gate8-open"); this.sheets.openGrowth("skills", "awaken1"); }
+    else if (this.hints.has("gate9") && !this.hints.has("gate9-open")) { this.hints.mark("gate9-open"); this.sheets.openGrowth("enhance", "odds"); }
     else this.sheets.openGrowth();
   }
 
   private openGear(): void {
-    if (!this.profile || this.transitioning) return;
+    if (!this.profile || this.transitioning || this.dead) return;
     this.input.clear();
     this.sheets.openGear();
   }
@@ -681,7 +780,6 @@ export class Game {
       this.dialogue.hold(false);
       this.hud.death(false);
       audio.duck(false);
-      audio.play("respawn");
       this.hud.deathThought(null);
       const p = await attempt(this.api.loadProfile());
       if (p) this.applyProfile(p);
@@ -716,7 +814,6 @@ export class Game {
     if (this.auto.on && this.dialogue.isOpen()) this.auto.stop();
     this.auto.decide(realDt);
     // skills fire on their own in manual play too (rings can still be clicked to fire early)
-    if (!this.auto.active() && !this.dead && !this.transitioning && !this.dialogue.isOpen() && !this.sheets.isOpen()) this.auto.manualSkills(realDt);
     if (inp.mx === 0 && inp.mz === 0) this.auto.steer(realDt);
     inp.atk = Math.max(0, inp.atk - realDt);
     // holding the button keeps the combo going (the actor still waits out the chain timing)
@@ -760,6 +857,10 @@ export class Game {
     this.hud.placeTag(this, p.x, p.y + 2.55, p.z);
     for (const r of this.remotes.values()) this.hud.placeTag(r, r.actor.x, r.actor.y + 2.55, r.actor.z);
     this.hud.placeSay(this, p.x, p.y + 3.15, p.z);
+    if (this.nav.ok && !this.dead && (this.auto.traveling || this.hud.goHover)) {
+      this.route ??= new RoutePreview();
+      this.route.update(p.x, p.z, this.nav.stepX, this.nav.stepZ, this.nav.stepIsPortal, feel.time);
+    } else this.route?.hide();
     for (const r of this.remotes.values()) this.hud.placeSay(r, r.actor.x, r.actor.y + 3.15, r.actor.z);
     for (const a of this.zone.anchors) this.hud.placeTag(a, a.x, a.y, a.z);
     // elites carry a name plate (arrays reused; no per-frame allocation)
@@ -811,6 +912,43 @@ export class Game {
     return Math.atan2(-dz, dx);
   }
 
+  /** ~4 Hz: the quest card's distance line and state tag (no allocation on the hot path). */
+  private questTick(): void {
+    const p = this.player;
+    if (!p || !this.profile) return;
+    questNav(this.profile, this.zone.def.id, p.x, p.z, this.monsters.views, this.nav);
+    this.hud.setQuestNav(this.nav);
+    this.hud.refreshHover();
+    const now = performance.now();
+    const fight = !this.dead && (now - this.lastHurtAt < 4000 || now - this.lastHitAt < 4000 || p.inCombat);
+    this.hud.setQuestState(fight ? "fight" : this.auto.traveling ? "travel" : this.auto.on ? "auto" : "");
+  }
+
+  /**
+   * A speaker's portrait: the player's own figure (keyed by their dyes and hat), an NPC standing in this zone,
+   * or 홍매, who never stands anywhere (a figure made for her, then let go).
+   */
+  private portraitOf(who: string): { neutral: string; speak: string } | null {
+    if (who === "me") {
+      if (!this.player || !this.profile) return null;
+      const p = this.profile;
+      const key = `me:${p.dye?.scarf ?? ""}:${p.dye?.sash ?? ""}:${p.equip.hat}:${p.equip.sash}`;
+      return this.portraits.get(key) ?? this.portraits.capture(key, this.player.rig);
+    }
+    const have = this.portraits.get(who);
+    if (have) return have;
+    if (who === "hongmae") {
+      const rig = new Rig();
+      rig.setBuild({ height: 1.02, head: 0.96, limb: 0.86, legs: 1.04 });
+      rig.setHat(undefined);
+      rig.setSash(0xc8322a);
+      return this.portraits.capture(who, rig);
+    }
+    // the NPC's own rig in this zone; else a figure built from its look (lines spoken elsewhere)
+    const rig = this.zone.npcRig(who) ?? buildNpcRig(who);
+    return rig ? this.portraits.capture(who, rig) : null;
+  }
+
   /** The current main quest is `id` and accepted. */
   private questIs(id: string): boolean {
     const p = this.profile;
@@ -835,7 +973,8 @@ export class Game {
       for (let i = 0; i < obs.length; i++) {
         const o = obs[i];
         if (Math.hypot(o.x - pl.x, o.z - pl.z) < o.r + 1.1) {
-          h.think("gate3", p.level >= SKILLS[1].unlock ? "불길이라면 태울 수 있겠다… 화염선풍." : "불이라도 있으면… 바람이에게 가 보자.", { urgent: true });
+          if (p.level >= SKILLS[1].unlock) h.think("gate3", "불이라도 있으면… 화염선풍으로 태워 보자", { key: "2", urgent: true });
+          else h.think("gate3", "불이라도 있으면… 바람이에게 가 보자.", { urgent: true });
           break;
         }
       }
@@ -843,8 +982,9 @@ export class Game {
   }
 
   private slowUi(): void {
+    this.autoPotion();
     this.hintTick -= 0.1;
-    if (this.hintTick <= 0) { this.hintTick = 0.25; this.checkHints(); }
+    if (this.hintTick <= 0) { this.hintTick = 0.25; this.checkHints(); this.questTick(); }
     const p = this.player;
     // a living monster within reach of a fight: 먹동이 brings the brush down into a low guard
     let threat = false;

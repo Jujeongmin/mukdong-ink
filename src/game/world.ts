@@ -14,6 +14,7 @@ import { fbm3, rng } from "./util";
 import { G, G2, M, M_blade, M_bladeDark, dyeMat, gateFadeMat, groundMat, lam, setGround, setGroundShade, waterMat } from "./render/materials";
 import { bakeShadows, camFocus, clearShadows, noNormalPass, overlay, scene, setShadowSink } from "./render/gfx";
 import { QUAD_VERT } from "./render/fx";
+import { clearPrints, setPrintWater } from "./render/prints";
 import { MOODS, flatGeo, glowMat, moonStreakMat } from "./render/ambient";
 import { POSE, Rig, type Build } from "./render/rig";
 import type { Collider, Field } from "./actor";
@@ -115,6 +116,34 @@ const M_lanternGlow = new THREE.MeshBasicMaterial({ color: 0xffa24a, ...GLOW_PAR
 const M_windowGlow = new THREE.MeshBasicMaterial({ color: 0xf2b45e, ...GLOW_PARAMS });
 /** dark ink ring under water and puddles (the bank) */
 const M_bank = lam(0x2b2a30);
+/* chapter 2 scenery: SHARED geometry and materials (module level, never disposed) */
+const M_clay = lam(0x7d6550);
+const M_ash = lam(0xb4aca0);
+const M_char = lam(0x231e1b);
+const M_stoneC = lam(0x8a8680);
+const M_bronze = lam(0x4a3e2c);
+const M_paper = lam(0xe9e5dc);
+const _spin = new THREE.Object3D();
+/** how much higher each chamber of a climbing kiln sits than the one below it */
+const KILN_RISE = 0.55;
+function lathe(prof: number[][], seg = 16): THREE.BufferGeometry {
+  return new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), seg);
+}
+const CG = {
+  /** an onggi jar: wide shoulders, a narrow mouth */
+  jar: lathe([[0, 0], [0.32, 0], [0.5, 0.25], [0.56, 0.55], [0.48, 0.85], [0.3, 1.0], [0.28, 1.08], [0.32, 1.12], [0.24, 1.12], [0, 0.95]]),
+  lid: lathe([[0, 0.18], [0.38, 0.05], [0.4, 0], [0.2, 0.0], [0, 0.04]], 12),
+  /** a kiln chamber: half a tunnel, its axis across +x */
+  arch: new THREE.CylinderGeometry(1, 1, 2.6, 14, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).scale(1, 1, 0.85),
+  /** a temple bell */
+  bell: lathe([[0, 1.6], [0.45, 1.58], [0.62, 1.3], [0.72, 0.6], [0.95, 0.08], [0.98, 0], [0.8, 0.05], [0.6, 0.6], [0.5, 1.3], [0, 1.45]], 18),
+  /** a curved eave fragment */
+  eave: new THREE.CylinderGeometry(1.4, 1.4, 0.3, 10, 1, true, 0, Math.PI * 0.5).rotateX(Math.PI / 2),
+  /** an unlit paper lantern */
+  paperLantern: lathe([[0, -0.32], [0.14, -0.3], [0.22, -0.15], [0.23, 0.05], [0.18, 0.22], [0.08, 0.3], [0, 0.31]], 10),
+  /** the great sun drawn on the censer yard's floor */
+  sunRing: new THREE.RingGeometry(9.4, 10.1, 72).rotateX(-Math.PI / 2),
+};
 /** materials of flat things (ground, water, path, grass) that cast no baked shadow */
 const NO_CAST = new Set<THREE.Material>([groundMat, waterMat, M_bank, M.path, M.lily, M_blade, M_bladeDark]);
 
@@ -136,11 +165,21 @@ export class ZoneScene {
   private readonly baker = new Baker();
   private readonly rand: () => number;
   private readonly colliders: Collider[] = [];
-  private readonly npcRigs: { rig: Rig; base: Float32Array; phase: number; idle: (rig: Rig, t: number) => void }[] = [];
+  private readonly npcRigs: { id: string; rig: Rig; base: Float32Array; phase: number; idle: (rig: Rig, t: number) => void }[] = [];
+
+  /** The rig of an NPC standing in this zone (dialogue portraits), or null. */
+  npcRig(id: string): Rig | null {
+    for (const n of this.npcRigs) if (n.id === id) return n.rig;
+    return null;
+  }
   private readonly veils: THREE.Mesh[] = [];
   /** overlay glow/reflection meshes (OWNED meshes, SHARED geometry/material) */
   private readonly glows: THREE.Mesh[] = [];
   private readonly gates: Gate[] = [];
+  /** temple paper lanterns turning slowly in the wind (OWNED instanced mesh; SHARED geometry/material) */
+  private spin: { mesh: THREE.InstancedMesh; pos: Float32Array; n: number } | null = null;
+  /** still water as [x, z, rx, rz, ...]: footprints turn to ripples there */
+  private readonly waters: number[] = [];
   /** where players arrive in this zone (kept clear of scenery) */
   private readonly arrivals: { x: number; z: number }[] = [];
 
@@ -156,6 +195,9 @@ export class ZoneScene {
       case "bamboo": this.bambooGrove(); break;
       case "pond": this.pond(); break;
       case "peak": this.peak(); break;
+      case "kiln": this.kiln(); break;
+      case "temple": this.temple(); break;
+      case "censer": this.censer(); break;
     }
     for (const p of def.portals) this.portal(p);
     for (const n of def.npcs) this.npc(n);
@@ -168,6 +210,8 @@ export class ZoneScene {
     const sink = (b: { tex: THREE.Texture; box: THREE.Vector3 } | null) => setGroundShade(b ? b.tex : null, b ? b.box : null, mood.shade[0]);
     setShadowSink(sink); // a quality change re-bakes this zone and hands the mask over here
     sink(bakeShadows(roots, def.radius + 12, mood.sun, mood.shade));
+    clearPrints();
+    setPrintWater(this.waters);
   }
 
   update(dt: number, time: number): void {
@@ -188,6 +232,16 @@ export class ZoneScene {
       }
       g.veil.visible = g.f > 0.55;
     }
+    if (this.spin) {
+      const sp = this.spin;
+      for (let i = 0; i < sp.n; i++) {
+        _spin.position.set(sp.pos[i * 3], sp.pos[i * 3 + 1] + Math.sin(time * 0.9 + i) * 0.03, sp.pos[i * 3 + 2]);
+        _spin.rotation.set(Math.sin(time * 0.7 + i * 0.7) * 0.08, time * 0.35 + i * 1.3, 0);
+        _spin.updateMatrix();
+        sp.mesh.setMatrixAt(i, _spin.matrix);
+      }
+      sp.mesh.instanceMatrix.needsUpdate = true;
+    }
     for (const n of this.npcRigs) {
       n.rig.pose.set(n.base);
       n.idle(n.rig, time + n.phase);
@@ -197,6 +251,7 @@ export class ZoneScene {
   }
 
   dispose(): void {
+    setPrintWater(null);
     scene.remove(this.group);
     for (const g of this.owned) g.dispose(); // OWNED baked geometry
     this.owned.length = 0;
@@ -204,6 +259,7 @@ export class ZoneScene {
     for (const v of this.veils) overlay.remove(v); // SHARED veil geometry/material
     for (const m of this.glows) overlay.remove(m); // SHARED glow geometry/material
     for (const g of this.gates) noNormalPass.delete(g.mesh); // gate geometry is in `owned`
+    if (this.spin) { this.group.remove(this.spin.mesh); this.spin.mesh.dispose(); this.spin = null; } // OWNED instance buffers
     setGroundShade(null, null, 0);
     setShadowSink(null);
     clearShadows(); // OWNED shadow mask
@@ -391,6 +447,8 @@ export class ZoneScene {
     for (const a of this.arrivals) if (Math.hypot(x - a.x, z - a.z) < 3.5 + r) return false;
     for (const n of d.npcs) if (Math.hypot(x - n.x, z - n.z) < 2.5 + r) return false;
     if (d.boss && Math.hypot(x - d.boss.x, z - d.boss.z) < 6 + r) return false;
+    // fixed monster spots (the kiln lord, the temple's stone lanterns) keep their ground
+    for (const sp of d.spawns) if (sp.at) for (const a of sp.at) if (Math.hypot(x - a.x, z - a.z) < 3.5 + r) return false;
     for (const c of this.colliders) if (Math.hypot(x - c.x, z - c.z) < c.r + r + 0.2) return false;
     return true;
   }
@@ -420,6 +478,7 @@ export class ZoneScene {
     g.add(part(G.disc, M_bank, x, 0.012, z, rx + 0.35, 1, rz + 0.3));
     g.add(part(G.disc, waterMat, x, 0.02, z, rx, 1, rz));
     this.baker.add(g);
+    this.waters.push(x, z, rx, rz);
   }
 
   /** Dry-stone wall along an arc of the rim (outside the walkable disc, so no colliders). */
@@ -647,6 +706,16 @@ export class ZoneScene {
       if (Math.abs(x) < 9 && z < -R) continue; // the ruins keep a clear sky behind them
       this.spire(x, z, 8 + this.rand() * 14, 1.8 + this.rand() * 1.8);
     }
+    // a short worn way from the middle to the east door (to the old kiln yard)
+    for (const p of this.def.portals) {
+      if (p.x < 10) continue;
+      const g2 = new THREE.Group();
+      for (let i = 0; i < 9; i++) {
+        const t = i / 8, x = 4 + (p.x - 7) * t, z = p.z + Math.sin(t * 4) * 0.8;
+        g2.add(part(G.ball, M.path, x, 0, z, 0.55 + this.rand() * 0.15, 0.05, 0.4, 0, this.rand() * 3, 0));
+      }
+      this.baker.add(g2);
+    }
     // the storm's puddles
     for (let i = 0, n = 0; i < 60 && n < 7; i++) {
       const x = (this.rand() - 0.5) * R * 1.6, z = (this.rand() - 0.5) * R * 1.6;
@@ -654,6 +723,207 @@ export class ZoneScene {
       this.water(x, z, 1.1 + this.rand() * 1.6, 0.6 + this.rand() * 0.9);
       n++;
     }
+  }
+
+  /* ---------- chapter 2 ---------- */
+  /** One chamber of a climbing kiln: an arched tunnel with a dark fire hole, set at a height along its slope. */
+  private kilnChamber(g: THREE.Group, x: number, z: number, y: number, ry: number, s: number, hole = true): void {
+    const c = new THREE.Group();
+    c.add(part(CG.arch, M_clay, 0, 0, 0, s, s, s));
+    if (hole) c.add(part(G.box, M_bank, 0, s * 0.42, s * 0.86, s * 0.6, s * 0.45, 0.06));
+    c.position.set(x, y, z);
+    c.rotation.y = ry;
+    g.add(c);
+  }
+
+  /** A climbing kiln: `n` chambers stepping up the slope from (x0, z0) toward (x1, z1), a chimney at the top. */
+  private climbingKiln(x0: number, z0: number, x1: number, z1: number, n: number): void {
+    const g = new THREE.Group();
+    const ry = Math.atan2(-(z1 - z0), x1 - x0);
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1), x = x0 + (x1 - x0) * t, z = z0 + (z1 - z0) * t;
+      // chambers overlap into one stepped tunnel, each a step higher up the slope
+      this.kilnChamber(g, x, z, i * KILN_RISE, ry, 1.5 - t * 0.15, i % 2 === 0);
+      // the slope it climbs: an earth bank under each chamber
+      g.add(part(G.ball, M_ash, x, 0, z, 2.2, 0.45 + i * KILN_RISE, 2.2));
+      if (Math.hypot(x, z) < this.def.radius + 1) this.colliders.push({ x, z, r: 1.5 });
+    }
+    g.add(part(G.pillar, M_clay, x1 + (x1 - x0) * 0.12, n * KILN_RISE + 2.4, z1 + (z1 - z0) * 0.12, 0.35, 4.6, 0.35));
+    this.baker.add(g);
+  }
+
+  private jarRow(x0: number, z0: number, x1: number, z1: number, n: number): void {
+    const g = new THREE.Group();
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) : 0, x = x0 + (x1 - x0) * t + (this.rand() - 0.5) * 0.3, z = z0 + (z1 - z0) * t + (this.rand() - 0.5) * 0.3;
+      if (!this.clear(x, z, 0.6)) continue;
+      const k = this.rand(), sc = k < 0.3 ? 0.7 : k < 0.7 ? 1 : 1.3;
+      g.add(part(CG.jar, M_clay, x, 0, z, sc, sc, sc, 0, this.rand() * 6.28, 0));
+      if (this.rand() < 0.5) g.add(part(CG.lid, M_clay, x, 1.1 * sc, z, sc, sc, sc, (this.rand() - 0.5) * 0.3, 0, (this.rand() - 0.5) * 0.3));
+      this.colliders.push({ x, z, r: 0.55 * sc });
+    }
+    this.baker.add(g);
+  }
+
+  private burntPine(x: number, z: number, h: number): void {
+    const g = new THREE.Group();
+    g.add(part(G.trunk, M_char, 0, 0, 0, 1.1, h, 1.1, 0, 0, (this.rand() - 0.5) * 0.15));
+    for (let k = 0; k < 3; k++) g.add(part(G.trunk, M_char, 0, h * (0.45 + k * 0.15), 0, 0.35, 0.9 + this.rand(), 0.35, 0, this.rand() * 6, 0.9 + this.rand() * 0.4));
+    g.position.set(x, 0, z);
+    this.baker.add(g);
+    if (Math.hypot(x, z) < this.def.radius + 1) this.colliders.push({ x, z, r: 0.4 });
+  }
+
+  private kiln(): void {
+    const R = this.def.radius;
+    // two climbing kilns up the west and east slopes
+    // (their chimney tops are ambient.ts KILN_SMOKE: keep them in step)
+    this.climbingKiln(-30, 12, -24, -6, 7);
+    this.climbingKiln(29, 8, 25, -12, 7);
+    // the big kiln on the west slope: its mouth gapes behind the kiln lord's spot
+    {
+      const g = new THREE.Group();
+      g.add(part(CG.arch, M_clay, 0, 0, 0, 3.2, 3.2, 3.2));
+      g.add(part(G.disc, M_bank, 3.2 * 1.31, 1.25, 0, 1.5, 1, 2.1, 0, 0, -Math.PI / 2)); // the black mouth
+      g.add(part(G.ball, M_ash, -1, 0, 0, 5.5, 1.4, 4.5));
+      g.add(part(G.pillar, M_clay, -4.2, 4.5, 0, 0.6, 6, 0.6));
+      g.position.set(-16.5, 0, -16.5);
+      g.rotation.y = Math.atan2(-(-12 + 16.5), -12 + 16.5);
+      this.baker.add(g);
+      this.colliders.push({ x: -17, z: -17, r: 3.2 });
+    }
+    // onggi rows, broken jar heaps, ash mounds, burnt pines, woodpiles
+    this.jarRow(9, -20, 21, -16, 8);
+    this.jarRow(12, 13, 23, 9, 7);
+    this.jarRow(-22, 16, -12, 20, 6);
+    this.jarRow(16, -4, 22, 2, 5);
+    for (const [x, z] of [[18, 20], [-6, -22], [24, -20], [-26, 2]] as const) {
+      if (!this.clear(x, z, 1.5)) continue;
+      const g = new THREE.Group();
+      for (let k = 0; k < 7; k++) {
+        const a = this.rand() * 6.28, d = this.rand() * 1.2;
+        g.add(part(CG.jar, M_clay, x + Math.cos(a) * d, -0.2, z + Math.sin(a) * d, 0.6, 0.45 + this.rand() * 0.3, 0.6, 1.2 + this.rand() * 0.6, this.rand() * 6, 0));
+        g.add(part(G2.stone, M.rockDark, x + Math.cos(a) * d * 1.4, 0, z + Math.sin(a) * d * 1.4, 0.18, 0.1, 0.16));
+      }
+      this.baker.add(g);
+      this.colliders.push({ x, z, r: 1.3 });
+    }
+    for (let i = 0; i < 14; i++) {
+      const a = this.rand() * Math.PI * 2, d = 8 + this.rand() * (R - 6);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (this.clear(x, z, 1.2)) this.baker.add(part(G.ball, M_ash, x, 0, z, 1.2 + this.rand() * 1.4, 0.25 + this.rand() * 0.3, 1 + this.rand()));
+    }
+    this.northRing(26, R + 2, 14, (x, z) => this.burntPine(x, z, 5 + this.rand() * 5));
+    for (const [x, z] of [[-9, 6], [14, -9], [-20, -2], [20, 18]] as const) if (this.clear(x, z, 0.6)) this.burntPine(x, z, 4 + this.rand() * 3);
+    for (const [x, z] of [[-26, 18], [26, 14], [-21, -12]] as const) {
+      if (!this.clear(x, z, 1)) continue;
+      const g = new THREE.Group();
+      for (let k = 0; k < 9; k++) g.add(part(G.pillar, M_char, x + (k % 3 - 1) * 0.36, 0.2 + Math.floor(k / 3) * 0.32, z, 0.17, 1.6, 0.17, Math.PI / 2, 0, 0));
+      this.baker.add(g);
+      this.colliders.push({ x, z, r: 0.9 });
+    }
+    for (let i = 0; i < 28; i++) {
+      const a = Math.PI + this.rand() * Math.PI, d = R + 2 + this.rand() * 10;
+      this.rock(Math.cos(a) * d, Math.sin(a) * d, 0.8 + this.rand() * 1.2, false, M.rockDark);
+    }
+  }
+
+  private temple(): void {
+    const R = this.def.radius;
+    const g = new THREE.Group();
+    // the hall: only its charred pillars stand, broken eaves lie between them
+    const hx = [-21, -17.5, -14, -10.5], hz = [-3, -9, -15];
+    for (const x of hx) for (const z of hz) {
+      const h = 3.6 + this.rand() * 2;
+      g.add(part(G.pillar, M_char, x, h / 2, z, 0.32, h, 0.32));
+      g.add(part(G.box, M.stone, x, 0.15, z, 0.9, 0.3, 0.9));
+      this.colliders.push({ x, z, r: 0.45 });
+    }
+    for (let k = 0; k < 5; k++) g.add(part(CG.eave, M_char, -21 + this.rand() * 10, 0.25, -15 + this.rand() * 12, 1.4 + this.rand(), 1, 1, (this.rand() - 0.5) * 0.4, this.rand() * 6, (this.rand() - 0.5) * 0.5));
+    g.add(part(G.box, M_char, -15.5, 0.3, -6, 7, 0.25, 0.3, 0, 0.4, 0.12)); // a fallen beam
+    // the three-storey stone pagoda, scorched
+    {
+      const p = new THREE.Group();
+      p.add(part(G.box, M_stoneC, 0, 0.3, 0, 3.2, 0.6, 3.2));
+      let y = 0.6;
+      for (let k = 0; k < 3; k++) {
+        const w = 1.8 - k * 0.35, h = 1.2 - k * 0.15;
+        p.add(part(G.box, M_stoneC, 0, y + h / 2, 0, w, h, w));
+        y += h;
+        p.add(part(G.box, k === 1 ? M.rockDark : M_stoneC, 0, y + 0.12, 0, w + 1.2, 0.24, w + 1.2));
+        y += 0.24;
+      }
+      p.add(part(G.pillar, M.rockDark, 0, y + 0.5, 0, 0.1, 1, 0.1));
+      p.position.set(14, 0, -10);
+      g.add(p);
+      this.colliders.push({ x: 14, z: -10, r: 1.9 });
+    }
+    // the bell, half sunk and leaning
+    g.add(part(CG.bell, M_bronze, 13, -0.55, 10, 1.15, 1.15, 1.15, 0.55, 0, 0.3));
+    this.colliders.push({ x: 13, z: 10, r: 1.1 });
+    // stone steps climbing north to the censer yard (flush with the ground)
+    for (let k = 0; k < 9; k++) g.add(part(G.box, M_stoneC, 0, 0.02 + k * 0.004, -19 - k * 1.05, 5.2 - k * 0.1, 0.05, 0.85));
+    // the stone lanterns' bases (the lantern keepers stand on them; when one falls its place stays)
+    for (const sp of this.def.spawns) if (sp.kind === "lantern" && sp.at) for (const a of sp.at) g.add(part(G.box, M_stoneC, a.x, 0.17, a.z, 1.3, 0.34, 1.3));
+    this.baker.add(g);
+    // unlit paper lanterns: strung between the hall's pillars and on posts beside the steps, turning slowly
+    const spots: number[] = [];
+    for (const z of hz) for (let x = -20.6; x < -10.5; x += 1.75) spots.push(x, 3.2, z);
+    const posts = new THREE.Group();
+    for (const z of hz) posts.add(part(G.box, M_char, -15.75, 3.55, z, 10.6, 0.05, 0.05));
+    for (let z = -2; z > -27; z -= 3.2) for (const x of [-3.4, 3.4]) {
+      if (Math.hypot(x, z - 21) < 4 || !this.clear(x, z, 0.3, false)) continue;
+      posts.add(part(G.box, M_char, x, 1.3, z, 0.1, 2.6, 0.1));
+      posts.add(part(G.box, M_char, x * 0.92, 2.55, z, 0.5, 0.05, 0.05));
+      spots.push(x * 0.86, 2.2, z);
+    }
+    this.baker.add(posts);
+    const n = spots.length / 3;
+    const mesh = new THREE.InstancedMesh(CG.paperLantern, M_paper, n);
+    mesh.frustumCulled = false;
+    mesh.userData.noCast = true;
+    this.group.add(mesh);
+    this.spin = { mesh, pos: Float32Array.from(spots), n };
+    // the far side: more pillars and ruined walls lost in the mist
+    this.northRing(24, R + 3, 14, (x, z) => {
+      const h = 3 + this.rand() * 3;
+      this.baker.add(part(G.pillar, M_char, x, h / 2, z, 0.34, h, 0.34));
+    });
+    for (let i = 0; i < 18; i++) {
+      const a = this.rand() * Math.PI * 2, d = R + 1 + this.rand() * 6;
+      this.rock(Math.cos(a) * d, Math.sin(a) * d, 0.5 + this.rand() * 0.7, false, M_stoneC);
+    }
+  }
+
+  private censer(): void {
+    const R = this.def.radius;
+    const g = new THREE.Group();
+    // a ring of broken stone walls, open at the south gate
+    for (let i = 0; i < 40; i++) {
+      const a = (i / 40) * Math.PI * 2;
+      if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a)) - Math.PI / 2) < 0.28) continue; // the gate side (+z)
+      if (this.rand() < 0.22) continue; // breaches
+      const r = R + 0.8 + this.rand() * 0.6, h = 1 + this.rand() * 2.2;
+      g.add(part(G.box, M_stoneC, Math.cos(a) * r, h / 2, Math.sin(a) * r, 0.7, h, 3.6 + this.rand(), 0, -a, (this.rand() - 0.5) * 0.1));
+      if (this.rand() < 0.5) g.add(part(G2.stone, M.rockDark, Math.cos(a) * (r - 1.2), 0, Math.sin(a) * (r - 1.2), 0.4 + this.rand() * 0.4, 0.3, 0.35));
+    }
+    // where the censer stands: a round stone plinth (the boss is the censer itself)
+    const b = this.def.boss ?? { x: 0, z: -7 };
+    g.add(part(G.pillar, M_stoneC, b.x, 0.15, b.z, 3.4, 0.3, 3.4));
+    // the great sun drawn in ink on the yard's floor, cracked every way
+    g.add(part(CG.sunRing, M_bank, 0, 0.012, -2, 1, 1, 1));
+    for (let k = 0; k < 18; k++) {
+      const a = this.rand() * Math.PI * 2, r0 = 4 + this.rand() * 8, len = 3 + this.rand() * 7;
+      const cx = Math.cos(a) * (r0 + len / 2), cz = -2 + Math.sin(a) * (r0 + len / 2);
+      g.add(part(G.box, M_bank, cx, 0.013, cz, len, 0.01, 0.06 + this.rand() * 0.08, 0, -a + (this.rand() - 0.5) * 0.3, 0));
+    }
+    // bronze shards of the split lid
+    for (let k = 0; k < 6; k++) {
+      const a = this.rand() * Math.PI * 2, d = 4 + this.rand() * 5;
+      g.add(part(CG.lid, M_bronze, b.x + Math.cos(a) * d, 0.05, b.z + Math.sin(a) * d, 1.2, 0.6, 1.2, 0.6 + this.rand(), this.rand() * 6, 0.3));
+    }
+    this.baker.add(g);
+    this.northRing(20, R + 4, 12, (x, z) => this.spire(x, z, 6 + this.rand() * 10, 1.6 + this.rand() * 1.4));
   }
 
   /* ---------- portals and NPCs ---------- */
@@ -706,10 +976,26 @@ export class ZoneScene {
     rig.place(n.x, 0, n.z, look.head ?? -Math.PI / 2 + 0.55);
     rig.apply();
     scene.add(rig.group);
-    this.npcRigs.push({ rig, base: look.pose, phase: n.x, idle });
+    this.npcRigs.push({ id: n.id, rig, base: look.pose, phase: n.x, idle });
     // name plate and quest mark sit above this figure's own height
     this.anchors.push({ x: n.x, y: rig.topY() + 0.45, z: n.z, text: n.name, kind: "npc", id: n.id });
     this.colliders.push({ x: n.x, z: n.z, r: 0.45 });
+    if (n.id === "dalrae") {
+      // her wheel and a drying shelf of jars beside her
+      const g = new THREE.Group();
+      g.add(part(G.pillar, M.wood, 1.8, 0.25, 1.4, 0.18, 0.5, 0.18));
+      g.add(part(G.pillar, M.wood, 1.8, 0.52, 1.4, 0.55, 0.06, 0.55));
+      g.add(part(CG.jar, M_clay, 1.8, 0.55, 1.4, 0.25, 0.22, 0.25));
+      for (const sx of [-0.9, 0.9]) g.add(part(G.box, M.wood, 3.4 + sx, 0.75, -1.2, 0.08, 1.5, 0.08));
+      for (const y of [0.55, 1.15]) {
+        g.add(part(G.box, M.wood, 3.4, y, -1.2, 2.0, 0.05, 0.42));
+        for (let k = 0; k < 4; k++) g.add(part(CG.jar, M_clay, 2.75 + k * 0.42, y + 0.03, -1.2, 0.22, 0.24, 0.22));
+      }
+      g.position.set(n.x, 0, n.z);
+      this.baker.add(g);
+      this.colliders.push({ x: n.x + 1.8, z: n.z + 1.4, r: 0.5 }, { x: n.x + 3.4, z: n.z - 1.2, r: 1.0 });
+    }
+    if (n.id === "haedam") this.glowPool(n.x + 0.4, n.z, 3.2);
     if (n.id === "noeul") {
       // he sits on a bank stone, a small lantern hanging from a stake beside him (warm glow)
       this.baker.add(part(G2.stone, M.rock, n.x - 0.15, 0, n.z, 0.6, 0.48, 0.55));
@@ -741,6 +1027,10 @@ const M_crescent = new THREE.MeshBasicMaterial({ color: 0xdfe5ef, ...GLOW_PARAMS
 function rod(r0: number, r1: number, y0: number, y1: number, seg = 7): THREE.BufferGeometry {
   return new THREE.CylinderGeometry(r1, r0, y1 - y0, seg).translate(0, (y0 + y1) / 2, 0);
 }
+const M_towel = lam(0xcfc8b8);
+const M_clayArm = lam(0x6e5c4a);
+// 해담's lantern: the temple's one lit fire, warm cinnabar (lantern exception), kept in colour by the ink pass
+const M_cinnabarGlow = new THREE.MeshBasicMaterial({ color: 0xe0442a, ...GLOW_PARAMS });
 const NG = {
   // elder: a long tapering beard (three strands) and a gnarled cane with a knob above the hand
   beard: mergeGeometries([
@@ -767,6 +1057,16 @@ const NG = {
   sashTail: new THREE.BoxGeometry(0.03, 0.55, 0.08).translate(0, -0.27, 0),
   // ferryman: oar
   oar: mergeGeometries([rod(0.03, 0.035, -0.25, 2.0), new THREE.BoxGeometry(0.2, 0.55, 0.04).translate(0, 2.2, 0)])!,
+  // potter: a headband with a tail, a wooden mallet
+  band: new THREE.TorusGeometry(0.245, 0.04, 6, 20).rotateY(Math.PI / 2).translate(0, 0.06, 0),
+  towelTail: new THREE.BoxGeometry(0.03, 0.3, 0.09).translate(0, -0.15, 0),
+  mallet: mergeGeometries([rod(0.03, 0.035, -0.15, 0.55), new THREE.CylinderGeometry(0.09, 0.09, 0.26, 10).rotateZ(Math.PI / 2).translate(0, 0.62, 0)])!,
+  // lantern keeper: a tall pole with a hook, a hanging lantern, wrist beads, a moktak
+  pole: mergeGeometries([rod(0.03, 0.034, -0.9, 2.3), new THREE.BoxGeometry(0.4, 0.04, 0.04).translate(0.18, 2.28, 0)])!,
+  lamp: lathe([[0, -0.2], [0.11, -0.17], [0.15, 0], [0.11, 0.17], [0, 0.2]], 10),
+  lampFrame: mergeGeometries([new THREE.BoxGeometry(0.01, 0.12, 0.01).translate(0.32, 2.2, 0), new THREE.CylinderGeometry(0.1, 0.1, 0.03, 8).translate(0.32, 2.25, 0)])!,
+  beads: new THREE.TorusGeometry(0.07, 0.022, 5, 12).rotateX(Math.PI / 2),
+  moktak: new THREE.SphereGeometry(0.1, 8, 6).scale(1.2, 0.8, 1),
   // hermit: a crescent behind the head, ink wisps
   crescent: new THREE.TorusGeometry(0.2, 0.026, 6, 26, 4.3),
   wisp: new THREE.SphereGeometry(1, 6, 5),
@@ -794,6 +1094,11 @@ const NPC_LOOK: Record<string, NpcLook> = {
     pose: Pz(0.04, 0.05, -0.4, 1.5, 0.25, 0.35, 0.15, -0.15, -0.12, -0.08, -0.6, -0.03), head: -0.3 },
   noeul: { hat: ITEM.h_satgat, sash: 0xe07a3a, build: { height: 0.96, head: 0.95, limb: 0.74, arms: 1.05, hatW: 1.75 },
     pose: Pz(0.28, -0.1, 0.9, -0.35, 0.4, 0.6, 1.45, -1.55, 1.3, -1.25, 2.14, -0.55), head: Math.PI + 0.35 },
+  // chapter 2
+  dalrae: { hat: ITEM.h_none, sash: null, build: { height: 0.97, head: 1.02, limb: 1.3, legs: 0.93, torso: 0.95 },
+    pose: Pz(0.18, 0.05, 0.85, 1.35, 0.7, 1.2, 0.18, -0.2, -0.12, -0.18, 1.2, -0.05) },
+  haedam: { hat: ITEM.h_none, sash: null, build: { height: 1.06, head: 0.95, limb: 0.95, legs: 1.04 },
+    pose: Pz(0.0, 0.02, -0.1, 0.25, 0.3, 0.5, 0.05, -0.04, -0.06, -0.03, 2.34, -0.01) },
   heukwol: { hat: ITEM.h_mask, sash: null, build: { height: 1.3, head: 0.9, limb: 0.62, legs: 1.22, torso: 1.18, arms: 1.15 },
     pose: Pz(-0.03, 0.04, -0.12, 0.12, 0.08, 0.1, 0.06, -0.04, -0.06, -0.03, 0, -0.01), head: -0.3 },
 };
@@ -805,6 +1110,24 @@ const BREATHE: Idle = (rig, t) => {
 };
 
 /** Props and idle for one NPC; returns its idle animation (built once). */
+/**
+ * A free-standing figure of an NPC from its look (build, hat, sash, pose, props), not placed in any scene:
+ * for portraits of speakers who aren't in the current zone. Parts are SHARED geometry/materials (nothing to
+ * dispose beyond letting it go). Null for ids with no look.
+ */
+export function buildNpcRig(id: string): Rig | null {
+  const look = NPC_LOOK[id];
+  if (!look) return null;
+  const rig = new Rig();
+  rig.setBuild(look.build);
+  rig.setHat(look.hat);
+  rig.setSash(look.sash);
+  rig.pose.set(look.pose);
+  dressNpc(rig, id);
+  rig.apply();
+  return rig;
+}
+
 function dressNpc(rig: Rig, id: string): Idle {
   if (id === "elder") {
     const beard = new THREE.Group();
@@ -894,6 +1217,64 @@ function dressNpc(rig: Rig, id: string): Idle {
       r.pose[0] += Math.sin(t * 1.1) * 0.07;
       r.pose[1] -= Math.sin(t * 1.1) * 0.05;
       r.pose[4] += Math.sin(t * 1.1 + 0.6) * 0.05;
+    };
+  }
+  if (id === "dalrae") {
+    // a towel tied round the head with a short tail, a smear of soot on the brow, clay to the elbows
+    const towel = new THREE.Group();
+    towel.add(new THREE.Mesh(NG.band, M_towel));
+    const tail = new THREE.Mesh(NG.towelTail, M_towel);
+    tail.position.set(-0.22, 0.08, 0.06);
+    towel.add(tail);
+    const soot = new THREE.Mesh(G.box, M_dark);
+    soot.scale.set(0.02, 0.025, 0.2);
+    soot.position.set(0.23, 0.12, 0);
+    towel.add(soot);
+    rig.addProp(towel, "head");
+    rig.paintForearms(M_clayArm, M_clayArm);
+    rig.setHeld(new THREE.Mesh(NG.mallet, M.wood));
+    // a little jar held against the hip
+    const jar = new THREE.Group();
+    const j = new THREE.Mesh(CG.jar, M_clay);
+    j.scale.setScalar(0.32);
+    j.position.set(0.05, -0.2, -0.05);
+    jar.add(j);
+    rig.addProp(jar, "handL");
+    return (r, t) => {
+      // taps the jar with the mallet and leans in to listen
+      const c = t % 4.2, tap = c < 1.6 ? Math.max(0, Math.sin(c * 9)) : 0;
+      r.pose[4] -= tap * 0.35; r.pose[5] += tap * 0.25;
+      r.pose[1] += c > 1.6 && c < 3.2 ? Math.sin(((c - 1.6) / 1.6) * Math.PI) * 0.3 : 0;
+      r.pose[0] += c > 1.6 && c < 3.2 ? Math.sin(((c - 1.6) / 1.6) * Math.PI) * 0.12 : 0;
+      tail.rotation.z = -0.9 + Math.sin(t * 3) * 0.15;
+    };
+  }
+  if (id === "haedam") {
+    // a tall pole with the only lit lantern in the temple (cinnabar), beads at the wrist, a small moktak at the waist
+    const pole = new THREE.Group();
+    pole.add(new THREE.Mesh(NG.pole, M.wood));
+    const lamp = new THREE.Mesh(NG.lamp, M_cinnabarGlow);
+    lamp.position.set(0.32, 2.05, 0);
+    pole.add(lamp);
+    pole.add(new THREE.Mesh(NG.lampFrame, M_dark));
+    rig.setHeld(pole);
+    const beads = new THREE.Group();
+    beads.add(new THREE.Mesh(NG.beads, M_dark));
+    rig.addProp(beads, "handL");
+    const waist = new THREE.Group();
+    const mok = new THREE.Mesh(NG.moktak, M.wood);
+    mok.position.set(0.12, -0.25, 0.2);
+    waist.add(mok);
+    rig.addProp(waist, "back");
+    return (r, t) => {
+      BREATHE(r, t * 0.8);
+      // re-grips the pole now and then; holds a palm under the lantern to feel its warmth
+      const c = t % 9;
+      const g = c < 0.8 ? Math.sin((c / 0.8) * Math.PI) : 0;
+      r.pose[4] += g * 0.12; r.pose[5] -= g * 0.2;
+      const palm = c > 4 && c < 7 ? Math.sin(((c - 4) / 3) * Math.PI) : 0;
+      r.pose[2] += palm * 1.9; r.pose[3] += palm * 0.9; r.pose[1] += palm * 0.25;
+      lamp.rotation.z = Math.sin(t * 1.4) * 0.08;
     };
   }
   if (id === "heukwol") {

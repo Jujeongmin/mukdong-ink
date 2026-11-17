@@ -10,6 +10,7 @@ import { ROLL_IFRAME_MS } from "../shared/world";
 import { awakeningAt, skillCdMul, type Awakening } from "../shared/growth";
 import { angDiff } from "./util";
 import { scene, addLight, feel } from "./render/gfx";
+import { footPrint, rollPrint } from "./render/prints";
 import { G, M_body, M_shadow, dyeCloth } from "./render/materials";
 import { POSE, KEYS, Rig, blend, runPose, sampleKeys, sampleMotion } from "./render/rig";
 import { HIT1, HIT2, HIT3, type MotionClip } from "./render/motion/sword";
@@ -132,6 +133,9 @@ export class Actor {
   private swept = false;
   private flipT = -1;
   private runPhase = 0;
+  /** footprints: in the air since the last print (the next one is darker); a roll's smear already laid */
+  private printAir = false;
+  private printRoll = false;
   private ghostT = 0;
   private fired = false;
   readonly cd = new Float32Array(5);
@@ -158,6 +162,10 @@ export class Actor {
   threat = false;
   /** seconds left in the guard after the last attack/skill/roll */
   private combatT = 0;
+  /** the low guard is up (attacked, cast or rolled in the last few seconds) */
+  get inCombat(): boolean {
+    return this.combatT > 0;
+  }
 
   get fx(): number { return Math.cos(this.head); }
   get fz(): number { return -Math.sin(this.head); }
@@ -642,7 +650,14 @@ export class Actor {
       case "move":
         if (this.onGround) {
           const sp = Math.hypot(this.vx, this.vz);
-          if (sp > 0.8) { this.runPhase += dt * sp * 1.5; runPose(tmpPose, this.runPhase); }
+          if (sp > 0.8) {
+            const k0 = Math.floor((this.runPhase - Math.PI / 2) / Math.PI);
+            this.runPhase += dt * sp * 1.5;
+            runPose(tmpPose, this.runPhase);
+            // a foot plants at each extreme of the stride: an ink dab, alternating feet
+            const k = Math.floor((this.runPhase - Math.PI / 2) / Math.PI);
+            if (k !== k0) { footPrint(this.x, this.z, this.vx / sp, this.vz / sp, k, !this.local, this.printAir); this.printAir = false; }
+          }
           else {
             const it = feel.time + this.idx * 2.7;
             tmpPose.set(STAND);
@@ -683,6 +698,13 @@ export class Actor {
       case "hurt": blend(pose, POSE.hurt, ease(25)); break;
       case "dead": blend(pose, POSE.dead, ease(10)); break;
     }
+    if (!this.onGround) this.printAir = true;
+    if (this.state === "roll" && !this.printRoll) {
+      // one long smear along the roll, drawn out as it goes
+      this.printRoll = true;
+      const sp = Math.hypot(this.vx, this.vz), dx = sp > 1 ? this.vx / sp : this.fx, dz = sp > 1 ? this.vz / sp : this.fz;
+      rollPrint(this.x, this.z, dx, dz, ROLL_SPEED * ROLL_DUR * 0.85, !this.local);
+    } else if (this.state !== "roll") this.printRoll = false;
     const rig = this.rig;
     // the brush is held by IK while moving, rolling, landing or hurt; strikes use mocap, skills their poses
     this.combatT = Math.max(0, this.combatT - dt);

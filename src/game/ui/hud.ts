@@ -6,15 +6,18 @@
 import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { ITEM } from "../../shared/items";
-import { pointsEarned, pointsSpent } from "../../shared/growth";
+import { AWAKENINGS, pointsEarned, pointsSpent, skillCdMul } from "../../shared/growth";
 import { DAILY_QUESTS, ZONES } from "../../shared/world";
 import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
 import { fmt, hexCss } from "../util";
 import { chapterOf, dailyStatus, mainStatus, npcName, npcZone, objective, progressText } from "../quests";
-import { el, esc, skillIconPos } from "./dom";
+import { bindSliders, el, esc, skillIconPos } from "./dom";
 import { KEYS } from "./input";
 import { audio } from "../audio";
+import { roundDist, type QuestNav } from "../questnav";
+import { gameSettings, onSlider, potionSlider } from "./settings";
+import { toast as toastLine } from "./dom";
 
 export interface HudHandlers {
   potion(): void;
@@ -36,11 +39,12 @@ export interface HudHandlers {
 // Bottom-right thumb arc: the basic attack is the big ring at the pivot; skills sit on an arc around it
 // (물결 at the left end, 먹 at the top), touch-only jump/dash and the potion gourd on the outer arc.
 const SKILL_ANGLE = [180, 157.5, 135, 112.5, 90];
+const QSTATE = { "": "", fight: "전투 중", travel: "이동 중", auto: "자동 사냥 중" } as const;
 /** HUD color per skill (물결 indigo, 화염 vermilion, 대지 ochre, 바람 pale cyan, 먹 violet-black) */
 const SKILL_COLOR = ["#2f4f9e", "#d4462a", "#c08a2a", "#8fc7cf", "#3b2a48"];
 
 const MARKUP = `
-<div class="portrait passive" aria-label="나">
+<div class="portrait passive" aria-label="나" data-portrait data-tip-title="나" data-tip="">
   <div class="ring spr-enso"><i class="head"></i><i class="scarf" data-scarf></i></div>
   <b class="lv-seal" data-lv title="경지">1</b>
   <div class="vitals">
@@ -52,12 +56,12 @@ const MARKUP = `
   </div>
 </div>
 <div class="purse">
-  <span class="ui-later" data-ui="gear" title="안료: 사냥으로 얻는 재화"><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
-  <span class="ui-later" data-ui="gear" title="묵옥: 뽑기에 쓰는 재화"><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
-  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 설정 (${KEYS.mute} 음소거)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-  <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
-  <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
-  <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear><span>장비</span><kbd>${KEYS.gear}</kbd></button>
+  <span class="ui-later" data-ui="gear" data-tip-title="안료" data-tip="사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다."><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
+  <span class="ui-later" data-ui="gear" data-tip-title="묵옥" data-tip="뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다."><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 설정 (${KEYS.mute} 음소거)" data-tip-title="소리" data-tip="음량 조절. ${KEYS.mute} 키로 끄고 켠다."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
+  <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
+  <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><span>장비</span><kbd>${KEYS.gear}</kbd></button>
 </div>
 <aside class="jokja" data-quest hidden></aside>
 <div class="zone-paint passive" data-zonepaint hidden><b data-zpname></b><span class="seal" data-zpch></span></div>
@@ -65,25 +69,35 @@ const MARKUP = `
 <div class="tags passive" data-tags></div>
 <div class="tags passive" data-dmg></div>
 <div class="arc" data-arc>
-  <button class="ring-btn atk" type="button" data-act="atk" aria-label="베기 (클릭, J)"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>베기</b><kbd>${KEYS.attack}</kbd></button>
-  <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="구르기"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>구르기</b></button>
-  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="자동 사냥 (Z)" aria-pressed="false"><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>자동</b><kbd>Z</kbd></button>
-  <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="자동 사냥 설정">설정</button>
-  <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="물약 마시기 (${KEYS.potion})"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
+  <button class="ring-btn atk" type="button" data-act="atk" aria-label="베기 (클릭, J)" data-tip-title="베기 (클릭 · J)" data-tip="누르고 있으면 이어 벤다."><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>베기</b><kbd>${KEYS.attack}</kbd></button>
+  <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="구르기" data-tip-title="구르기 (Space)" data-tip="구르는 동안은 맞지 않는다."><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>구르기</b></button>
+  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="자동 사냥 (Z)" aria-pressed="false" data-tip-title="자동 사냥 (Z)" data-tip="가까운 먹귀신을 찾아 저절로 싸운다. 검법도 저절로 쓴다."><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>자동</b><kbd>Z</kbd></button>
+  <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="자동 사냥 설정" data-tip-title="자동 사냥 설정" data-tip="쓸 검법, 물약 기준, 의뢰 대상 먼저.">설정</button>
+  <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="물약 마시기 (${KEYS.potion})" data-tip-title="물약 마시기 (${KEYS.potion})" data-tip="길게 누르면 자동 사용 켜기/끄기" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
 </div>
 <div class="keyhelp passive" data-help hidden>
   <p><kbd>WASD</kbd> 걷기 <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>우클릭</kbd> 구르기, 구르는 동안은 맞지 않는다</p>
-  <p><kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기. 오방 검법은 닿는 적이 있으면 저절로 나간다</p>
-  <p><kbd>Z</kbd> 자동 사냥 <kbd>1</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기</p>
+  <p><kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기. <kbd>1</kbd>–<kbd>5</kbd> 오방 검법 (커서 쪽으로), 자동 사냥 중엔 저절로</p>
+  <p><kbd>Z</kbd> 자동 사냥 <kbd>Q</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기</p>
   <p><kbd>Enter</kbd> 채팅 <kbd>M</kbd> 소리 끄기 <kbd>Esc</kbd> 설정</p>
 </div>
 <button class="prompt btn" type="button" data-prompt hidden></button>
 <div class="auto-pop" data-autopop hidden role="dialog" aria-label="자동 사냥 설정"></div>
-<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅">말</button>
+<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅" data-tip-title="채팅 (Enter)" data-tip="같은 채널 사람들과 말한다.">말</button>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
 <div class="levelup passive" data-lvup hidden><i class="spr-enso"></i><b>경지 상승</b><small data-lvtext></small></div>
-<div class="death" data-death hidden><div><div class="death-title"><b>먹에 잠겼다</b></div><span>마을에서 다시 일어납니다.</span><p class="death-thought" data-death-thought hidden></p><button type="button" class="btn btn-secondary btn-lg" data-respawn>다시 일어나기</button></div></div>
+<div class="ink-death" data-death hidden aria-live="assertive">
+  <i class="ink-death-bleed" aria-hidden="true"></i>
+  <div class="ink-death-words">
+    <h2 class="ink-death-ins" aria-label="먹에 잠겼다"><span style="--i:0">먹</span><span style="--i:1">에</span><span class="gap" style="--i:2"></span><span style="--i:3">잠</span><span style="--i:4">겼</span><span style="--i:5">다</span></h2>
+    <div class="ink-death-side"><p class="ink-death-cause" data-death-cause></p><p class="ink-death-thought" data-death-thought hidden></p></div>
+  </div>
+  <div class="ink-death-rise" data-respawn role="button" tabindex="0" aria-label="다시 일어나기: 누르고 있기">
+    <div class="enso-load" data-rise-enso><i class="bloom" aria-hidden="true"></i><i class="ring-track" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i><i class="seam" aria-hidden="true"></i><i class="head" aria-hidden="true"></i></div>
+    <small>누르고 있으면 다시 일어난다</small>
+  </div>
+</div>
 <div class="fade" data-fade><span data-fadetext></span></div>
 `;
 
@@ -111,6 +125,15 @@ export class Hud {
   showDmg = true;
   /** speech bubbles over heads: owner → its own tag entry and when it goes */
   private readonly says = new Map<object, { key: object; until: number }>();
+  /** the quest's distance line ("먹노인 · 12m") and the card's state tag (전투 중 / 이동 중 / 자동 사냥 중) */
+  private qdist = "";
+  private qState: "" | "fight" | "travel" | "auto" = "";
+  private navWho = "";
+  private navVia = "";
+  private navZone = "";
+  private navD = -1;
+  /** the pointer rests on 자동 진행 (route preview) */
+  goHover = false;
   /** quest tracker folded into a chip (phones); decided on first show */
   private questFolded: boolean | null = null;
   private zoneId = "";
@@ -132,8 +155,9 @@ export class Hud {
       b.dataset.i = String(i);
       b.style.setProperty("--a", `${SKILL_ANGLE[i]}deg`);
       b.style.setProperty("--skc", SKILL_COLOR[i]);
-      b.setAttribute("aria-label", `${s.name} (저절로 나감, 눌러서 바로 쓰기)`);
-      b.innerHTML = `<i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(i)}"></i><i class="cd"></i><b>${s.label}</b><span class="sklv" data-sklv>1</span><span class="lock" hidden>Lv ${s.unlock}</span>`;
+      b.setAttribute("aria-label", `${s.name} (${i + 1})`);
+      b.dataset.tipTitle = `${s.name} (${i + 1})`;
+      b.innerHTML = `<i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(i)}"></i><i class="cd"></i><b>${s.label}</b><kbd>${i + 1}</kbd><span class="sklv" data-sklv>1</span><span class="lock" hidden>Lv ${s.unlock}</span>`;
       b.addEventListener("pointerdown", (e) => { e.preventDefault(); this.h.skill(i); });
       arc.appendChild(b);
       this.skillBtns.push(b);
@@ -148,7 +172,7 @@ export class Hud {
       dmgBox.appendChild(d);
       this.dmgPool.push(d);
     }
-    el("[data-potion]", root).addEventListener("click", () => this.h.potion());
+    this.wireGourd(el("[data-potion]", root));
     el("[data-gear]", root).addEventListener("click", () => this.h.gear());
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
     el("[data-auto]", root).addEventListener("click", () => this.h.auto());
@@ -159,7 +183,8 @@ export class Hud {
     audio.onChange(() => this.syncSound());
     this.syncSound();
     el("[data-prompt]", root).addEventListener("click", () => this.h.interact());
-    el("[data-respawn]", root).addEventListener("click", () => this.h.respawn());
+    this.wireRise();
+    gameSettings.onChange(() => this.gourdTip());
   }
 
   setProfile(p: ProfileView): void {
@@ -184,7 +209,15 @@ export class Hud {
       b.classList.toggle("aw1", lv >= 5 && lv < 10);
       b.classList.toggle("aw2", lv >= 10);
       el("[data-sklv]", b).textContent = String(lv);
+      const sk = SKILLS[i];
+      const aw = lv >= 10 ? AWAKENINGS[i][10] : lv >= 5 ? AWAKENINGS[i][5] : null;
+      b.dataset.tip = locked ? `Lv ${sk.unlock}에 열림 · 재사용 ${sk.cd}초`
+        : `Lv ${lv} · 재사용 ${+(sk.cd * skillCdMul(lv)).toFixed(1)}초 · 자동 사냥 중엔 저절로 쓴다${aw ? `
+각성: ${aw.text}` : ""}`;
     }
+    this.last = p;
+    this.gourdTip();
+    this.portraitTip();
     const w = ITEM[p.equip.weapon];
     const plus = p.enh?.[p.equip.weapon] ?? 0;
     el("[data-brush]", this.root).textContent = w ? `${w.name}${plus > 0 ? ` +${plus}` : ""}` : "";
@@ -207,6 +240,28 @@ export class Hud {
     el("[data-hpchip]", this.root).style.setProperty("--f", f.toFixed(3));
     fill.parentElement?.classList.toggle("low", f < 0.3);
     el("[data-hpt]", this.root).textContent = `${Math.max(0, Math.round(hp))}`;
+    this.tipHp = Math.max(0, Math.round(hp));
+    this.tipMax = max;
+    this.portraitTip();
+  }
+
+  /* ---------- tooltips with live numbers (tooltip.ts reads the attributes when it opens) ---------- */
+  private tipHp = 0;
+  private tipMax = 0;
+  private portraitTip(): void {
+    const p = this.last;
+    const box = this.root.querySelector<HTMLElement>("[data-portrait]");
+    if (!box || !p) return;
+    box.dataset.tipTitle = `${p.name || "먹동이"} · Lv ${p.level}`;
+    box.dataset.tip = `생명 ${this.tipHp} / ${this.tipMax || p.maxHp}
+경험 ${p.exp.toLocaleString("ko-KR")} / ${p.expToNext.toLocaleString("ko-KR")}`;
+  }
+  private gourdTip(): void {
+    const g = this.root.querySelector<HTMLElement>("[data-potion]");
+    if (!g || !this.last) return;
+    const s = gameSettings.v;
+    g.dataset.tip = `길게 누르면 자동 사용 켜기/끄기
+남은 물약 ${this.last.potions}개 · 자동 사용 ${s.autoPotion ? `켜짐 (생명 ${Math.round(s.potionAt * 100)}% 아래)` : "꺼짐"}`;
   }
 
   /**
@@ -237,13 +292,41 @@ export class Hud {
     } else tag = `<span class="qtag">진행 중</span>`;
     const state = s.done ? "done" : !s.accepted ? "fresh" : "";
     box.innerHTML = `<div class="qcard ${state}" title="${esc(s.q.text)}">
-      <header data-qfold><span class="qch">${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}</header>
+      <header data-qfold><span class="qch">${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small></header>
       <div class="qbody">
         <p class="qobj" aria-label="${esc(progressText(s))}"><span>${esc(o.text)}</span>${o.count ? `<b>${o.count}</b>` : ""}</p>${bar}
-        <footer>${tag}<button type="button" class="qgo btn btn-sm${this.travelling ? " on" : ""}" data-go aria-pressed="${this.travelling}">${this.travelling ? "이동 중" : "자동 진행"}</button></footer>
+        <small class="qdist" data-qdist>${esc(this.qdist)}</small>
+        <footer><span class="qstate" data-qstate>${QSTATE[this.qState]}</span>${tag}<button type="button" class="qgo btn btn-sm${this.travelling ? " on" : ""}" data-go aria-pressed="${this.travelling}" data-tip-title="자동 진행" data-tip="다음 목적지까지 저절로 간다. 다시 누르면 멈춘다.">${this.travelling ? "이동 중" : "자동 진행"}</button></footer>
       </div></div>${this.dailyCard(p)}`;
     box.querySelector("[data-go]")?.addEventListener("click", () => this.h.travel());
     box.querySelector("[data-qfold]")?.addEventListener("click", () => this.foldQuest());
+    box.dataset.state = this.qState;
+  }
+
+  /** ~4 Hz: is the pointer resting on 자동 진행? (survives the card's re-renders) */
+  refreshHover(): void {
+    this.goHover = !!this.root.querySelector("[data-go]:hover");
+  }
+
+  /** ~4 Hz: the distance line. Text is rebuilt only when what it says changes. */
+  setQuestNav(nav: QuestNav): void {
+    const d = nav.ok ? roundDist(nav.dist) : -1;
+    if (d === this.navD && nav.who === this.navWho && nav.via === this.navVia && nav.zone === this.navZone) return;
+    this.navD = d; this.navWho = nav.who; this.navVia = nav.via; this.navZone = nav.zone;
+    if (d < 0) this.qdist = "";
+    else if (nav.zone === this.zoneId) this.qdist = `${nav.who} · ${d}m`;
+    else this.qdist = `${nav.via ? `${nav.via} 경유` : ZONES[nav.zone]?.name ?? nav.zone} · 약 ${d}m`;
+    this.root.querySelectorAll("[data-qdist]").forEach((e) => { e.textContent = this.qdist; });
+  }
+
+  /** The card's state: 전투 중 > 이동 중 > 자동 사냥 중 > the quest's own status. */
+  setQuestState(s: "" | "fight" | "travel" | "auto"): void {
+    if (s === this.qState) return;
+    this.qState = s;
+    const box = el("[data-quest]", this.root);
+    box.dataset.state = s;
+    const t = box.querySelector("[data-qstate]");
+    if (t) t.textContent = QSTATE[s];
   }
 
   /** The day's quests that are still open, under the main card: title + progress, or who to report to. */
@@ -382,6 +465,12 @@ export class Hud {
     if (performance.now() > s.until) { this.dropTag(s.key); this.says.delete(owner); return; }
     this.placeTag(s.key, x, y, z);
   }
+  /** Room change: every bubble goes. */
+  clearSays(): void {
+    for (const s of this.says.values()) this.dropTag(s.key);
+    this.says.clear();
+  }
+
   dropSay(owner: object): void {
     const s = this.says.get(owner);
     if (s) { this.dropTag(s.key); this.says.delete(owner); }
@@ -439,6 +528,28 @@ export class Hud {
     }
   }
 
+  /** The gourd: tap to drink; hold (~0.55 s) to switch 물약 자동 사용; a 자동 mark while it's on. */
+  private wireGourd(g: HTMLElement): void {
+    let timer = 0, held = false;
+    g.addEventListener("pointerdown", () => {
+      held = false;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        held = true;
+        const on = !gameSettings.v.autoPotion;
+        gameSettings.set({ autoPotion: on });
+        toastLine(on ? "물약 자동 사용: 켬" : "물약 자동 사용: 끔");
+      }, 550);
+    });
+    const cancel = () => window.clearTimeout(timer);
+    g.addEventListener("pointerup", cancel);
+    g.addEventListener("pointerleave", cancel);
+    g.addEventListener("pointercancel", cancel);
+    g.addEventListener("click", (e) => { if (held) { e.preventDefault(); held = false; return; } this.h.potion(); });
+    g.addEventListener("contextmenu", (e) => e.preventDefault());
+    gameSettings.onChange((s) => g.classList.toggle("auto-on", s.autoPotion));
+  }
+
   autoPopOpen(): boolean {
     return !el("[data-autopop]", this.root).hidden;
   }
@@ -459,22 +570,17 @@ export class Hud {
     if (!pop.hidden) { pop.hidden = true; return; }
     const st = this.h.autoSettings();
     pop.innerHTML = `<h4>자동 사냥</h4>
+      <small class="auto-note">자동 사냥에서 쓸 검법</small>
       <div class="auto-skills">${SKILLS.map((sk, i) => `<label><input type="checkbox" data-sk="${i}" ${st.skills[i] ? "checked" : ""}> ${esc(sk.name)}</label>`).join("")}</div>
-      <label><input type="checkbox" data-potion-auto ${st.potion ? "checked" : ""}> 생명이 낮으면 물약</label>
-      <label class="auto-range ink-slider"><span>기준</span><span class="rng" style="--v:${(Math.round(st.threshold * 100) - 20) * 2.5}"><input type="range" min="20" max="60" step="5" value="${Math.round(st.threshold * 100)}" data-thr aria-label="물약 기준"></span><b data-thrv>${Math.round(st.threshold * 100)}%</b></label>
+      <label><input type="checkbox" data-potion-auto ${gameSettings.v.autoPotion ? "checked" : ""}> 생명이 낮으면 물약 (어디서나)</label>
+      ${potionSlider()}
       <label><input type="checkbox" data-quest-first ${st.questFirst ? "checked" : ""}> 의뢰 대상 먼저</label>
       <button type="button" class="close btn btn-secondary btn-sm" data-popclose>닫기</button>`;
     pop.hidden = false;
     pop.querySelectorAll<HTMLInputElement>("[data-sk]").forEach((c) => c.addEventListener("change", () => { st.skills[Number(c.dataset.sk)] = c.checked; this.h.saveAutoSettings(); }));
-    el<HTMLInputElement>("[data-potion-auto]", pop).addEventListener("change", (e) => { st.potion = (e.target as HTMLInputElement).checked; this.h.saveAutoSettings(); });
+    el<HTMLInputElement>("[data-potion-auto]", pop).addEventListener("change", (e) => gameSettings.set({ autoPotion: (e.target as HTMLInputElement).checked }));
     el<HTMLInputElement>("[data-quest-first]", pop).addEventListener("change", (e) => { st.questFirst = (e.target as HTMLInputElement).checked; this.h.saveAutoSettings(); });
-    el<HTMLInputElement>("[data-thr]", pop).addEventListener("input", (e) => {
-      const v = Number((e.target as HTMLInputElement).value);
-      st.threshold = v / 100;
-      (e.target as HTMLInputElement).parentElement?.style.setProperty("--v", String((v - 20) * 2.5));
-      el("[data-thrv]", pop).textContent = `${v}%`;
-      this.h.saveAutoSettings();
-    });
+    bindSliders(pop, onSlider);
     el("[data-popclose]", pop).addEventListener("click", () => { pop.hidden = true; });
   }
 
@@ -488,17 +594,94 @@ export class Hud {
     window.setTimeout(() => b.classList.remove("ui-bloom"), 1800);
   }
 
-  /** One thought under the 다시 일어나기 screen (first death only). */
+  /** One thought beside the inscription (first death only). */
   deathThought(text: string | null): void {
     const t = el("[data-death-thought]", this.root);
     t.hidden = !text;
     t.textContent = text ?? "";
   }
 
+  /** What took you, in 먹동이's own words. */
+  deathCause(text: string): void {
+    el("[data-death-cause]", this.root).textContent = text;
+  }
+
+  /* ---------- death: the ink takes the screen; hold the ensō to rise ---------- */
+  private deathShownAt = 0;
+  private riseTimer = 0;
+  private riseBusy = false;
+  private outTimer = 0;
+
+  /**
+   * show: ink bleeds in from the edges, the scene greys, the HUD fades, the inscription writes itself.
+   * busy: the respawn request is in flight (the circle stays closed). Hiding lets the ink recede outward.
+   */
   death(show: boolean, busy = false): void {
-    el("[data-death]", this.root).hidden = !show;
-    this.root.classList.toggle("dead", show);
-    el<HTMLButtonElement>("[data-respawn]", this.root).disabled = busy;
+    const box = el("[data-death]", this.root);
+    this.riseBusy = busy;
+    window.clearTimeout(this.outTimer);
+    if (show) {
+      if (box.hidden || box.classList.contains("out")) {
+        box.classList.remove("out", "rising", "risen");
+        box.hidden = false;
+        this.deathShownAt = performance.now();
+        this.setRise(0, false);
+      }
+      if (!busy && box.classList.contains("risen")) { box.classList.remove("risen", "rising"); this.setRise(0, false); }
+      this.root.classList.add("dead");
+      document.documentElement.classList.add("dying");
+      return;
+    }
+    this.root.classList.remove("dead");
+    document.documentElement.classList.remove("dying");
+    if (box.hidden) return;
+    box.classList.add("out");
+    this.outTimer = window.setTimeout(() => { box.hidden = true; box.classList.remove("out", "rising", "risen"); }, 1100);
+  }
+
+  private setRise(f: number, slow: boolean): void {
+    const e = el("[data-rise-enso]", this.root);
+    e.classList.toggle("unwind", !slow && f === 0);
+    e.style.setProperty("--f", String(f));
+  }
+
+  /** The ensō you hold to rise: pointer/touch hold or Space/Enter held ~0.7 s; a plain tap works after 2 s. */
+  private wireRise(): void {
+    const rise = el("[data-respawn]", this.root);
+    const box = el("[data-death]", this.root);
+    let holding = false;
+    const ready = () => !box.hidden && !box.classList.contains("out") && !box.classList.contains("risen") && !this.riseBusy;
+    const complete = () => {
+      window.clearTimeout(this.riseTimer);
+      holding = false;
+      this.setRise(1, true);
+      box.classList.add("risen");
+      audio.play("respawn");
+      window.setTimeout(() => this.h.respawn(), 380);
+    };
+    const start = () => {
+      if (!ready() || holding) return;
+      holding = true;
+      box.classList.add("rising");
+      this.setRise(1, true);
+      this.riseTimer = window.setTimeout(() => { if (holding) complete(); }, 720);
+    };
+    const stop = (tap: boolean) => {
+      if (!holding) return;
+      holding = false;
+      window.clearTimeout(this.riseTimer);
+      // can't hold? after 2 s a plain tap is enough
+      if (tap && performance.now() - this.deathShownAt > 2000) { complete(); return; }
+      box.classList.remove("rising");
+      this.setRise(0, false);
+    };
+    rise.addEventListener("pointerdown", (e) => { e.preventDefault(); rise.setPointerCapture?.(e.pointerId); start(); });
+    rise.addEventListener("pointerup", () => stop(true));
+    rise.addEventListener("pointercancel", () => stop(false));
+    rise.addEventListener("lostpointercapture", () => stop(false));
+    const isKey = (e: KeyboardEvent) => e.code === "Space" || e.code === "Enter" || e.code === "NumpadEnter";
+    window.addEventListener("keydown", (e) => { if (!box.hidden && isKey(e)) { e.preventDefault(); if (!e.repeat) start(); } });
+    window.addEventListener("keyup", (e) => { if (!box.hidden && isKey(e)) stop(true); });
   }
 
   fade(on: boolean, text = ""): void {

@@ -2,6 +2,7 @@
 
 import type { ItemDef } from "../../shared/items";
 import type { RuleCode } from "../../shared/types";
+import { installTooltips } from "./tooltip";
 
 export function el<T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document): T {
   const e = root.querySelector<T>(sel);
@@ -31,16 +32,137 @@ export function installSprites(): void {
     "--m-splash": "./assets/ui/ui-splash.png",
   };
   for (const [k, v] of Object.entries(kit)) root.setProperty(k, `url("${url(v)}")`);
+  // the _v2 sheets have a cleaned matte (tools/clean_matte.py); new names so deploy caches can't serve the old ones
   const style = document.createElement("style");
   style.textContent = `
-    .ic-item { background-image: url("${url("./assets/items.png")}"); }
-    .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills.png")}"); }`;
+    .ic-item { background-image: url("${url("./assets/items_v2.png")}"); }
+    .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills_v2.png")}"); }
+    .ic-mat { background-image: url("${url("./assets/materials.png")}"); }`;
   document.head.appendChild(style);
+  // a sheet that fails to load would leave empty frames: say so in the console instead of failing silently
+  for (const f of ["items_v2.png", "skills_v2.png", "materials.png"]) {
+    const img = new Image();
+    img.onerror = () => console.warn(`[ui] icon sheet failed to load: ${f}`);
+    img.src = url(`./assets/${f}`);
+  }
+  installTooltips();
 }
 
-export function itemIcon(it: ItemDef): string {
+/**
+ * An item picture. Positions are on the element itself; the sheet is set on `.ic-item` above.
+ * The element is a plain block sized by CSS (44 px by default; `.ic-item.s` / `.l` / `.xl` for other sizes).
+ */
+export function itemIcon(it: ItemDef, size = ""): string {
   const col = it.icon % 4, row = Math.floor(it.icon / 4);
-  return `<i class="spr ic-item" style="background-position:${col * 33.333}% ${row * 33.333}%" aria-hidden="true"></i>`;
+  return `<i class="spr ic-item${size ? ` ${size}` : ""}" style="background-position:${col * 33.333}% ${row * 33.333}%" aria-hidden="true"></i>`;
+}
+
+/* ---------- resources: one picture, name and how-to-get line per currency / material ---------- */
+export type ResKind = "pigment" | "jade" | "stone" | "shard" | "protect" | "potion" | "points" | "exp";
+export const RES: Record<ResKind, { name: string; tip: string }> = {
+  pigment: { name: "안료", tip: "사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다." },
+  jade: { name: "묵옥", tip: "뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다." },
+  stone: { name: "먹돌", tip: "먹귀신이 떨군다. 붓을 강화할 때 쓴다." },
+  shard: { name: "색 조각", tip: "먹귀신이 드물게, 우두머리가 꼭 떨군다. 검법을 깨울 때(5·10단계) 쓴다." },
+  protect: { name: "파괴방지권", tip: "강화가 실패해도 붓이 부서지지 않게 지킨다. 묵옥으로 산다." },
+  potion: { name: "물약", tip: "생명을 크게 채운다. 염색 장인에게 안료로 산다." },
+  points: { name: "수련 포인트", tip: "경지가 오를 때마다 하나, 의뢰로도 얻는다. 검법 단련에 쓴다." },
+  exp: { name: "경험", tip: "쌓이면 경지가 오른다." },
+};
+
+/** The picture for a resource (`.ic-res` sizes it; pigment / jade come from the skills sheet, the rest from materials.png). */
+export function resIcon(k: ResKind, size = ""): string {
+  const cls = k === "pigment" ? "ic-pigment" : k === "jade" ? "ic-jade" : k === "points" ? "ic-pts" : k === "exp" ? "ic-exp" : `ic-mat ic-mat-${k}`;
+  return `<i class="spr ic-res ${cls}${size ? ` ${size}` : ""}" aria-hidden="true"></i>`;
+}
+
+/** Tooltip attributes (see tooltip.ts): a title line and a short body. */
+export function tipAttr(title: string, body = ""): string {
+  return ` data-tip-title="${esc(title)}"${body ? ` data-tip="${esc(body)}"` : ` data-tip=""`}`;
+}
+
+/**
+ * A resource chip: picture + number (tabular). `need` turns it into a cost chip ("have / need" colouring),
+ * `short` marks it as not enough.
+ */
+export function resChip(k: ResKind, n: number, opt: { need?: boolean; short?: boolean; label?: boolean } = {}): string {
+  const r = RES[k];
+  const num = k === "exp" ? n.toLocaleString("ko-KR") : n.toLocaleString("ko-KR");
+  return `<span class="rchip${opt.need ? " cost" : ""}${opt.short ? " short" : ""}"${tipAttr(r.name, r.tip)} aria-label="${esc(r.name)} ${num}">${resIcon(k)}${opt.label ? `<em>${esc(r.name)}</em>` : ""}<b>${num}</b></span>`;
+}
+
+/** The resource bar at the top of a sheet, with an optional "?" tablet holding a two-line tip. */
+export function resBar(items: [ResKind, number][], help = ""): string {
+  const q = help ? `<button type="button" class="tipq" data-tip-click${tipAttr("도움말", help)} aria-label="도움말">?</button>` : "";
+  return `<div class="resbar">${items.map(([k, n]) => resChip(k, n)).join("")}${q}</div>`;
+}
+
+/* ---------- ink slider: one component for every 0–100 style setting ---------- */
+export interface SliderOpts {
+  /** data attribute key for the input: `data-sl="<key>"` */
+  key: string;
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** shown after the number ("%") */
+  unit?: string;
+  /** cinnabar fill (the master volume) */
+  accent?: boolean;
+  sub?: string;
+}
+
+export function sliderHtml(o: SliderOpts): string {
+  const min = o.min ?? 0, max = o.max ?? 100, step = o.step ?? 1;
+  const p = ((o.value - min) / (max - min)) * 100;
+  const id = `sl-${o.key}`;
+  return `<div class="isl${o.accent ? " accent" : ""}" style="--p:${p.toFixed(2)}">
+    <label class="isl-l" for="${id}">${esc(o.label)}${o.sub ? `<small>${esc(o.sub)}</small>` : ""}</label>
+    <span class="isl-track"><i class="isl-groove" aria-hidden="true"></i><i class="isl-ticks" aria-hidden="true"></i><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${o.value}" data-sl="${esc(o.key)}" data-unit="${esc(o.unit ?? "")}"><b class="isl-bubble" aria-hidden="true">${o.value}${esc(o.unit ?? "")}</b></span>
+    <output class="isl-v" for="${id}">${o.value}<small>${esc(o.unit ?? "")}</small></output>
+  </div>`;
+}
+
+/**
+ * Wire every `.isl` slider under `root`. Arrow keys move ±5 steps of 1 (or one step when the step is larger),
+ * Page keys ±10, Home/End to the ends; the bubble over the thumb shows while dragging or keyboard-focused.
+ */
+export function bindSliders(root: ParentNode, onInput: (key: string, v: number) => void): void {
+  root.querySelectorAll<HTMLInputElement>(".isl input[type=range]").forEach((r) => {
+    const box = r.closest<HTMLElement>(".isl");
+    if (!box) return;
+    const min = Number(r.min), max = Number(r.max), step = Number(r.step) || 1;
+    const unit = r.dataset.unit ?? "";
+    const out = box.querySelector<HTMLElement>(".isl-v");
+    const bubble = box.querySelector<HTMLElement>(".isl-bubble");
+    const show = (v: number) => {
+      box.style.setProperty("--p", (((v - min) / (max - min)) * 100).toFixed(2));
+      if (out) out.innerHTML = `${v}<small>${esc(unit)}</small>`;
+      if (bubble) bubble.textContent = `${v}${unit}`;
+    };
+    const set = (v: number) => {
+      const c = Math.min(max, Math.max(min, Math.round(v / step) * step));
+      if (c === Number(r.value)) return;
+      r.value = String(c);
+      show(c);
+      onInput(r.dataset.sl ?? "", c);
+    };
+    r.addEventListener("input", () => { show(Number(r.value)); onInput(r.dataset.sl ?? "", Number(r.value)); });
+    r.addEventListener("keydown", (e) => {
+      const big = step > 1 ? step : 5;
+      const d = e.key === "ArrowRight" || e.key === "ArrowUp" ? big : e.key === "ArrowLeft" || e.key === "ArrowDown" ? -big
+        : e.key === "PageUp" ? 10 : e.key === "PageDown" ? -10 : 0;
+      if (d) { e.preventDefault(); set(Number(r.value) + d); }
+      else if (e.key === "Home") { e.preventDefault(); set(min); }
+      else if (e.key === "End") { e.preventDefault(); set(max); }
+    });
+    r.addEventListener("pointerdown", () => box.classList.add("drag"));
+    const up = () => box.classList.remove("drag");
+    r.addEventListener("pointerup", up);
+    r.addEventListener("pointercancel", up);
+    r.addEventListener("blur", up);
+  });
 }
 export function skillIconPos(cell: number): string {
   return `${(cell % 3) * 50}% ${Math.floor(cell / 3) * 50}%`;

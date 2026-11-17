@@ -15,6 +15,8 @@ const TARGET: Record<string, string> = {
   "클릭 클릭 클릭": '[data-act="atk"]',
   [KEYS.roll]: '[data-act="dash"]',
   [KEYS.potion]: "[data-potion]",
+  // 화염선풍's ring (gate 3: burn the vines)
+  "2": '[data-i="1"]',
   [KEYS.growth]: "[data-growth]",
   [KEYS.talk]: "[data-prompt]",
   [KEYS.move]: ".stick",

@@ -42,7 +42,11 @@ export async function walkTo(server: any, x: number, z: number, yaw = 0): Promis
 
 /** Through portals from the village to `zone`, joining each room on the way. Answers the last entry. */
 export async function goTo(server: any, account: string, zone: string): Promise<any> {
-  const path: Record<string, string[]> = { village: [], bamboo: ["bamboo"], pond: ["bamboo", "pond"], peak: ["bamboo", "pond", "peak"] };
+  const peak = ["bamboo", "pond", "peak"];
+  const path: Record<string, string[]> = {
+    village: [], bamboo: ["bamboo"], pond: ["bamboo", "pond"], peak,
+    kiln: [...peak, "kiln"], temple: [...peak, "kiln", "temple"], censer: [...peak, "kiln", "temple", "censer"],
+  };
   let entry = await inVillage(server, account);
   let from = "village";
   for (const next of path[zone]) {

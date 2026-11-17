@@ -73,11 +73,7 @@ export function objective(s: QuestStatus): { text: string; count: string } {
   }
 }
 
-/** Chapter number from a main quest id ("c1q3" → 1). */
-export function chapterOf(id: string): number {
-  const m = /^c(\d+)/.exec(id);
-  return m ? Number(m[1]) : 1;
-}
+export { chapterOf } from "../shared/story";
 
 /** Which zone an NPC stands in (for "go to X in Y" hints). */
 export function npcZone(id: string): string | null {

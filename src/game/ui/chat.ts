@@ -81,7 +81,7 @@ export class Chat {
     this.wake();
   }
 
-  /** A line arrived (or the room's recent lines on joining). */
+  /** A line arrived (broadcast only: nothing is replayed on joining). */
   push(m: ChatLine): void {
     if (this.filter && !m.sys && /\*{2,}/.test(m.text)) return;
     if (this.log.querySelector(`[data-id="${CSS.escape(m.id)}"]`)) return;

@@ -1,6 +1,7 @@
 // Room chat (one zone × channel room hears it): what a line may be and how often one may be said. The
 // server holds everyone to it; the client may use the same numbers to keep the box from sending what
-// would be turned away. Chat is never stored: the room keeps its last lines in memory only.
+// would be turned away. Chat is never stored anywhere: a line goes to whoever is in the room right then
+// (a room broadcast) and nobody joining later sees it.
 
 import { maskChat } from "./filter";
 
@@ -9,8 +10,6 @@ export const CHAT_GAP_MS = 1200; // no two lines from one player closer than thi
 export const CHAT_BURST = 5; // …and no more than this many…
 export const CHAT_WINDOW_MS = 10_000; // …in this long
 export const CHAT_REPEAT_MS = 10_000; // the same line again within this long is refused
-export const CHAT_KEEP = 30; // lines the room keeps
-export const CHAT_KEEP_MS = 120_000; // and for at most this long
 
 /** A line in a room. `sys` lines are the server's own (a boss felled), with no account. */
 export interface ChatMessage {
@@ -47,21 +46,12 @@ export function chatPaceOk(said: readonly number[], now: number): boolean {
   return recent.every((t) => now - t >= CHAT_GAP_MS);
 }
 
-/** The room's lines with `line` added: the last CHAT_KEEP, none older than CHAT_KEEP_MS. */
-export function keepChat(lines: readonly ChatMessage[], line: ChatMessage, now: number): ChatMessage[] {
-  return [...lines, line].filter((l) => now - l.at <= CHAT_KEEP_MS).slice(-CHAT_KEEP);
-}
-
-export function readChatLines(raw: unknown): ChatMessage[] {
-  if (!Array.isArray(raw)) return [];
-  const out: ChatMessage[] = [];
-  for (const v of raw) {
-    const l = v as Record<string, unknown> | null;
-    if (!l || typeof l.id !== "string" || typeof l.text !== "string" || typeof l.at !== "number") continue;
-    out.push({
-      id: l.id, account: typeof l.account === "string" ? l.account : "", name: typeof l.name === "string" ? l.name : "", text: l.text, at: l.at,
-      ...(l.sys === true ? { sys: true } : {}),
-    });
-  }
-  return out;
+/** One line as it arrives from the room (a broadcast), checked; null when it is not one. */
+export function readChatLine(raw: unknown): ChatMessage | null {
+  const l = raw as Record<string, unknown> | null;
+  if (!l || typeof l !== "object" || typeof l.id !== "string" || typeof l.text !== "string" || typeof l.at !== "number") return null;
+  return {
+    id: l.id, account: typeof l.account === "string" ? l.account : "", name: typeof l.name === "string" ? l.name : "", text: l.text, at: l.at,
+    ...(l.sys === true ? { sys: true } : {}),
+  };
 }

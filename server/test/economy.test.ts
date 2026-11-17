@@ -3,6 +3,8 @@ import { COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, PITY } from "../../s
 import { MAIN_QUESTS, ZONES } from "../../src/shared/world";
 import { NO_ROOM, editProfile, errorOf, goTo, inVillage, newPlayer, profileOf, rolling, walkTo } from "./helpers";
 
+const questIndex = (id: string) => MAIN_QUESTS.findIndex((q) => q.id === id);
+
 const dyer = ZONES.village.npcs.find((n) => n.id === "dyer")!;
 
 describe("potions", () => {
@@ -64,9 +66,9 @@ describe("gear", () => {
     expect(await errorOf(server.dye("sash", 0x123456))).toContain("bad_args");
     expect(await errorOf(server.dye("hat", red))).toContain("bad_args");
     expect(await errorOf(server.dye("sash", red))).toContain("no_currency");
-    await editProfile("test-a", (q) => ({ ...q, pigment: DYE_COST + 5, main: 1, mainAccepted: true, mainProgress: 0 }));
+    await editProfile("test-a", (q) => ({ ...q, pigment: DYE_COST + 5 }));
     const p = await server.dye("sash", red);
-    expect([p.dye.sash, p.pigment, p.mainProgress]).toEqual([red, 5, 1]);
+    expect([p.dye.sash, p.pigment]).toEqual([red, 5]);
     expect((await $room.getMyState()).look.sashDye).toBe(red);
     const washed = await server.dye("scarf", null);
     expect([washed.dye.scarf, washed.pigment]).toEqual([null, 5]);
@@ -112,38 +114,43 @@ describe("the brush altar", () => {
 
 describe("talking and quests", () => {
   test("a quest is accepted from its giver and handed in to its turn-in NPC, close by, once", async (server) => {
+    // The first quest: 먹노인 sends you to the bamboo grove; 바람이 takes it in.
+    expect([MAIN_QUESTS[0].id, MAIN_QUESTS[0].giver, MAIN_QUESTS[0].turnIn]).toEqual(["c1q3", "elder", "baram"]);
     await inVillage(server, "test-a");
     const elder = ZONES.village.npcs.find((n) => n.id === "elder")!;
-    const dyer = ZONES.village.npcs.find((n) => n.id === "dyer")!;
     expect(await errorOf(server.acceptMain("elder"))).toContain("too_far");
     expect(await errorOf(server.talk("ghost"))).toContain("bad_args");
     await walkTo(server, elder.x + 1, elder.z);
     expect(await errorOf(server.claimMain("elder"))).toContain("bad_args"); // not the turn-in NPC
     expect((await server.acceptMain("elder")).mainAccepted).toBe(true);
-    await walkTo(server, dyer.x + 1, dyer.z);
-    expect(await errorOf(server.acceptMain("dyer"))).toContain("bad_args"); // not the giver of quest 1
-    const p = await server.claimMain("dyer"); // "go and talk to the dyer": handing in is the talk
-    expect([p.main, p.mainAccepted, p.mainProgress, p.pigment, p.potions, p.exp]).toEqual([1, false, 0, 40, 6, 20]);
-    expect(await errorOf(server.claimMain("dyer"))).toContain("quest_not_done"); // quest 2 not accepted yet
+    await goTo(server, "test-a", "bamboo");
+    await editProfile("test-a", (q) => ({ ...q, mainProgress: 8 }));
+    const baram = ZONES.bamboo.npcs.find((n) => n.id === "baram")!;
+    await walkTo(server, baram.x + 1, baram.z);
+    expect(await errorOf(server.acceptMain("baram"))).toContain("bad_args"); // not the giver of quest 1
+    const p = await server.claimMain("baram");
+    // It carries the removed intro quests' potions and pigment.
+    expect([p.main, p.mainAccepted, p.mainProgress, p.pigment, p.potions, p.level > 1]).toEqual([1, false, 0, 130, 6, true]);
+    expect(await errorOf(server.claimMain("baram"))).toContain("quest_not_done"); // quest 2 not accepted yet
   });
 
   test("progress only counts after accepting; levels and reaching a zone count as done", async (server) => {
     await newPlayer(server, "test-a");
     // c1q4: reach level 4, from and to 바람이 in the bamboo grove — not accepted yet
-    await editProfile("test-a", (q) => ({ ...q, main: 3, level: 4 }));
+    await editProfile("test-a", (q) => ({ ...q, main: questIndex("c1q4"), level: 4 }));
     await goTo(server, "test-a", "bamboo");
     const baram = ZONES.bamboo.npcs.find((n) => n.id === "baram")!;
     await walkTo(server, baram.x + 1, baram.z);
     expect(await errorOf(server.claimMain("baram"))).toContain("quest_not_done");
     await server.acceptMain("baram");
-    expect((await server.claimMain("baram")).main).toBe(4);
+    expect((await server.claimMain("baram")).main).toBe(questIndex("c1q5"));
     // c1q6: reach the pond, hand in to 노을 there
-    await editProfile("test-a", (q) => ({ ...q, main: 5, mainAccepted: true, mainProgress: 0 }));
+    await editProfile("test-a", (q) => ({ ...q, main: questIndex("c1q6"), mainAccepted: true, mainProgress: 0 }));
     await goTo(server, "test-a", "pond");
     expect((await profileOf("test-a")).mainProgress).toBe(1);
     const noeul = ZONES.pond.npcs.find((n) => n.id === "noeul")!;
     await walkTo(server, noeul.x + 1, noeul.z);
-    expect((await server.claimMain("noeul")).main).toBe(6);
+    expect((await server.claimMain("noeul")).main).toBe(questIndex("c1q7"));
   });
 
   test("past the last main quest there is nothing to claim", async (server) => {

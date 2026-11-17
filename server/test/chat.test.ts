@@ -1,4 +1,4 @@
-import { CHAT_GAP_MS, CHAT_KEEP, CHAT_MAX, CHAT_REPEAT_MS } from "../../src/shared/chat";
+import { CHAT_GAP_MS, CHAT_MAX, CHAT_REPEAT_MS } from "../../src/shared/chat";
 import { isBannedName, maskChat } from "../../src/shared/filter";
 import { CHANNEL_CAPACITY, roomIdFor } from "../../src/shared/world";
 import { NO_ROOM, ago, editProfile, errorOf, inVillage, newPlayer } from "./helpers";
@@ -14,8 +14,6 @@ describe("chat", () => {
     await editProfile("test-a", (q) => ({ ...q, name: "붓잡이" }));
     const line = await server.chatSay("  안녕​   하세요\t!  ");
     expect([line.name, line.text, line.account, line.sys]).toEqual(["붓잡이", "안녕 하세요 !", "test-a", undefined]);
-    const { chat } = await $room.getRoomState();
-    expect(chat.map((l: any) => l.text)).toEqual(["안녕 하세요 !"]);
     // Extra arguments do not choose the name or the speaker.
     await rested();
     const forged = await server.chatSay("또 안녕", "운영자", "test-b");
@@ -89,26 +87,18 @@ describe("chat", () => {
     expect((await server.chatSay("안녕")).name).toBe("먹동이");
   });
 
-  test("only the room hears it: another channel of the zone does not", async (server) => {
+  test("a line is kept nowhere: no chat in room state, and an old build's leftover is cleared", async (server) => {
     for (let i = 0; i < CHANNEL_CAPACITY; i++) await server.simulateJoin(roomIdFor("village", 1), `filler-${i}`);
     const b = await inVillage(server, "test-b");
     expect(b.channel).toBe(2);
+    await $room.updateRoomState({ chat: [{ id: "old", account: "x", name: "x", text: "옛말", at: ago(1000) }] });
     await server.chatSay("이 채널만");
+    expect((await $room.getRoomState()).chat).toBeUndefined();
     server.connect({ account: "filler-0", roomId: roomIdFor("village", 1) });
     expect((await $room.getRoomState()).chat).toBeUndefined();
+    // Nor in anyone's state: only the pace times and a hash of the last line.
     server.connect({ account: "test-b", roomId: b.roomId });
-    expect((await $room.getRoomState()).chat.length).toBe(1);
-  });
-
-  test("the room keeps only its last lines, and none older than two minutes", async (server) => {
-    await inVillage(server, "test-a");
-    const old = { id: "old", account: "x", name: "x", text: "옛말", at: ago(130_000) };
-    const lines = Array.from({ length: CHAT_KEEP }, (_, i) => ({ id: `l${i}`, account: "x", name: "x", text: `${i}`, at: ago(1000) }));
-    await $room.updateRoomState({ chat: [old, ...lines] });
-    await server.chatSay("새 말");
-    const { chat } = await $room.getRoomState();
-    expect(chat.length).toBe(CHAT_KEEP);
-    expect(chat[0].id).toBe("l1");
-    expect(chat[CHAT_KEEP - 1].text).toBe("새 말");
+    expect(JSON.stringify(await $room.getMyState()).includes("이 채널만")).toBe(false);
+    expect(JSON.stringify(await $global.getUserState("test-b")).includes("이 채널만")).toBe(false);
   });
 });

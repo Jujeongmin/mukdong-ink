@@ -123,7 +123,7 @@ export interface GameApi {
   claimDaily(index: number): Promise<ProfileView>;
   /** Say a line in your room (zone + channel). Errors: bad_args (empty/too long), on_cooldown (pace), rate_limited (same line again), not_ready. */
   chatSay(text: string): Promise<ChatMessage>;
-  /** Each new line of your room, once, oldest first (the room's recent lines arrive on entering it). */
+  /** Each line said in your room while you are in it, once. Nothing from before you joined is replayed. */
   onChat(cb: (line: ChatMessage) => void): () => void;
   onRoom(cb: (room: RoomView) => void): () => void;
   onPlayers(cb: (players: Record<string, RoomPlayer>) => void): () => void;

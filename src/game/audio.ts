@@ -6,7 +6,7 @@
 //
 // BGM tracks have an intro and a loop section (bgm/loops.json): play to `end`, jump back to `start`, checked at
 // 20 Hz with setInterval. Zone changes crossfade A↔B over 1.5 s. Hidden tab: context suspended, BGM paused.
-// Settings (master/music/sfx/ambience 0–100, mute) persist in localStorage "ink.audio".
+// Settings (master/music/sfx 0–100, mute) persist in localStorage "ink.audio". Ambience follows 효과음 at AMB_MIX.
 
 const BASE = "./assets/audio/";
 const BGM_FADE = 1.5;
@@ -16,27 +16,34 @@ const MAX_VOICES = 4;
 const MIN_GAP_MS = 40;
 const LOOP_EPS = 0.03;
 
-export type BgmTrack = "title" | "village" | "bamboo" | "pond" | "peak";
+export type BgmTrack = "title" | "village" | "bamboo" | "pond" | "peak" | "kiln" | "temple" | "censer";
 export type SfxName =
   | "swing-1" | "swing-2" | "swing-3-spin" | "hit-ink" | "kill-burst" | "roll" | "resisted" | "player-hurt"
   | "skill-wave" | "skill-fire" | "skill-earth" | "skill-wind" | "skill-ink"
   | "monster-slam" | "monster-spit" | "levelup" | "quest-done"
   | "enhance-charge" | "enhance-success" | "enhance-fail" | "enhance-destroy"
-  | "ui-click" | "ui-open" | "dialogue-next" | "pickup" | "potion" | "portal" | "death" | "respawn";
+  | "ui-click" | "ui-open" | "dialogue-next" | "pickup" | "potion" | "portal" | "death" | "respawn"
+  // chapter 2
+  | "jar-hop" | "jar-break" | "crow-caw" | "ash-impact" | "monk-staff" | "stone-slam" | "armor-clunk" | "glaze-crack"
+  | "boss-windup" | "boss-slam-bronze" | "boss-fade" | "lantern-ignite" | "voice-bleed";
 
 export const SKILL_SFX: readonly SfxName[] = ["skill-wave", "skill-fire", "skill-earth", "skill-wind", "skill-ink"];
 const SWINGS: readonly SfxName[] = ["swing-1", "swing-2", "swing-3-spin"];
 const COMBAT_SET: readonly SfxName[] = ["swing-1", "swing-2", "swing-3-spin", "hit-ink", "kill-burst", "roll", "resisted", "player-hurt", "ui-click", "ui-open"];
 /** sounds that get a slight random pitch so repeats don't sound identical */
-const VARY = new Set<SfxName>(["swing-1", "swing-2", "swing-3-spin", "hit-ink", "kill-burst", "resisted"]);
+const VARY = new Set<SfxName>(["swing-1", "swing-2", "swing-3-spin", "hit-ink", "kill-burst", "resisted", "jar-hop", "jar-break", "crow-caw", "ash-impact", "monk-staff", "armor-clunk"]);
 /** per-sound level trims (the clips are loudness-normalized; these only set the mix) */
 const TRIM: Partial<Record<SfxName, number>> = { "ui-click": 0.45, "dialogue-next": 0.4, "ui-open": 0.55, "swing-1": 0.7, "swing-2": 0.7, "swing-3-spin": 0.8, "hit-ink": 0.75, roll: 0.6 };
 
-const AMB_OF: Record<string, string> = { village: "amb-village", bamboo: "amb-bamboo", pond: "amb-pond", peak: "amb-rain" };
-const ZONE_BGM: Record<string, BgmTrack> = { village: "village", bamboo: "bamboo", pond: "pond", peak: "peak" };
+const AMB_OF: Record<string, string> = {
+  village: "amb-village", bamboo: "amb-bamboo", pond: "amb-pond", peak: "amb-rain", kiln: "amb-kiln", temple: "amb-temple", censer: "amb-censer",
+};
+const ZONE_BGM: Record<string, BgmTrack> = { village: "village", bamboo: "bamboo", pond: "pond", peak: "peak", kiln: "kiln", temple: "temple", censer: "censer" };
 
-export interface AudioSettings { master: number; music: number; sfx: number; amb: number; muted: boolean }
-const DEFAULTS: AudioSettings = { master: 80, music: 60, sfx: 80, amb: 50, muted: false };
+export interface AudioSettings { master: number; music: number; sfx: number; muted: boolean }
+const DEFAULTS: AudioSettings = { master: 80, music: 60, sfx: 80, muted: false };
+/** ambience level as a share of the 효과음 slider (no slider of its own) */
+const AMB_MIX = 0.6;
 const STORE = "ink.audio";
 
 interface Deck { el: HTMLAudioElement; gain: GainNode; track: BgmTrack | null }
@@ -71,7 +78,12 @@ class AudioSystem {
   constructor() {
     try {
       const raw = window.localStorage.getItem(STORE);
-      if (raw) Object.assign(this.settings, JSON.parse(raw) as Partial<AudioSettings>);
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<AudioSettings> & { amb?: unknown };
+        // the old 주변 소리 slider is gone: drop its stored value
+        if ("amb" in saved) { delete saved.amb; window.localStorage.setItem(STORE, JSON.stringify({ ...this.settings, ...saved })); }
+        Object.assign(this.settings, saved);
+      }
     } catch {
       // storage blocked or bad JSON: defaults
     }
@@ -175,7 +187,7 @@ class AudioSystem {
     this.master.gain.setTargetAtTime(s.muted ? 0 : (s.master / 100) ** 2, t, 0.03);
     this.musicBus.gain.setTargetAtTime((s.music / 100) ** 2, t, 0.03);
     this.sfxBus.gain.setTargetAtTime((s.sfx / 100) ** 2, t, 0.03);
-    this.ambBus.gain.setTargetAtTime(((s.amb / 100) ** 2) * 0.5, t, 0.03);
+    this.ambBus.gain.setTargetAtTime(((s.sfx * AMB_MIX / 100) ** 2) * 0.5, t, 0.03);
   }
 
   /* ---------- music ---------- */

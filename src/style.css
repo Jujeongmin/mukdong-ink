@@ -1268,3 +1268,145 @@ html.typing-lock #ui { bottom: auto; height: var(--lock-h); }
   .btn.btn.btn.chat-btn { left: calc(18px + var(--safe-l)); bottom: calc(148px + var(--safe-b)); }
   .chat-log { bottom: calc(250px + var(--safe-b)); width: min(240px, 62vw); }
 }
+
+/* ---------- 번지는 목소리: no name plate, words that bleed like wet ink ---------- */
+.dlg.voice .dlg-who { opacity: 0.6; }
+.dlg.voice .dlg-name { font-size: 14px; font-weight: 400; letter-spacing: 0.32em; filter: blur(0.5px); }
+.dlg.voice .dlg-title { display: none; }
+.dlg.voice .dlg-text { letter-spacing: 0.05em; text-shadow: 0 0 2px, 2px 1px 6px, -2px 0 10px; animation: voice-bleed 3.4s ease-in-out infinite alternate; }
+@keyframes voice-bleed { 50% { text-shadow: 0 0 3px, 4px 2px 10px, -3px 0 14px; letter-spacing: 0.08em; } }
+@media (prefers-reduced-motion: reduce) { .dlg.voice .dlg-text { animation: none; } }
+
+/* ---------- tutorial spots in the growth sheet (gates 8, 9) ---------- */
+.gr-skill.focus { box-shadow: inset 3px 0 0 var(--cinnabar); background: rgba(200, 50, 42, 0.06); }
+.gr-pips i.focus { box-shadow: 0 0 0 2px var(--cinnabar), 0 0 8px rgba(200, 50, 42, 0.7); animation: focus-pulse 1.4s ease-in-out infinite; }
+@keyframes focus-pulse { 50% { box-shadow: 0 0 0 2px var(--cinnabar), 0 0 2px rgba(200, 50, 42, 0.2); } }
+.gr-focus-note { margin: 6px 0 0; font-family: var(--f-brush); font-weight: 700; font-size: 14px; color: var(--cinnabar); }
+.rate-table tr.focus td { background: rgba(200, 50, 42, 0.12); color: var(--ink); font-weight: 700; }
+.rate-detail .sub.focus { color: var(--cinnabar); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .gr-pips i.focus { animation: none; } }
+
+/* ==========================================================================================
+   Death, take three: not a modal. The ink takes the screen from the edges, the scene greys under it,
+   the HUD falls away (the portrait stays, faint), "먹에 잠겼다" writes itself down the right third like the
+   inscription on a painting, one line in 먹동이's own voice beside it, and an ensō you hold to rise.
+   ========================================================================================== */
+@property --bleed { syntax: "<percentage>"; inherits: false; initial-value: 100%; }
+#stage { transition: filter 1.4s ease; }
+html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
+/* everything but the portrait and the ink falls away */
+#ui > * { transition: opacity 0.9s ease; }
+#ui.dead > *:not(.ink-death):not(.portrait):not(.fade) { opacity: 0 !important; pointer-events: none !important; }
+#ui.dead > .portrait { opacity: 0.45; }
+
+.ink-death { position: fixed; inset: 0; z-index: 25; pointer-events: none; }
+.ink-death[hidden] { display: none; }
+/* ink creeping in from the edges, with paper grain in it */
+.ink-death-bleed { position: absolute; inset: -2%; background-color: #120f0c; background-image: var(--paper-tile); background-size: 512px 512px; background-blend-mode: soft-light;
+  /* two slightly offset ellipses intersected: the ink's inner edge is uneven, like a wash, not a vignette */
+  -webkit-mask: radial-gradient(ellipse 72% 68% at 50% 48%, transparent var(--bleed), #000 calc(var(--bleed) + 30%)), radial-gradient(ellipse 64% 76% at 45% 55%, transparent calc(var(--bleed) + 4%), #000 calc(var(--bleed) + 40%));
+  mask: radial-gradient(ellipse 72% 68% at 50% 48%, transparent var(--bleed), #000 calc(var(--bleed) + 30%)), radial-gradient(ellipse 64% 76% at 45% 55%, transparent calc(var(--bleed) + 4%), #000 calc(var(--bleed) + 40%));
+  -webkit-mask-composite: source-in; mask-composite: intersect;
+  opacity: 0.92; animation: ink-bleed 1.5s cubic-bezier(0.3, 0.6, 0.2, 1) forwards; }
+@keyframes ink-bleed { from { --bleed: 100%; opacity: 0; } 20% { opacity: 0.92; } to { --bleed: 18%; } }
+/* rising: the ink recedes from the centre outward */
+.ink-death.out .ink-death-bleed { animation: ink-recede 1s ease-in forwards; }
+@keyframes ink-recede { from { --bleed: 18%; } to { --bleed: 120%; opacity: 0; } }
+.ink-death.out .ink-death-words, .ink-death.out .ink-death-rise { opacity: 0; transition: opacity 0.4s ease; }
+
+/* the inscription: vertical, right third, written top to bottom */
+.ink-death-words { position: absolute; right: max(9vw, calc(40px + var(--safe-r))); top: 13vh; display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 18px; }
+.ink-death-ins { margin: 0; writing-mode: vertical-rl; text-orientation: upright; font-family: var(--f-brush); font-weight: 700; font-size: clamp(54px, 8.4vh, 88px); line-height: 1; letter-spacing: 0.08em;
+  color: #f2e9d8; text-shadow: 0 0 1px rgba(242, 233, 216, 0.9), 0 0 6px rgba(242, 233, 216, 0.25), 2px 3px 14px rgba(0, 0, 0, 0.7); }
+.ink-death-ins span { display: inline-block; clip-path: inset(0 0 100% 0); animation: ink-write 0.34s cubic-bezier(0.4, 0.1, 0.3, 1) forwards; animation-delay: calc(0.6s + var(--i) * 0.17s); filter: blur(0.3px); }
+.ink-death-ins .gap { inline-size: 0.45em; }
+@keyframes ink-write { 0% { clip-path: inset(0 0 100% 0); filter: blur(2px); } 70% { filter: blur(0.6px); } 100% { clip-path: inset(0 0 -10% 0); filter: blur(0.3px); } }
+.ink-death-side { writing-mode: vertical-rl; display: flex; flex-direction: row; gap: 12px; padding-top: 0.6em; opacity: 0; animation: ink-fade 0.9s 1.9s ease forwards; }
+.ink-death-side p { margin: 0; font-family: var(--f-brush); font-size: 17px; line-height: 1.4; letter-spacing: 0.12em; color: rgba(236, 226, 208, 0.82); text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8); }
+.ink-death-thought { color: rgba(236, 226, 208, 0.62) !important; }
+.ink-death-thought[hidden] { display: none; }
+@keyframes ink-fade { to { opacity: 1; } }
+
+/* the ensō to hold: bottom centre, drawn while held, unwound on release */
+.ink-death-rise { position: absolute; left: 50%; bottom: calc(52px + var(--safe-b)); transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; pointer-events: auto; cursor: pointer;
+  touch-action: none; -webkit-user-select: none; user-select: none; opacity: 0; animation: ink-fade 0.8s 1.6s ease forwards; outline: none; }
+.ink-death-rise .enso-load { --es: 92px; transition: --f 0.72s linear; }
+.ink-death-rise .enso-load.unwind { transition: --f 0.35s ease-out; }
+.ink-death-rise .enso-load .ring-track { opacity: 0.22; }
+.ink-death-rise:hover .ring-track, .ink-death-rise:focus-visible .ring-track { opacity: 0.38; }
+.ink-death-rise small { font-family: var(--f-brush); font-size: 14px; letter-spacing: 0.1em; color: rgba(236, 226, 208, 0.75); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
+.ink-death.risen .enso-load .seam { clip-path: inset(0 0 0 0); }
+.ink-death.risen .enso-load .head { opacity: 0; scale: 0.3; animation: none; }
+.ink-death.risen .enso-load .bloom { animation: enso-bloom 0.5s 0.1s ease-out both; }
+.ink-death:not(.rising):not(.risen) .enso-load .head { opacity: 0; }
+
+@media (max-width: 640px), (max-aspect-ratio: 9/10) {
+  .ink-death-words { right: calc(22px + var(--safe-r)); top: calc(84px + var(--safe-t)); gap: 12px; }
+  .ink-death-ins { font-size: clamp(46px, 7vh, 64px); }
+  .ink-death-side p { font-size: 15px; }
+  .ink-death-rise { bottom: calc(64px + var(--safe-b)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ink-death-bleed { animation-duration: 0.01s; }
+  .ink-death-ins span { animation-duration: 0.01s; animation-delay: 0s; }
+  .ink-death-side, .ink-death-rise { animation-delay: 0s; }
+}
+
+/* chapter endings and other dark narration: words on the dark, written in, no box and no centred heading */
+.dlg.dark .dlg-veil { background-color: rgba(10, 9, 8, 0.93); background-image: var(--paper-tile); background-size: 512px 512px; background-blend-mode: soft-light; }
+.dlg.dark.narration .dlg-text { font-style: normal; font-size: 21px; letter-spacing: 0.06em; line-height: 1.9; text-align: left; color: #efe5d1; }
+.dlg.dark.narration .dlg-box { text-align: left; }
+
+/* ---------- quest card: distance line and state tag ---------- */
+.qdist { display: block; margin: -2px 0 0; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.qdist:empty { display: none; }
+.qdist-mini { display: none; }
+.qstate { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.qstate:empty { display: none; }
+.jokja[data-state="fight"] .qtag, .jokja[data-state="travel"] .qtag, .jokja[data-state="auto"] .qtag { display: none; }
+.jokja[data-state="fight"] .qstate { color: var(--cinnabar); animation: qfight 1.2s ease-in-out infinite; }
+.jokja[data-state="travel"] .qstate, .jokja[data-state="auto"] .qstate { color: var(--ink); }
+@keyframes qfight { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .jokja[data-state="fight"] .qstate { animation: none; } }
+@media (max-width: 520px) {
+  .jokja.folded .qdist-mini { display: inline; margin-left: 4px; }
+  .jokja.folded .qdist-mini:empty { display: none; }
+}
+
+/* ---------- dialogue portraits: the speaker's own figure in an ink tablet, name plate on its lower edge ---------- */
+.dlg-face { display: none; position: absolute; left: 22px; top: 18px; width: 112px; height: 112px; border-radius: 3px; z-index: 2;
+  background: radial-gradient(ellipse at 50% 38%, #f3ebdb, #ddd1b9 75%), var(--paper-tile); background-size: auto, 512px 512px; background-blend-mode: multiply;
+  box-shadow: inset 0 0 0 1.5px #2b2622, inset 0 0 0 4.5px rgba(236, 227, 207, 0.0), inset 0 0 0 5px rgba(43, 38, 34, 0.45), 0 3px 10px rgba(0, 0, 0, 0.25); }
+.dlg-face img { position: absolute; inset: 5px; width: calc(100% - 10px); height: calc(100% - 10px); object-fit: cover; border-radius: 1px; }
+.dlg-face .f1 { opacity: 0; }
+.dlg-face.talk .f1 { animation: face-talk 0.36s steps(1, end) infinite; }
+@keyframes face-talk { 50% { opacity: 1; } }
+.dlg-face.swap img { animation: face-bleed 0.38s ease-out both; }
+.dlg-face.swap.talk .f1 { animation: face-bleed 0.38s ease-out both, face-talk 0.36s 0.38s steps(1, end) infinite; }
+@keyframes face-bleed { from { filter: blur(6px) contrast(0.4) brightness(1.4); opacity: 0.2; } to { filter: none; } }
+.dlg-face-name { position: absolute; left: 50%; bottom: -11px; transform: translateX(-50%); white-space: nowrap; padding: 2px 10px 3px; border-radius: 2px;
+  font-family: var(--f-brush); font-weight: 700; font-size: 14px; letter-spacing: 0.06em; color: #efe5d1; background: #2b2622;
+  box-shadow: inset 0 0 0 1px #15110e, inset 0 0 0 2.5px #2b2622, inset 0 0 0 3px rgba(239, 229, 209, 0.45); }
+.dlg.has-face .dlg-face { display: block; }
+.dlg.has-face .dlg-box { padding-left: 156px; min-height: 152px; }
+.dlg.has-face .dlg-name { display: none; }
+/* the player speaks from the right, facing in */
+.dlg.me.has-face .dlg-face { left: auto; right: 22px; }
+.dlg.me.has-face .dlg-face img { transform: scaleX(-1); }
+.dlg.me.has-face .dlg-box { padding-left: 26px; padding-right: 156px; }
+.dlg.me.has-face .dlg-who { justify-content: flex-end; }
+/* 건너뛰기: only on sequences already read */
+.btn.btn.btn.dlg-skip { position: absolute; top: 10px; right: 14px; z-index: 3; min-height: 24px; padding: 2px 10px 3px; font-size: 12px; }
+.dlg.me .btn.btn.btn.dlg-skip { right: auto; left: 14px; }
+@media (max-width: 640px) {
+  .dlg-face { width: 72px; height: 72px; left: 14px; top: 14px; }
+  .dlg-face-name { font-size: 12.5px; bottom: -10px; }
+  .dlg.has-face .dlg-box { padding-left: 100px; min-height: 112px; }
+  .dlg.me.has-face .dlg-face { right: 14px; }
+  .dlg.me.has-face .dlg-box { padding-left: 18px; padding-right: 100px; }
+}
+@media (prefers-reduced-motion: reduce) { .dlg-face.talk .f1, .dlg-face.swap img { animation: none; } }
+
+/* 물약 자동 사용 on: a small 자동 mark on the gourd */
+.gourd.auto-on::after { content: "자동"; position: absolute; left: 50%; top: -9px; transform: translateX(-50%); padding: 0 4px 1px; border-radius: 2px; font-family: var(--f-brush); font-weight: 700; font-size: 10px; line-height: 1.3; color: #efe5d1; background: #2b2622; box-shadow: inset 0 0 0 0.5px rgba(239, 229, 209, 0.5); pointer-events: none; }
+.gourd { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

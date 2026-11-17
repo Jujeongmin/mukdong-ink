@@ -28,7 +28,7 @@ export interface InputHandlers {
 
 /** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
 export const KEYS = {
-  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "1", talk: "G", gear: "I", growth: "K", help: "H", mute: "M", chat: "Enter",
+  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", help: "H", mute: "M", chat: "Enter",
 } as const;
 
 const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
@@ -146,7 +146,10 @@ export class Input {
       this.h.manual?.();
       return;
     }
-    if (e.code === "Digit1" || e.code === "Numpad1") { this.h.potion(); return; }
+    if (e.code === "KeyQ") { this.h.potion(); return; }
+    // 1–5: 물결, 화염, 대지, 바람, 먹 (aimed at the cursor like a swing)
+    const d = e.code.startsWith("Digit") ? Number(e.code.slice(5)) : e.code.startsWith("Numpad") ? Number(e.code.slice(6)) : NaN;
+    if (d >= 1 && d <= 5) { this.h.manual?.(); this.h.skill(d - 1); return; }
     if (e.code === "KeyG") { this.h.interact(); return; }
     if (e.code === "KeyZ") { this.h.auto?.(); return; }
     if (e.code === "Space" || e.code === "ShiftLeft" || e.code === "ShiftRight") { e.preventDefault(); this.h.manual?.(); this.h.act("dash"); return; }

@@ -2,7 +2,7 @@
 // on the main quest's state (offer → accept, progress, complete → reward → maybe the next offer); otherwise
 // idle chatter, then the NPC's own service (daily list, dye vats, the altar).
 
-import { CHAPTER_END, IDLE_LINES, DAILY_INTRO, PROLOGUE, QUEST_STORY, type Line } from "../shared/story";
+import { CHAPTER_ENDS, IDLE_LINES, DAILY_INTRO, PROLOGUE, QUEST_STORY, chapterOf, type Line } from "../shared/story";
 import { MAIN_QUESTS, type Npc } from "../shared/world";
 import type { GameApi, ProfileView } from "../net/api";
 import { dailyStatus, mainStatus, readyByTalk, rewardText } from "./quests";
@@ -65,8 +65,13 @@ export class Story {
           this.ctx.apply(r);
           toast(`의뢰 완료: ${s.q.title} (${rewardText(s.q)})`);
           audio.play("quest-done");
-          if (!MAIN_QUESTS[r.main]) await dialogue.play(CHAPTER_END, { dark: true });
-          else await this.offer(npc);
+          // a chapter closes when its last quest is handed in (the next one belongs to another chapter, or none)
+          const next = MAIN_QUESTS[r.main], ch = chapterOf(s.q.id);
+          if (!next || chapterOf(next.id) !== ch) {
+            const end = CHAPTER_ENDS[ch];
+            if (end) await dialogue.play(end, { dark: true });
+          }
+          if (next && next.giver === npc.id) await this.offer(npc);
         }
       } else if (s && st && !s.accepted && s.q.giver === npc.id) {
         handled = true;

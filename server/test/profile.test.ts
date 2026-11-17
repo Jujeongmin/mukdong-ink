@@ -32,7 +32,7 @@ describe("profile", () => {
 
   test("a name is 2–8 hangul, latin letters or digits, never hanja, and unique", async (server) => {
     await newPlayer(server, "test-a");
-    for (const bad of ["가", "가나다라마바사아자", "墨동이", "먹 동", "ㄱㄴ", "", 42, null]) {
+    for (const bad of ["가", "가나다라마바사아자", String.fromCharCode(0x58a8) + "동이", "먹 동", "ㄱㄴ", "", 42, null]) {
       expect(await errorOf(server.setName(bad))).toContain("bad_name");
     }
     expect((await server.setName("  붓잡이  ")).name).toBe("붓잡이");

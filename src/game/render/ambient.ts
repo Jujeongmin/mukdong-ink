@@ -1,19 +1,20 @@
-// Atmosphere per zone theme: the post-pass mood (palette, sky, moon, haze), painted framing silhouettes
-// at the screen corners, drifting fireflies in the bamboo grove, rain and lightning on the peak, warm
-// lantern light pools and the moon's streak on water. Every pool is created once (SHARED) and only
-// shown/hidden; the framing texture is per theme (OWNED, disposed on the next theme); nothing allocates
-// per frame.
+// Atmosphere per zone theme: the post-pass mood (palette, sky, moon, haze), drifting fireflies in the
+// bamboo grove, rain and lightning on the peak, ash / embers / chimney smoke motes, warm lantern light
+// pools and the moon's streak on water. Every pool is created once (SHARED) and only shown/hidden; nothing
+// allocates per frame.
 
 import * as THREE from "three";
 import type { ZoneDef } from "../../shared/world";
 import { G, setActorShadow } from "./materials";
-import { camera, onQuality, overlay, setFlash, setFraming, setFramingOffset, setMood, type Mood } from "./gfx";
+import { camera, onQuality, overlay, setFlash, setMood, type Mood } from "./gfx";
 
 type Theme = ZoneDef["theme"];
 interface ThemeMood extends Mood {
   fireflies: number;
   rain: boolean;
   lightning: boolean;
+  /** pooled drifting specks: ash falling (kiln), paper-white embers rising from the censer, ash blowing in at the peak's east door */
+  motes?: "ash" | "embers" | "drift";
 }
 
 const coarse = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
@@ -51,9 +52,79 @@ export const MOODS: Record<Theme, ThemeMood> = {
     hemiSky: 0x8e9ab0, hemiGround: 0x26262c, hemiI: 1.1, moonCol: 0xaab8d8, moonI: 1.6, fireflies: 0, rain: true, lightning: true,
     pillars: 1, pillarH: 1.7, stalks: 0, glow: 0.25, clouds: 1.6, fgDark: 0.7,
     // no moon in the storm: light from high above, shadows pool softly at the feet of things
-    sun: [-100, 74], shade: [0.66, 3.2, 4],
+    sun: [-100, 74], shade: [0.66, 3.2, 4], motes: "drift",
+  },
+  // chapter 2. old kiln yard: warm ink on yellowed paper, a low grey sky with a white sun that gives no light, ash falling
+  kiln: {
+    paper: [0.85, 0.81, 0.75], ink: [0.08, 0.062, 0.05], skyTop: [0.42, 0.39, 0.35], skyLow: [0.72, 0.68, 0.62], mist: [0.76, 0.72, 0.66],
+    moon: [0.68, 0.86, 0.065, 1], sunRing: 0.08, skyPow: 0.95, fogLow: 0.4, hazeNear: 24, hazeFar: 70,
+    hemiSky: 0xd8ccb8, hemiGround: 0x3a3028, hemiI: 1.25, moonCol: 0xf0e4d0, moonI: 1.9, fireflies: 0, rain: false, lightning: false,
+    pillars: 0.2, pillarH: 0.95, stalks: 0, glow: 0.3, clouds: 0.5, fgDark: 0.5,
+    sun: [-55, 30], shade: [0.72, 1.4, 9], motes: "ash",
+  },
+  // burnt temple: cold violet ink, a dawn that never comes (a thin paper band under dark ink), white mist on the ground
+  temple: {
+    paper: [0.85, 0.845, 0.83], ink: [0.045, 0.04, 0.065], skyTop: [0.06, 0.055, 0.09], skyLow: [0.82, 0.81, 0.82], mist: [0.88, 0.88, 0.9],
+    moon: [0.5, 0.9, 0, 0], skyPow: 0.22, fogLow: 1.0, hazeNear: 22, hazeFar: 64,
+    hemiSky: 0xa8a8c8, hemiGround: 0x2a2834, hemiI: 1.1, moonCol: 0xc8c8e8, moonI: 1.6, fireflies: 0, rain: false, lightning: false,
+    pillars: 0.6, pillarH: 1.0, stalks: 0, glow: 0.65, clouds: 0.4, fgDark: 0.6,
+    sun: [-90, 55], shade: [0.6, 2.2, 6],
+  },
+  // censer yard (boss): the darkest ink and sharp paper only, a huge empty white sun with ink bleeding in, paper embers
+  censer: {
+    paper: [0.9, 0.88, 0.84], ink: [0.02, 0.018, 0.022], skyTop: [0.035, 0.03, 0.04], skyLow: [0.16, 0.15, 0.16], mist: [0.22, 0.21, 0.22],
+    moon: [0.5, 0.78, 0.13, 1], sunRing: 0.32, skyPow: 0.5, contrast: 0.6, fogLow: 0.3, hazeNear: 20, hazeFar: 56,
+    hemiSky: 0x9898a0, hemiGround: 0x1c1a1e, hemiI: 1.0, moonCol: 0xe8e4dc, moonI: 2.2, fireflies: 0, rain: false, lightning: false,
+    pillars: 1, pillarH: 1.3, stalks: 0, glow: 0.15, clouds: 0.3, fgDark: 0.75,
+    sun: [-90, 62], shade: [0.7, 1.6, 6], motes: "embers",
   },
 };
+
+/* ---------- motes: ash flakes and paper embers (camera-facing, instanced, pooled; quality halves them) ---------- */
+const MOTE_N = 180;
+const moteMat = new THREE.ShaderMaterial({
+  transparent: true, depthTest: false, depthWrite: false,
+  uniforms: { uCol: { value: new THREE.Vector3(0.82, 0.8, 0.76) }, uSoft: { value: 0.5 }, uA: { value: 0.75 } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv; varying float vSeed;
+    void main(){
+      vUv = uv; vSeed = float(gl_InstanceID);
+      vec4 mv = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+      float s = length(instanceMatrix[0].xyz);
+      mv.xy += position.xy * s;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform vec3 uCol; uniform float uSoft, uA; varying vec2 vUv; varying float vSeed;
+    void main(){
+      vec2 p = vUv - 0.5;
+      // a ragged flake (ash) or a soft point (embers)
+      float a = atan(p.y, p.x), r = length(p) * 2.0 * (1.0 + (0.1 * sin(a * 3.0 + vSeed) + 0.07 * sin(a * 7.0 + vSeed * 2.0)) * (1.0 - uSoft) + 0.1 * sin(a * 2.0 + vSeed * 3.0));
+      float m = 1.0 - smoothstep(0.35 * (1.0 - uSoft), 1.0, r);
+      if (m < 0.02) discard;
+      gl_FragColor = vec4(uCol, m * uA);
+    }`,
+});
+const motes = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), moteMat, MOTE_N);
+motes.frustumCulled = false;
+motes.count = 0;
+overlay.add(motes);
+const mx = new Float32Array(MOTE_N), my = new Float32Array(MOTE_N), mz = new Float32Array(MOTE_N), mv = new Float32Array(MOTE_N), mph = new Float32Array(MOTE_N);
+let moteKind: ThemeMood["motes"] = undefined;
+/** the censer the embers rise from (scenery at the boss spot) */
+const EMBER_SRC = { x: 0, z: -7 };
+/** the kiln yard's chimney tops (world.ts kiln(): two climbing kilns and the big kiln); thin smoke rises straight from each */
+const KILN_SMOKE = [[-23.28, 8.55, -8.16], [24.52, 8.55, -14.4], [-19.47, 7.5, -19.47]] as const;
+/** in the kiln yard every other mote is chimney smoke instead of falling ash (so a quality cut keeps both) */
+const isSmoke = (i: number): boolean => (i & 1) === 1;
+const smokeSrc = (i: number) => KILN_SMOKE[(i >> 1) % KILN_SMOKE.length];
+/** the peak's east door the ash blows in through */
+const DRIFT_SRC = { x: 28, z: 3 };
+let emberTint = 0;
+/** The fragment of fire shows itself: the censer's embers bloom cinnabar for a moment (skill-colour moment). */
+export function emberBloom(): void {
+  emberTint = 2.5;
+}
 
 /* ---------- fireflies: camera-facing glow quads, instanced ---------- */
 const FLY_N = 48;
@@ -101,11 +172,13 @@ const rx = new Float32Array(RAIN_N), ry = new Float32Array(RAIN_N), rz = new Flo
 let ambDensity = 1;
 let rainActive = RAIN_N;
 let curFlies = 0;
+let moteTarget = 0;
 onQuality((l) => {
   ambDensity = l === "low" ? 0.5 : 1;
   rainActive = Math.round(RAIN_N * ambDensity);
   rainGeo.setDrawRange(0, rainActive * 2);
   flies.count = Math.round(curFlies * ambDensity);
+  motes.count = Math.round(moteTarget * ambDensity);
 });
 
 /* ---------- lightning: a jagged bolt far to the north + the post-pass flash ---------- */
@@ -152,239 +225,26 @@ export const flatGeo = G.flat;
 
 const dummy = new THREE.Object3D();
 
-/* ---------- framing: painted foreground silhouettes at the screen corners ----------
-   One 1024x512 canvas per theme, drawn once when the zone loads (OWNED by Ambient, disposed on the next
-   theme). Left half = the left corners, right half = the right corners; the top 256 rows hang from the
-   top of the screen, the bottom 256 stand on its bottom (gfx.ts frameA maps them so they never squash).
-   Only alpha is used: the ink pass paints it in the zone's ink with a dry-brush grain. */
-const FW = 1024, FH = 512;
-
-function painter(ctx: CanvasRenderingContext2D, seed: number) {
-  let s = seed;
-  const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  /** a brush stroke along a cubic curve: overlapping dabs, swelling from w0 to w1, ragged at the edge */
-  const stroke = (x0: number, y0: number, cx1: number, cy1: number, cx2: number, cy2: number, x1: number, y1: number, w0: number, w1: number, a = 0.5) => {
-    const len = Math.hypot(x1 - x0, y1 - y0) + Math.hypot(cx1 - x0, cy1 - y0);
-    const n = Math.max(8, Math.round(len / 2));
-    ctx.globalAlpha = a;
-    for (let i = 0; i <= n; i++) {
-      const t = i / n, u = 1 - t;
-      const x = u * u * u * x0 + 3 * u * u * t * cx1 + 3 * u * t * t * cx2 + t * t * t * x1;
-      const y = u * u * u * y0 + 3 * u * u * t * cy1 + 3 * u * t * t * cy2 + t * t * t * y1;
-      const w = (w0 + (w1 - w0) * t) * (0.85 + 0.3 * r());
-      ctx.beginPath();
-      ctx.arc(x + (r() - 0.5) * w * 0.3, y + (r() - 0.5) * w * 0.3, Math.max(0.6, w / 2), 0, Math.PI * 2);
-      ctx.fill();
-    }
-  };
-  /** a pine needle cluster: a flat cloud of ink, scrubbed streaks, a fringe of fine needles below */
-  const needles = (x: number, y: number, w: number, h: number) => {
-    for (let i = 0; i < 5; i++) {
-      ctx.globalAlpha = i === 0 ? 0.9 : 0.6;
-      ctx.beginPath();
-      ctx.ellipse(x + (r() - 0.5) * w * 0.4, y + (r() - 0.5) * h * 0.2, w * (0.3 + r() * 0.2), h * (0.28 + r() * 0.14), (r() - 0.5) * 0.25, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.globalAlpha = 0.25;
-    ctx.lineWidth = 1.2;
-    for (let i = 0; i < 6; i++) {
-      const yy = y + (r() - 0.5) * h * 0.5, xx = x + (r() - 0.5) * w * 0.6;
-      ctx.beginPath(); ctx.moveTo(xx - w * 0.2, yy); ctx.lineTo(xx + w * 0.2, yy + (r() - 0.5) * 3); ctx.stroke();
-    }
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = 1.1;
-    for (let i = 0; i < 22; i++) {
-      const xx = x + (r() - 0.5) * w * 0.85, yy = y + h * (0.1 + r() * 0.2);
-      const l = h * (0.25 + r() * 0.35), a = Math.PI / 2 + (r() - 0.5) * 1.4;
-      ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx + Math.cos(a) * l, yy + Math.sin(a) * l); ctx.stroke();
-    }
-  };
-  /** a tapered leaf (bamboo, willow, reed) from (x, y) at angle a */
-  const leaf = (x: number, y: number, len: number, a: number, w: number, alpha = 0.92) => {
-    const ca = Math.cos(a), sa = Math.sin(a), nx = -sa, ny = ca;
-    const tx = x + ca * len, ty = y + sa * len;
-    const bend = (r() - 0.5) * len * 0.25;
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.quadraticCurveTo(x + ca * len * 0.35 + nx * (w + bend), y + sa * len * 0.35 + ny * (w + bend), tx + nx * bend * 0.3, ty + ny * bend * 0.3);
-    ctx.quadraticCurveTo(x + ca * len * 0.35 - nx * (w - bend) * 0.6, y + sa * len * 0.35 - ny * (w - bend) * 0.6, x, y);
-    ctx.fill();
-  };
-  /** a rock mound standing on the bottom edge: lumpy outline, dry-brush highlights scrubbed out */
-  const rock = (x0: number, x1: number, h: number, base = FH) => {
-    ctx.globalAlpha = 0.95;
-    ctx.beginPath();
-    ctx.moveTo(x0, base);
-    const n = 18;
-    for (let i = 0; i <= n; i++) {
-      const t = i / n;
-      const hh = h * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.15)), 0.7) * (0.85 + 0.25 * r());
-      ctx.lineTo(x0 + (x1 - x0) * t, base - Math.max(0, hh));
-    }
-    ctx.lineTo(x1, base);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalCompositeOperation = "destination-out";
-    for (let i = 0; i < 14; i++) {
-      const sx = x0 + (x1 - x0) * (0.15 + r() * 0.7), sy = base - h * (0.3 + r() * 0.5);
-      stroke(sx, sy, sx + 10, sy - 6, sx + 30, sy - 4, sx + 40 + r() * 30, sy + 4, 3, 1, 0.12);
-    }
-    ctx.globalCompositeOperation = "source-over";
-  };
-  /** grass blades springing from the bottom edge */
-  const grass = (x: number, n: number, h: number, base = FH) => {
-    for (let i = 0; i < n; i++) {
-      const bx = x + (r() - 0.5) * h * 0.8, a = -Math.PI / 2 + (r() - 0.5) * 1.2;
-      leaf(bx, base + 4, h * (0.5 + r() * 0.6), a, 3 + r() * 2, 0.85);
-    }
-  };
-  /** a bamboo stalk from y0 to y1 at x, nodes as pale gaps */
-  const stalk = (x: number, y0: number, y1: number, w: number) => {
-    ctx.globalAlpha = 0.95;
-    ctx.fillRect(x - w / 2, Math.min(y0, y1), w, Math.abs(y1 - y0));
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.globalAlpha = 0.8;
-    for (let y = Math.min(y0, y1) + 30 + r() * 40; y < Math.max(y0, y1) - 10; y += 70 + r() * 30) ctx.fillRect(x - w / 2 - 1, y, w + 2, 2.2);
-    ctx.globalAlpha = 0.18;
-    ctx.fillRect(x - w * 0.15, Math.min(y0, y1), w * 0.12, Math.abs(y1 - y0)); // moonlit side
-    ctx.globalCompositeOperation = "source-over";
-  };
-  /** a spray of bamboo leaves fanning from (x, y) toward angle a */
-  const spray = (x: number, y: number, a: number, n: number, len: number) => {
-    for (let i = 0; i < n; i++) leaf(x, y, len * (0.6 + r() * 0.5), a + (r() - 0.5) * 1.1, len * 0.09, 0.9);
-  };
-  return { r, stroke, needles, leaf, rock, grass, stalk, spray };
-}
-
-function paintFraming(theme: Theme): THREE.CanvasTexture | null {
-  if (typeof document === "undefined") return null;
-  const cv = document.createElement("canvas");
-  cv.width = FW;
-  cv.height = FH;
-  const ctx = cv.getContext("2d");
-  if (!ctx) return null;
-  ctx.fillStyle = "#000";
-  ctx.strokeStyle = "#000";
-  ctx.lineCap = "round";
-  const P = painter(ctx, theme.length * 7919 + 13);
-  const { r } = P;
-  if (theme === "village") {
-    // an old pine leaning in from the top left, its branch reaching along the top
-    P.stroke(-20, 236, 20, 170, 40, 80, 110, 34, 44, 20, 0.55);
-    P.stroke(90, 44, 150, 18, 230, 24, 330, 16, 16, 5, 0.55);
-    P.stroke(110, 44, 130, 80, 160, 96, 200, 104, 10, 3, 0.55);
-    for (const [x, y, w, h] of [[46, 70, 100, 44], [120, 26, 120, 46], [215, 16, 110, 40], [305, 18, 80, 30], [180, 98, 80, 30], [16, 130, 70, 36]] as const) P.needles(x, y, w, h);
-    // rocks and grass at the bottom corners
-    P.rock(-20, 230, 96);
-    P.grass(150, 12, 70);
-    P.grass(40, 8, 60, FH - 80);
-    P.rock(1024 - 210, 1044, 80);
-    P.grass(1024 - 200, 10, 64);
-    // a few needles hanging in from the top right
-    P.stroke(1044, 30, 1020, 24, 990, 16, 960, 20, 12, 4, 0.55);
-    for (const [x, y, w, h] of [[990, 18, 80, 30], [1015, 52, 60, 28]] as const) P.needles(x, y, w, h);
-  } else if (theme === "bamboo") {
-    // stalks rising at both edges, sprays of leaves leaning into the frame from above
-    for (const [x, w] of [[14, 26], [70, 18], [120, 11]] as const) { P.stalk(x, 0, 256, w); P.stalk(x + (r() - 0.5) * 4, 256, 512, w); }
-    for (const [x, w] of [[1010, 24], [962, 14]] as const) { P.stalk(x, 0, 256, w); P.stalk(x, 256, 512, w); }
-    for (const [x, y, a, n, l] of [[70, 40, 0.2, 9, 150], [120, 120, 0.5, 7, 120], [20, 180, 0.35, 6, 110], [180, 10, 0.1, 6, 110], [962, 60, Math.PI - 0.25, 9, 150], [1010, 150, Math.PI - 0.5, 6, 120], [880, 10, Math.PI - 0.1, 5, 100]] as const) P.spray(x, y, a, n, l);
-    P.grass(200, 14, 80);
-    P.grass(1024 - 150, 12, 76);
-    P.rock(150, 330, 60);
-  } else if (theme === "pond") {
-    // willow strands hanging from the top corners
-    P.stroke(-20, 30, 60, 10, 160, 6, 300, 24, 22, 6, 0.55);
-    for (let i = 0; i < 26; i++) {
-      const x = 10 + r() * 300, len = 90 + r() * 140;
-      P.stroke(x, 10 + r() * 20, x + 8, 60, x - 6, len * 0.6, x + (r() - 0.5) * 20, len, 3, 1.2, 0.5);
-      for (let k = 0; k < 6; k++) P.leaf(x + (r() - 0.5) * 6, 30 + r() * (len - 30), 16 + r() * 10, Math.PI / 2 + (r() - 0.5) * 1.6, 3, 0.85);
-    }
-    for (let i = 0; i < 12; i++) {
-      const x = 1024 - 10 - r() * 160, len = 70 + r() * 110;
-      P.stroke(x, 0, x - 6, 50, x + 6, len * 0.6, x + (r() - 0.5) * 16, len, 3, 1.2, 0.5);
-      for (let k = 0; k < 5; k++) P.leaf(x + (r() - 0.5) * 6, 20 + r() * (len - 20), 16 + r() * 8, Math.PI / 2 + (r() - 0.5) * 1.6, 3, 0.85);
-    }
-    // reeds and a stone at the bottom corners
-    P.rock(-30, 150, 48);
-    for (const [x0, n] of [[60, 18], [1024 - 110, 16]] as const) {
-      for (let i = 0; i < n; i++) {
-        const x = x0 + (r() - 0.5) * 140;
-        P.leaf(x, FH + 4, 70 + r() * 80, -Math.PI / 2 + (r() - 0.5) * 0.6, 4, 0.9);
-      }
-      for (let i = 0; i < 3; i++) {
-        const x = x0 + (r() - 0.5) * 80, y = FH - 90 - r() * 50;
-        P.stroke(x, FH, x, FH - 40, x + 2, y + 40, x + 3, y, 3, 2, 0.8);
-        P.stroke(x + 3, y + 6, x + 3, y - 4, x + 3, y - 14, x + 3, y - 26, 9, 8, 0.8);
-      }
-    }
-    P.rock(1024 - 160, 1044, 52);
-  } else {
-    // peak: a cliff rising at the bottom left with grass on its lip, a boulder at the right, storm wash above
-    ctx.globalAlpha = 0.97;
-    ctx.beginPath();
-    ctx.moveTo(-10, FH);
-    ctx.lineTo(-10, FH - 180);
-    for (let i = 0; i <= 14; i++) {
-      const t = i / 14;
-      ctx.lineTo(10 + t * 240, FH - 180 + Math.pow(t, 1.6) * 180 + (r() - 0.5) * 18 + (t < 0.4 ? -8 : 0));
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalCompositeOperation = "destination-out";
-    for (let i = 0; i < 18; i++) {
-      const sx = 10 + r() * 180, sy = FH - 200 + r() * 180;
-      P.stroke(sx, sy, sx + 4, sy + 20, sx - 2, sy + 40, sx + 3, sy + 60 + r() * 40, 3, 1, 0.14);
-    }
-    ctx.globalCompositeOperation = "source-over";
-    P.grass(40, 10, 46, FH - 176);
-    P.rock(1024 - 200, 1044, 90);
-    P.grass(1024 - 170, 8, 50, FH - 100);
-    // storm wash hanging in the top corners
-    for (let i = 0; i < 40; i++) {
-      const x = r() < 0.5 ? r() * 330 : 1024 - r() * 330, y = r() * 90;
-      P.stroke(x - 60, y, x - 20, y - 6, x + 20, y + 4, x + 70, y, 24 + r() * 24, 14, 0.018);
-    }
-  }
-  // paper grain scrubbed out of the ink, so it reads as dry brush
-  ctx.globalCompositeOperation = "destination-out";
-  ctx.globalAlpha = 0.25;
-  for (let i = 0; i < 2200; i++) ctx.fillRect(r() * FW, r() * FH, 1 + r() * 2, 1);
-  ctx.globalCompositeOperation = "source-over";
-  ctx.globalAlpha = 1;
-  const tex = new THREE.CanvasTexture(cv);
-  tex.generateMipmaps = true;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  return tex;
-}
-
-
 export class Ambient {
   private mood: ThemeMood = MOODS.village;
   private flashT = 0;
   private flashNext = 6;
   private boltLife = 0;
   private seeded = false;
-  private frameTex: THREE.CanvasTexture | null = null;
-  private frameTheme: Theme | null = null;
-  private lagX = 0;
-  private lagZ = 0;
 
   setTheme(theme: Theme): void {
-    if (theme !== this.frameTheme) {
-      this.frameTex?.dispose(); // OWNED: one theme's framing at a time
-      this.frameTex = paintFraming(theme);
-      this.frameTheme = theme;
-    }
     this.mood = MOODS[theme] ?? MOODS.village;
     setMood(this.mood);
-    setFraming(this.frameTex); // after setMood, which clears it (title and creation scenes have none)
     setActorShadow(this.mood.sun, this.mood.shade);
     setFlash(0);
     curFlies = this.mood.fireflies;
     flies.count = Math.round(curFlies * ambDensity);
+    moteKind = this.mood.motes;
+    moteTarget = moteKind === "ash" ? MOTE_N : moteKind === "embers" ? 90 : moteKind === "drift" ? 50 : 0;
+    motes.count = Math.round(moteTarget * ambDensity);
+    emberTint = 0;
+    if (moteKind === "ash" || moteKind === "drift") { moteMat.uniforms.uCol.value.set(0.8, 0.78, 0.74); moteMat.uniforms.uSoft.value = 0.4; moteMat.uniforms.uA.value = 0.6; }
+    else { moteMat.uniforms.uCol.value.set(0.97, 0.96, 0.92); moteMat.uniforms.uSoft.value = 0.85; moteMat.uniforms.uA.value = 0.9; }
     rain.visible = this.mood.rain;
     bolt.visible = false;
     this.flashT = 0;
@@ -392,12 +252,9 @@ export class Ambient {
     this.seeded = false;
   }
 
-  /** Leaving the field (back to the title): no framing, texture freed. */
+  /** Leaving the field (back to the title): the pools are SHARED and stay; nothing to free. */
   dispose(): void {
-    setFraming(null);
-    this.frameTex?.dispose();
-    this.frameTex = null;
-    this.frameTheme = null;
+    // nothing OWNED
   }
 
   update(dt: number, time: number, cx: number, cz: number): void {
@@ -405,12 +262,8 @@ export class Ambient {
     moonStreakMat.uniforms.uTime.value = time;
     flyMat.uniforms.uTime.value = time;
     const m = this.mood;
-    if (!this.seeded) { this.seed(cx, cz); this.seeded = true; this.lagX = cx; this.lagZ = cz; }
-    // the framing trails the walk a little, like a foreground nearer than the field
-    const lk = Math.min(1, dt * 1.4);
-    this.lagX += (cx - this.lagX) * lk;
-    this.lagZ += (cz - this.lagZ) * lk;
-    setFramingOffset(Math.max(-0.03, Math.min(0.03, (cx - this.lagX) * 0.012)), Math.max(-0.02, Math.min(0.02, (this.lagZ - cz) * 0.008)));
+    if (!this.seeded) { this.seed(cx, cz); this.seeded = true; }
+    if (motes.count > 0) this.updateMotes(dt, time, cx, cz);
     // fireflies wander around the player and wrap back when left behind
     if (m.fireflies > 0) {
       for (let i = 0; i < flies.count; i++) {
@@ -461,7 +314,72 @@ export class Ambient {
     }
   }
 
+  private updateMotes(dt: number, time: number, cx: number, cz: number): void {
+    const n = motes.count;
+    if (emberTint > 0) {
+      // the cinnabar bloom fades back to paper white
+      emberTint = Math.max(0, emberTint - dt);
+      const k = Math.min(1, emberTint);
+      moteMat.uniforms.uCol.value.set(0.97 - k * 0.12, 0.96 - k * 0.66, 0.92 - k * 0.74);
+    }
+    for (let i = 0; i < n; i++) {
+      if (moteKind === "ash" && isSmoke(i)) {
+        // chimney smoke: a thin column rising straight up, the faintest sway
+        const src = smokeSrc(i);
+        my[i] += mv[i] * dt;
+        mx[i] = src[0] + Math.sin(time * 0.6 + mph[i]) * 0.06 * (my[i] - src[1]) * 0.3;
+        if (my[i] > src[1] + 11) my[i] = src[1];
+      } else if (moteKind === "ash") {
+        my[i] -= mv[i] * dt;
+        mx[i] += Math.sin(time * 0.7 + mph[i]) * 0.35 * dt + 0.15 * dt;
+        mz[i] += Math.cos(time * 0.5 + mph[i] * 1.3) * 0.25 * dt;
+        if (my[i] < 0) { my[i] = 9 + Math.random() * 4; mx[i] = cx + (Math.random() - 0.5) * 34; mz[i] = cz + (Math.random() - 0.5) * 30 - 3; }
+        if (mx[i] - cx > 17) mx[i] -= 34; else if (cx - mx[i] > 17) mx[i] += 34;
+        if (mz[i] - cz > 15) mz[i] -= 30; else if (cz - mz[i] > 15) mz[i] += 30;
+      } else if (moteKind === "embers") {
+        my[i] += mv[i] * dt;
+        mx[i] += Math.sin(time * 1.3 + mph[i]) * 0.4 * dt;
+        mz[i] += Math.cos(time * 1.1 + mph[i]) * 0.3 * dt;
+        if (my[i] > 11) this.dropMote(i, cx, cz);
+      } else {
+        // blown in through the east door, westward, sinking slowly
+        mx[i] -= mv[i] * dt;
+        my[i] += Math.sin(time * 1.7 + mph[i]) * 0.2 * dt - 0.08 * dt;
+        mz[i] += Math.cos(time * 0.9 + mph[i]) * 0.3 * dt;
+        if (mx[i] < DRIFT_SRC.x - 12 || my[i] < 0.05) this.dropMote(i, cx, cz);
+      }
+      dummy.position.set(mx[i], my[i], mz[i]);
+      const smoke = moteKind === "ash" && isSmoke(i);
+      dummy.scale.setScalar(moteKind === "embers" ? 0.09 + (i % 4) * 0.02 : smoke ? 0.45 + (my[i] - smokeSrc(i)[1]) * 0.09 : 0.11 + (i % 5) * 0.025);
+      dummy.updateMatrix();
+      motes.setMatrixAt(i, dummy.matrix);
+    }
+    motes.instanceMatrix.needsUpdate = true;
+  }
+
+  private dropMote(i: number, cx: number, cz: number): void {
+    mph[i] = Math.random() * 10;
+    if (moteKind === "ash" && isSmoke(i)) {
+      const src = smokeSrc(i);
+      mx[i] = src[0]; mz[i] = src[2]; my[i] = src[1] + Math.random() * 11; mv[i] = 0.7 + Math.random() * 0.3;
+    } else if (moteKind === "ash") {
+      mx[i] = cx + (Math.random() - 0.5) * 34; mz[i] = cz + (Math.random() - 0.5) * 30 - 3; my[i] = Math.random() * 12; mv[i] = 0.45 + Math.random() * 0.45;
+    } else if (moteKind === "embers") {
+      // most rise out of the censer, a few anywhere in the yard
+      const near = Math.random() < 0.75, a = Math.random() * 6.28, r = near ? Math.random() * 2.2 : Math.random() * 18;
+      mx[i] = (near ? EMBER_SRC.x : cx) + Math.cos(a) * r; mz[i] = (near ? EMBER_SRC.z : cz) + Math.sin(a) * r;
+      my[i] = near ? 1.6 + Math.random() * 1.5 : Math.random() * 3; mv[i] = 0.6 + Math.random() * 1.1;
+    } else {
+      mx[i] = DRIFT_SRC.x + Math.random() * 3; mz[i] = DRIFT_SRC.z + (Math.random() - 0.5) * 6; my[i] = 0.3 + Math.random() * 3; mv[i] = 1.2 + Math.random() * 1.4;
+    }
+  }
+
   private seed(cx: number, cz: number): void {
+    for (let i = 0; i < MOTE_N; i++) {
+      this.dropMote(i, cx, cz);
+      if (moteKind === "embers") my[i] = 1.6 + Math.random() * 9;
+      if (moteKind === "drift") mx[i] = DRIFT_SRC.x - Math.random() * 12;
+    }
     for (let i = 0; i < FLY_N; i++) {
       fx[i] = cx + (Math.random() - 0.5) * 32;
       fz[i] = cz + (Math.random() - 0.5) * 28;

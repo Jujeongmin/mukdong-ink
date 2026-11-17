@@ -259,7 +259,7 @@ export class Rig {
   get tipLen(): number { return this.weaponLen - this.grip; }
   private glow = 0;
   /** extra props (headband, things on the back) placed every apply() */
-  private readonly props: { obj: THREE.Object3D; at: "head" | "back" }[] = [];
+  private readonly props: { obj: THREE.Object3D; at: "head" | "back" | "handL" }[] = [];
   /** this figure's proportions (see Build) */
   private readonly len = { ...LEN };
   private limbW = LIMB;
@@ -379,7 +379,7 @@ export class Rig {
   }
 
   /** Attach a prop that follows the head or sits across the back. */
-  addProp(obj: THREE.Object3D, at: "head" | "back"): void {
+  addProp(obj: THREE.Object3D, at: "head" | "back" | "handL"): void {
     this.inner.add(obj);
     this.props.push({ obj, at });
   }
@@ -544,6 +544,8 @@ export class Rig {
       if (pr.at === "head") {
         pr.obj.position.copy(this.head.position);
         pr.obj.rotation.set(0, 0, -ha);
+      } else if (pr.at === "handL") {
+        pr.obj.position.copy(this.joints[2].position);
       } else {
         pr.obj.position.set(tx * 0.55 - Math.cos(p[0]) * 0.13, ty * 0.55 + Math.sin(p[0]) * 0.13, 0);
         pr.obj.rotation.set(0, 0, -p[0] + 0.75);

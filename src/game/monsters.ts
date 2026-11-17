@@ -4,13 +4,14 @@
 // Views are pooled per kind and only reference SHARED geometry/materials, so a zone change just hides them.
 
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { MONSTERS, isObstacle, type MonsterDef } from "../shared/combat";
 import type { MonsterMode, MonsterState } from "../shared/types";
 import type { RoomEffect, RoomView } from "../net/api";
 import { angDiff, clamp, type RGB } from "./util";
 import { G, M_enemy, M_eye, M_flash, M_shadow } from "./render/materials";
 import { feel, overlay, scene, screenSplash } from "./render/gfx";
-import { QUAD_VERT, addDecal, inkBurst, inkDrop, ring, sparkBurst } from "./render/fx";
+import { QUAD_VERT, addDecal, inkBurst, inkDrop, ring, sparkBurst, sparks } from "./render/fx";
 
 interface Look {
   group: THREE.Group;
@@ -20,6 +21,8 @@ interface Look {
   armL: THREE.Object3D | null;
   armR: THREE.Object3D | null;
   sac: THREE.Object3D | null;
+  /** extra animated parts (wings, hair, tongs' smoke stack...) */
+  extra: THREE.Object3D[];
 }
 
 export interface MView {
@@ -71,6 +74,36 @@ function arm(parent: THREE.Object3D, x: number, y: number, z: number, len: numbe
   return pivot;
 }
 
+/* chapter 2 monster parts (SHARED, never disposed) */
+const M_jarBody = new THREE.MeshLambertMaterial({ color: 0x544538 });
+const M_stoneL = new THREE.MeshLambertMaterial({ color: 0x6f6b64 });
+const M_ashBody = new THREE.MeshLambertMaterial({ color: 0x48413a });
+const M_shell = new THREE.MeshLambertMaterial({ color: 0x8d8478 });
+const M_bronzeB = new THREE.MeshLambertMaterial({ color: 0x3a3226 });
+const M_wing = new THREE.MeshLambertMaterial({ color: 0x1d1b1a, side: THREE.DoubleSide });
+const ASH: RGB = [0.72, 0.7, 0.66];
+const SMOKE: RGB = [0.55, 0.53, 0.5];
+function latheG(prof: number[][], seg = 14): THREE.BufferGeometry {
+  return new THREE.LatheGeometry(prof.map(([x, y]) => new THREE.Vector2(x, y)), seg);
+}
+const C2 = {
+  jar: latheG([[0, 0], [0.32, 0], [0.52, 0.25], [0.58, 0.55], [0.5, 0.85], [0.3, 1.0], [0.27, 1.08], [0.3, 1.12], [0.22, 1.12], [0, 0.95]]),
+  lid: new THREE.ConeGeometry(0.42, 0.16, 12),
+  /** a wing of four dry-brush feather strokes fanning back */
+  wing: (() => {
+    const parts: THREE.BufferGeometry[] = [];
+    for (let k = 0; k < 4; k++) {
+      const len = 0.75 - k * 0.1, a = -0.35 - k * 0.32;
+      parts.push(new THREE.ConeGeometry(0.07, len, 5).scale(1, 1, 0.3).translate(0, len / 2, 0).rotateX(Math.PI / 2).rotateY(a).translate(0.05 - k * 0.06, 0, 0));
+    }
+    return mergeGeometries(parts)!;
+  })(),
+  beads: new THREE.TorusGeometry(0.22, 0.035, 5, 14).rotateX(Math.PI / 2),
+  ringS: new THREE.TorusGeometry(0.11, 0.015, 4, 10),
+  arch: new THREE.CylinderGeometry(1, 1, 1.2, 10, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2),
+  censer: latheG([[0, 0.05], [0.5, 0], [0.85, 0.2], [1.0, 0.55], [0.95, 0.85], [0.8, 1.0], [0.85, 1.05], [0.7, 1.08], [0, 1.0]], 18),
+  lidHalf: new THREE.SphereGeometry(0.75, 12, 6, 0, Math.PI, 0, Math.PI / 2),
+};
 /** a dark haze around the elite (SHARED) */
 const M_aura = new THREE.MeshBasicMaterial({ color: 0x0b0a10, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.BackSide });
 const FIRE: RGB = [0.95, 0.42, 0.12];
@@ -81,7 +114,8 @@ function buildLook(kind: string): Look {
   const body = new THREE.Group();
   group.add(body);
   const flash: THREE.Mesh[] = [];
-  const add = (m: THREE.Mesh, f = true) => { body.add(m); if (f) flash.push(m); return m; };
+  const add = (m: THREE.Mesh, f = true) => { body.add(m); if (f) { flash.push(m); m.userData.base = m.material; } return m; };
+  const extra: THREE.Object3D[] = [];
   let armL: THREE.Object3D | null = null, armR: THREE.Object3D | null = null, sac: THREE.Object3D | null = null;
   if (kind === "shade") {
     const cone = add(mesh(G.cone, M_enemy, 0, 0.75, 0, 0.42, 1.3, 0.42));
@@ -134,6 +168,119 @@ function buildLook(kind: string): Look {
     body.scale.setScalar(1.35);
     const aura = mesh(G.head, M_aura, 0, 1.1, 0, 0.95, 1.45, 0.95);
     group.add(aura);
+  } else if (kind === "jar") {
+    // 옹기귀: a cracked onggi jar with ink-blot eyes deep in its mouth, two stubby legs, a lid tilted like a hat
+    add(mesh(C2.jar, M_jarBody, 0, 0.18, 0, 1.05, 0.95, 1.05));
+    add(mesh(G.disc, M_enemy, 0, 1.25, 0, 0.27, 1, 0.27), false);
+    for (const z of [0.09, -0.09]) add(mesh(G.eye, M_eye, 0.12, 1.2, z, 0.05, 0.035, 0.05), false);
+    for (let k = 0; k < 4; k++) {
+      const c = add(mesh(G.box, M_enemy, Math.cos(k * 1.6) * 0.52, 0.55 + k * 0.1, Math.sin(k * 1.6) * 0.52, 0.02, 0.38, 0.03), false);
+      c.rotation.set(0, -k * 1.6, 0.4 * (k % 2 ? 1 : -1));
+    }
+    for (const z of [0.2, -0.2]) add(mesh(G.seg, M_enemy, 0, 0.1, z, 0.09, 0.22, 0.09));
+    sac = add(mesh(C2.lid, M_jarBody, -0.05, 1.3, 0, 1, 1, 1));
+  } else if (kind === "crow") {
+    // 잿까마귀: a crow of three dry-brush strokes, hovering, shedding ash at every wingbeat
+    add(mesh(G.head, M_enemy, 0, 0, 0, 0.42, 0.24, 0.22));
+    add(mesh(G.head, M_enemy, 0.38, 0.12, 0, 0.17, 0.16, 0.15));
+    const beak = add(mesh(G.cone, M_enemy, 0.6, 0.1, 0, 0.05, 0.22, 0.05));
+    beak.rotation.z = -Math.PI / 2;
+    for (const z of [0.07, -0.07]) add(mesh(G.eye, M_eye, 0.47, 0.17, z, 0.025, 0.025, 0.025), false);
+    const tail = add(mesh(G.cone, M_enemy, -0.5, 0.02, 0, 0.12, 0.42, 0.04));
+    tail.rotation.z = Math.PI / 2;
+    for (const side of [-1, 1]) {
+      const w = new THREE.Group();
+      w.position.set(0.05, 0.08, side * 0.12);
+      const blade = mesh(C2.wing, M_wing, 0, 0, 0, 1, 1, side);
+      w.add(blade);
+      flash.push(blade);
+      blade.userData.base = M_wing;
+      body.add(w);
+      if (side < 0) armL = w; else armR = w;
+    }
+  } else if (kind === "shademonk") {
+    // 그림자 승병: a tall, upright shade with a round head, beads at the neck and a ringed staff
+    add(mesh(G.cone, M_enemy, 0, 0.95, 0, 0.5, 1.7, 0.5));
+    add(mesh(G.head, M_enemy, 0.04, 1.95, 0, 0.3, 0.3, 0.3));
+    for (const z of [0.1, -0.1]) add(mesh(G.eye, M_eye, 0.27, 1.98, z, 0.05, 0.035, 0.05), false);
+    add(mesh(C2.beads, M_enemy, 0.02, 1.68, 0, 1, 1, 1));
+    armL = arm(body, 0.05, 1.6, -0.36, 0.85, 0.07, 0.1, flash);
+    armR = arm(body, 0.05, 1.6, 0.36, 0.85, 0.07, 0.1, flash);
+    const staff = new THREE.Group();
+    staff.add(mesh(G.seg, M_enemy, 0, 0.2, 0, 0.035, 2.6, 0.035));
+    for (let k = 0; k < 3; k++) {
+      const rg = mesh(C2.ringS, M_enemy, 0, 1.45, 0, 1, 1, 1);
+      rg.rotation.set(k * 1.05, 0, 0);
+      staff.add(rg);
+    }
+    staff.position.set(0, -0.85, 0.05);
+    armR.add(staff);
+    group.add(mesh(G.head, M_aura, 0, 1.2, 0, 0.9, 1.5, 0.9));
+  } else if (kind === "lantern") {
+    // 석등지기: a living stone lantern; its empty fire chamber flashes paper-white only when it slams
+    add(mesh(G.box, M_stoneL, 0, 0.18, 0, 1.15, 0.36, 1.15));
+    add(mesh(G.pillar, M_stoneL, 0, 0.95, 0, 0.26, 1.2, 0.26));
+    add(mesh(G.box, M_stoneL, 0, 1.6, 0, 1.0, 0.16, 1.0));
+    for (const [x, z] of [[0.36, 0.36], [-0.36, 0.36], [0.36, -0.36], [-0.36, -0.36]] as const) add(mesh(G.box, M_stoneL, x, 1.93, z, 0.12, 0.5, 0.12));
+    add(mesh(G.box, M_enemy, 0, 1.93, 0, 0.58, 0.46, 0.58), false); // the cold, empty chamber
+    add(mesh(G.pyramid, M_stoneL, 0, 2.38, 0, 0.95, 0.42, 0.95));
+    add(mesh(G.head, M_stoneL, 0, 2.66, 0, 0.12, 0.14, 0.12));
+    sac = add(mesh(G.box, M_eye, 0, 1.93, 0, 0.6, 0.48, 0.6), false);
+    sac.visible = false;
+  } else if (kind === "kilnlord") {
+    // 가마 지킴이: a hulk of ash and fired clay in a cracked ash shell, a kiln chamber on its back, tongs for arms
+    add(mesh(G.head, M_ashBody, 0, 1.35, 0, 0.95, 1.05, 0.85));
+    add(mesh(G.head, M_ashBody, 0.35, 2.35, 0, 0.42, 0.4, 0.4));
+    for (const z of [0.15, -0.15]) add(mesh(G.eye, M_eye, 0.72, 2.4, z, 0.06, 0.04, 0.06), false);
+    for (let k = 0; k < 9; k++) {
+      const a = k * 0.8, y = 0.8 + (k % 3) * 0.45;
+      const pl = add(mesh(G.ico, M_shell, Math.cos(a) * 0.7, y, Math.sin(a) * 0.62, 0.38, 0.3, 0.32));
+      pl.rotation.set(a, a * 0.7, 0);
+    }
+    add(mesh(C2.arch, M_ashBody, -0.6, 1.9, 0, 0.75, 0.75, 0.75));
+    const stack = add(mesh(G.pillar, M_ashBody, -1.35, 2.7, 0, 0.17, 1.2, 0.17));
+    extra.push(stack);
+    for (const z of [-1, 1]) for (const legx of [0]) add(mesh(G.seg, M_ashBody, legx, 0.3, z * 0.42, 0.24, 0.6, 0.24));
+    armL = arm(body, 0.2, 1.9, -0.95, 1.6, 0.08, 0, flash);
+    armR = arm(body, 0.2, 1.9, 0.95, 1.6, 0.08, 0, flash);
+    for (const a of [armL, armR]) for (const s of [-1, 1]) {
+      const jaw = mesh(G.seg, M_enemy, s * 0.07, -1.75, 0, 0.035, 0.45, 0.035);
+      jaw.rotation.z = s * 0.25;
+      a.add(jaw);
+    }
+  } else if (kind === "ashboss") {
+    // 잿불귀: below, the three-legged bronze censer; above, a woman's shadow of smoke, hair streaming upward,
+    // holding a great burnt brush whose tip keeps a paper-white fire (the fragment of fire)
+    add(mesh(C2.censer, M_bronzeB, 0, 0.75, 0, 1.6, 1.4, 1.6));
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2;
+      const leg = add(mesh(G.seg, M_bronzeB, Math.cos(a) * 1.2, 0.45, Math.sin(a) * 1.2, 0.2, 0.9, 0.2));
+      leg.rotation.set(Math.sin(a) * 0.3, 0, -Math.cos(a) * 0.3);
+    }
+    for (const s of [-1, 1]) {
+      const half = add(mesh(C2.lidHalf, M_bronzeB, s * 0.5, 2.25, 0, 1.4, 1.2, 1.4));
+      half.rotation.set(0, s > 0 ? 0 : Math.PI, 0.45);
+    }
+    add(mesh(G.cone, M_enemy, 0.1, 3.5, 0, 0.95, 2.9, 0.7)); // the smoke body rising from the censer
+    add(mesh(G.head, M_enemy, 0.05, 4.85, 0, 0.62, 0.42, 0.5)); // shoulders
+    add(mesh(G.head, M_enemy, 0.25, 5.45, 0, 0.44, 0.5, 0.42));
+    for (let k = 0; k < 9; k++) {
+      const h = mesh(G.cone, M_enemy, -0.2 + (k - 4) * 0.06, 6.7 + (k % 3) * 0.35, (k - 4) * 0.13, 0.12, 2.4 + (k % 3) * 0.7, 0.12);
+      body.add(h);
+      extra.push(h);
+    }
+    for (const z of [0.15, -0.15]) add(mesh(G.eye, M_eye, 0.65, 5.5, z, 0.07, 0.04, 0.07), false);
+    armL = arm(body, 0.25, 4.9, -0.75, 1.8, 0.12, 0.15, flash);
+    armR = arm(body, 0.25, 4.9, 0.75, 1.8, 0.12, 0.15, flash);
+    const brush = new THREE.Group();
+    brush.add(mesh(G.seg, M_enemy, 0, 0.6, 0, 0.06, 2.6, 0.06));
+    brush.add(mesh(G.cone, M_enemy, 0, 2.15, 0, 0.2, 0.6, 0.2));
+    sac = mesh(G.head, M_eye, 0, 2.5, 0, 0.16, 0.24, 0.16); // the white fire at the brush tip
+    brush.add(sac);
+    brush.position.set(0, -1.8, -0.3);
+    brush.rotation.x = -0.6;
+    armR.add(brush);
+    group.add(mesh(G.head, M_aura, 0, 3.2, 0, 1.8, 2.8, 1.8));
   } else if (kind === "bigblob") {
     add(mesh(G.head, M_enemy, 0, 0.85, 0, 1.0, 0.85, 1.0));
     for (const z of [0.32, -0.32]) add(mesh(G.eye, M_eye, 0.82, 1.05, z, 0.14, 0.14, 0.14), false);
@@ -145,7 +292,7 @@ function buildLook(kind: string): Look {
   }
   group.visible = false;
   scene.add(group);
-  return { group, flash, body, armL, armR, sac };
+  return { group, flash, body, armL, armR, sac, extra };
 }
 
 /* ---------- slam telegraph (overlay) ---------- */
@@ -193,6 +340,8 @@ interface FxView {
   tele: Tele | null;
   /** where a shot will land */
   mark: Tele | null;
+  /** kind of the monster that made it (nearest at the start), for sounds */
+  src: string;
 }
 const shots: THREE.Mesh[] = [];
 for (let i = 0; i < 14; i++) {
@@ -221,7 +370,10 @@ export class Monsters {
   /** a server effect just appeared (gate hints) */
   onEffect: ((kind: RoomEffect["kind"]) => void) | null = null;
   /** a spit leaves the mouth / a slam lands (sound) */
-  onSound: ((name: "monster-spit" | "monster-slam", x: number, z: number) => void) | null = null;
+  /** sounds: a shot leaves / lands, a slam lands; `src` is the kind of monster that made it */
+  onSound: ((ev: "shot" | "land" | "slam", src: string, x: number, z: number) => void) | null = null;
+  /** a monster changed mode (wind, attack, dead…), for sounds */
+  onMode: ((v: MView, prev: string) => void) | null = null;
 
   serverNow(): number {
     return Date.now() + this.offset;
@@ -247,18 +399,18 @@ export class Monsters {
     for (const v of this.views.values()) {
       if (v.mode === "dead") continue;
       if (isObstacle(v.def)) { v.obst.x = v.x; v.obst.z = v.z; v.obst.r = v.def.radius; this.obstacles.push(v.obst); }
-      if (v.def.armor === "training") this.elites.push(v);
+      if (v.def.armor === "training" || v.def.armor === "awaken") this.elites.push(v);
     }
     const now = this.serverNow();
     for (const e of room.effects) {
       let f = this.fx.get(e.id);
       if (!f) {
         if (e.at < now - 150) continue; // already over
-        f = { e, t0: now, done: false, stamp, shot: null, tele: null, mark: null };
+        f = { e, t0: now, done: false, stamp, shot: null, tele: null, mark: null, src: this.nearestKind(e.x, e.z) };
         if (e.kind === "shot") { f.shot = this.freeShot(); f.mark = this.freeTele(e.tx, e.tz, Math.max(1, e.r)); }
         else f.tele = this.freeTele(e.tx, e.tz, e.r);
         this.onEffect?.(e.kind);
-        if (e.kind === "shot") this.onSound?.("monster-spit", e.x, e.z);
+        if (e.kind === "shot") this.onSound?.("shot", f.src, e.x, e.z);
         this.fx.set(e.id, f);
       }
       f.e = e;
@@ -339,7 +491,20 @@ export class Monsters {
       v.look.group.visible = true;
       v.shadow.visible = true;
     }
+    const prev = v.mode;
     v.mode = s.mode;
+    if (prev !== s.mode) this.onMode?.(v, prev);
+  }
+
+  /** Kind of the live monster nearest (x, z) (no allocation). */
+  private nearestKind(x: number, z: number): string {
+    let best = "", bd = 1e9;
+    for (const v of this.views.values()) {
+      if (v.mode === "dead") continue;
+      const d = (v.x - x) * (v.x - x) + (v.z - z) * (v.z - z);
+      if (d < bd) { bd = d; best = v.kind; }
+    }
+    return best;
   }
 
   private freeShot(): THREE.Mesh | null {
@@ -389,7 +554,7 @@ export class Monsters {
       const on = v.flash > 0;
       if (on !== v.flashOn) {
         v.flashOn = on;
-        for (const m of v.look.flash) m.material = on ? M_flash : M_enemy;
+        for (const m of v.look.flash) m.material = on ? M_flash : (m.userData.base ?? M_enemy);
       }
       this.animate(v, time, now);
       // melee wind-up: a red ring that fills until the blow lands
@@ -429,6 +594,7 @@ export class Monsters {
         if (f.shot) {
           f.shot.visible = false;
           f.shot = null;
+          this.onSound?.("land", f.src, e.tx, e.tz);
           inkBurst(e.tx, 0.3, e.tz, 14, 0, 0, 0.9);
           addDecal(e.tx, e.tz, 0.5);
           ring(e.tx, e.tz, Math.max(0.8, e.r), INK, 0.45, 1, SPLAT_EDGE);
@@ -436,7 +602,7 @@ export class Monsters {
         if (f.tele) {
           f.tele.mesh.visible = false;
           f.tele = null;
-          this.onSound?.("monster-slam", e.tx, e.tz);
+          this.onSound?.("slam", f.src, e.tx, e.tz);
           ring(e.tx, e.tz, e.r, INK, 0.6, 0, SPLAT_EDGE);
           inkBurst(e.tx, 0.3, e.tz, 30, 0, 0, 1.5);
           for (let k = 0; k < 3; k++) addDecal(e.tx + (Math.random() - 0.5) * e.r * 1.4, e.tz + (Math.random() - 0.5) * e.r * 1.4, 0.3 + Math.random() * 0.4);
@@ -479,6 +645,51 @@ export class Monsters {
       if (v.mode === "attack") { a = 2.7 - atkU * 2.0; lean = 0.45 * (1 - atkU); }
       if (L.armL && L.armR) { L.armL.rotation.z = a; L.armR.rotation.z = a * 0.85; }
       L.body.rotation.z = -lean;
+    } else if (v.kind === "jar") {
+      // hops on its stubby legs; the lid rattles
+      if (moving) { const h = Math.abs(Math.sin(time * 6 + v.phase)); y = h * 0.45; sy = 1 + (h - 0.5) * 0.15; }
+      else { const q = Math.sin(time * 5 + v.phase) * 0.03; sy = 1 + q; sx = 1 - q * 0.5; }
+      if (v.mode === "attack") { sx *= 1 + (1 - atkU) * 0.2; sy *= 1 - (1 - atkU) * 0.15; }
+      if (L.sac) { L.sac.rotation.z = 0.25 + Math.sin(time * (moving ? 22 : 4) + v.phase) * (moving ? 0.18 : 0.05); L.sac.position.y = 1.3 + (moving ? Math.abs(Math.sin(time * 22)) * 0.06 : 0); }
+    } else if (v.kind === "crow") {
+      // hovers about 2 m up, wings beating; ash falls from every beat; a dip when it drops its ash shot
+      y = 1.9 + Math.sin(time * 2 + v.phase) * 0.18;
+      const beat = Math.sin(time * (v.mode === "wind" ? 16 : 9) + v.phase);
+      if (L.armL && L.armR) { L.armL.rotation.x = -0.2 + beat * 0.7; L.armR.rotation.x = 0.2 - beat * 0.7; }
+      if (v.mode === "attack") y -= Math.sin(atkU * Math.PI) * 0.4;
+      L.body.rotation.z = v.mode === "wind" ? -0.3 * windU : 0;
+      if (beat > 0.97 && Math.random() < 0.5) sparks.emit(v.x + (Math.random() - 0.5) * 0.6, y, v.z + (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.4, -0.6, (Math.random() - 0.5) * 0.4, 0.04 + Math.random() * 0.04, 1.4, ASH, 0.5);
+    } else if (v.kind === "shademonk") {
+      y = 0.08 + Math.sin(time * 2.6 + v.phase) * 0.05;
+      let a = 0.3 + Math.sin(time * 3 + v.phase) * 0.08, spin = 0;
+      if (v.mode === "wind") { a = 0.4 + windU * 1.3; spin = -windU * 0.5; }
+      if (v.mode === "attack") { a = 1.7; spin = -0.5 + atkU * Math.PI * 2; } // the staff swept round in a full circle
+      if (L.armL && L.armR) { L.armL.rotation.z = a * 0.5; L.armR.rotation.z = a; }
+      L.body.rotation.y = spin;
+    } else if (v.kind === "lantern") {
+      // drags itself along; lifts its whole weight for the slam, drops, and the empty chamber flashes white
+      if (moving) L.body.rotation.z = Math.sin(time * 4 + v.phase) * 0.06;
+      if (v.mode === "wind") { y = windU * 1.1 + Math.sin(time * 40) * 0.02 * windU; L.body.rotation.z = Math.sin(time * 30) * 0.03 * windU; }
+      if (v.mode === "attack") { y = Math.max(0, 1.1 - atkU * 4); sy = 1 - Math.max(0, 0.12 - Math.abs(atkU - 0.3) * 0.4); }
+      if (L.sac) L.sac.visible = v.mode === "attack" && atkU > 0.2 && atkU < 0.75;
+    } else if (v.kind === "kilnlord") {
+      sy = 1 + Math.sin(time * 1.6 + v.phase) * 0.02;
+      let a = 0.25 + Math.sin(time * 2 + v.phase) * 0.06;
+      if (moving) a = 0.25 + Math.sin(time * 5) * 0.3;
+      if (v.mode === "wind") a = 0.3 + windU * 2.4;
+      if (v.mode === "attack") a = 2.7 - atkU * 2.9;
+      if (L.armL && L.armR) { L.armL.rotation.z = a; L.armR.rotation.z = a; }
+      // thin smoke straight up from the kiln on its back
+      if (Math.random() < 0.08) sparks.emit(v.x - Math.cos(v.head) * 1.35, 3.4, v.z + Math.sin(v.head) * 1.35, (Math.random() - 0.5) * 0.1, 0.9, (Math.random() - 0.5) * 0.1, 0.07 + Math.random() * 0.05, 1.6, SMOKE, 0.2);
+    } else if (v.kind === "ashboss") {
+      // the smoke-woman sways; her hair streams upward; she heaves the whole censer up and slams it down
+      sy = 1 + Math.sin(time * 1.5 + v.phase) * 0.015;
+      for (let k = 0; k < L.extra.length; k++) L.extra[k].rotation.set(Math.sin(time * 1.7 + k) * 0.18, 0, Math.sin(time * 1.3 + k * 1.7) * 0.22);
+      let a = 0.4 + Math.sin(time * 1.8) * 0.08;
+      if (v.mode === "wind") { a = 0.5 + windU * 2.2; y = windU * 1.6; }
+      if (v.mode === "attack") { a = 2.7 - atkU * 2.6; y = Math.max(0, 1.6 - atkU * 5); }
+      if (L.armL && L.armR) { L.armL.rotation.z = a; L.armR.rotation.z = a * 0.95; }
+      if (L.sac) L.sac.scale.set(0.16 + Math.sin(time * 9) * 0.02, 0.24 + Math.sin(time * 11) * 0.04, 0.16);
     } else if (v.kind === "bigblob") {
       // swells while gathering itself for the slam, then flattens
       const q = Math.sin(time * 4 + v.phase) * 0.03;

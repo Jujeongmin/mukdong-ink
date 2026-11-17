@@ -10,6 +10,12 @@ import { type Look, type Profile, type SlotId, today } from "./types";
 import { AD_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, ZONES, type QuestDef } from "./world";
 
 export const STARTER_POTIONS = 3;
+/**
+ * Version of MAIN_QUESTS that `Profile.main` indexes. 2 (2026-11-17): the two 단이 intro quests (c1q1, c1q2)
+ * were removed, so older saves move their index down by two (0 and 1 become 0, the new first quest).
+ */
+export const QUEST_VERSION = 2;
+const REMOVED_INTRO_QUESTS = 2;
 export const MAX_POTIONS = 99;
 const SLOTS: SlotId[] = ["weapon", "hat", "sash"];
 
@@ -18,7 +24,7 @@ export function starterProfile(name: string, now: number): Profile {
     name, level: 1, exp: 0, hp: maxHpFor(1), potions: STARTER_POTIONS, pigment: 0, jade: 0,
     owned: [...STARTER_OWNED], equip: { ...STARTER_EQUIP }, dye: { ...STARTER_DYE }, pity: 0,
     created: false, skills: SKILLS.map(() => 1), bonusPoints: 0, stones: 0, shards: 0, protects: 0, enh: {},
-    main: 0, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), adsDay: today(now), adsLeft: AD_DAILY,
+    main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), adsDay: today(now), adsLeft: AD_DAILY,
     zone: START_ZONE, channel: 1, createdAt: now,
   };
 }
@@ -59,6 +65,11 @@ export function readProfile(raw: unknown): Profile | null {
   const progress = listOf(rawDaily.progress);
   const claimed = listOf(rawDaily.claimed);
   const level = int(r.level, 1, 1, MAX_LEVEL);
+  // A save from before QUEST_VERSION 2 points into the old list, which began with the two intro quests.
+  const oldMain = int(r.main, 0, 0);
+  const migrate = r.qv !== QUEST_VERSION;
+  const wasIntro = migrate && oldMain < REMOVED_INTRO_QUESTS;
+  const main = Math.min(MAIN_QUESTS.length, migrate ? Math.max(0, oldMain - REMOVED_INTRO_QUESTS) : oldMain);
   const rawSkills = listOf(r.skills);
   const rawEnh = (r.enh && typeof r.enh === "object" && !Array.isArray(r.enh) ? r.enh : {}) as Record<string, unknown>;
   const enh: Record<string, number> = {};
@@ -85,9 +96,11 @@ export function readProfile(raw: unknown): Profile | null {
     shards: int(r.shards, 0),
     protects: int(r.protects, 0),
     enh,
-    main: int(r.main, 0, 0, MAIN_QUESTS.length),
-    mainAccepted: r.mainAccepted === true,
-    mainProgress: int(r.mainProgress, 0),
+    main,
+    qv: QUEST_VERSION,
+    // On an intro quest that no longer exists, the new first quest starts fresh.
+    mainAccepted: !wasIntro && r.mainAccepted === true,
+    mainProgress: wasIntro ? 0 : int(r.mainProgress, 0),
     daily: {
       day: typeof rawDaily.day === "string" ? rawDaily.day : "",
       progress: DAILY_QUESTS.map((_, i) => int(progress[i], 0)),

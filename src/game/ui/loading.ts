@@ -14,6 +14,9 @@ const ART: Record<string, string> = {
   bamboo: "./assets/art/loading-bamboo.webp",
   pond: "./assets/art/loading-pond.webp",
   peak: "./assets/art/loading-peak.webp",
+  kiln: "./assets/art/loading-kiln.webp",
+  temple: "./assets/art/loading-temple.webp",
+  censer: "./assets/art/loading-censer.webp",
 };
 
 /** One line about each place, under its name. */
@@ -22,6 +25,9 @@ const FLAVOR: Record<string, string> = {
   bamboo: "바람이 댓잎마다 먹을 털어 낸다.",
   pond: "물빛이 남은 마지막 연못.",
   peak: "먹구름이 봉우리를 삼켰다.",
+  kiln: "식은 가마마다 재가 아직 숨을 쉰다.",
+  temple: "꺼진 등 사이에 하나가 서른 해를 버텼다.",
+  censer: "깨진 향로가 아직도 뜨겁다.",
 };
 
 const TIPS = [
@@ -31,8 +37,8 @@ const TIPS = [
   "+12부터는 강화가 실패하면 붓이 부서질 수 있다. 파괴방지권을 챙기자.",
   "물들인 목도리와 허리띠는 같은 채널의 다른 이들 눈에도 보인다.",
   "먹귀신을 베면 안료와 먹돌이, 드물게 색 조각이 나온다.",
-  "물약은 1. 마을의 단이에게서 살 수 있다.",
-  "오방 검법은 닿는 적이 있으면 저절로 나간다. 고리를 누르면 바로 쓸 수도 있다.",
+  "물약은 Q. 마을의 단이에게서 살 수 있다. 설정에서 자동으로 마시게 할 수도 있다.",
+  "오방 검법은 1–5 또는 고리를 눌러 쓴다. 자동 사냥 중에는 저절로 나간다.",
   "Space, Shift, 오른쪽 클릭 어느 것으로도 구를 수 있다.",
   "머리 위의 붉은 표식은 맡길 일이 있다는 뜻이다.",
 ];

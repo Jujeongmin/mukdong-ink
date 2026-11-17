@@ -45,7 +45,7 @@ export const SKILLS: SkillDef[] = [
 ];
 
 /* ---------- levels ---------- */
-export const MAX_LEVEL = 20;
+export const MAX_LEVEL = 35;
 export function expToNext(level: number): number {
   return Math.round(30 * Math.pow(level, 1.55));
 }
@@ -91,7 +91,9 @@ export interface MonsterDef {
   /** with skillOnly: only these techniques (SkillDef.id) harm it; others are resisted too */
   weakTo?: number[];
   /** 먹 갑옷: damage ×ARMOR_FACTOR unless the attacker meets the condition (see armorHolds) */
-  armor?: "training" | "plus3";
+  armor?: "training" | "plus3" | "awaken" | "plus6";
+  /** with armor "awaken": the technique (SkillDef.id) that must be awakened; omitted = any technique */
+  awakenSkill?: number;
   /** never strays further than this from its spawn spot (metres) */
   leash?: number;
 }
@@ -100,11 +102,19 @@ export interface MonsterDef {
 export const ARMOR_FACTOR = 0.1;
 /** Brush enhancement that breaks the "plus3" armor. */
 export const ARMOR_PLUS = 3;
+/** Brush enhancement that breaks the "plus6" armor. */
+export const ARMOR_PLUS6 = 6;
+/** Technique level that breaks the "awaken" armor (the first awakening, AWAKEN_AT[0] in growth.ts). */
+export const ARMOR_AWAKEN = 5;
 
 /** Whether `def`'s armor holds against an attacker with these skill levels and this brush enhancement. */
 export function armorHolds(def: MonsterDef, skills: number[], plus: number): boolean {
   if (def.armor === "training") return skills.every((lv) => lv <= 1);
   if (def.armor === "plus3") return plus < ARMOR_PLUS;
+  if (def.armor === "awaken") {
+    return def.awakenSkill === undefined ? skills.every((lv) => lv < ARMOR_AWAKEN) : (skills[def.awakenSkill] ?? 1) < ARMOR_AWAKEN;
+  }
+  if (def.armor === "plus6") return plus < ARMOR_PLUS6;
   return false;
 }
 
@@ -122,6 +132,15 @@ export const MONSTERS: Record<string, MonsterDef> = {
   bigblob: { kind: "bigblob", name: "부푼 먹방울", hp: 90, atk: 33, speed: 2.0, radius: 1.0, height: 1.6, exp: 30, pigment: 8, attack: "slam", range: 3, windMs: 1000, cooldownMs: 2800, aggro: 8, slamR: 2.8 },
   vine: { kind: "vine", name: "먹덩굴", hp: 60, atk: 0, speed: 0, radius: 1.6, height: 2.2, exp: 4, pigment: 1, attack: "none", range: 0, windMs: 0, cooldownMs: 0, aggro: 0, respawnMs: 45_000, skillOnly: true, weakTo: [1] },
   shadelord: { kind: "shadelord", name: "그림자 무사", hp: 220, atk: 12, speed: 2.6, radius: 0.6, height: 2.1, exp: 90, pigment: 25, attack: "melee", range: 2.4, windMs: 600, cooldownMs: 1500, aggro: 8, armor: "training", leash: 1.5, respawnMs: 30_000 },
+  // 2장 「불빛 조각」
+  jar: { kind: "jar", name: "옹기귀", hp: 55, atk: 10, speed: 2.6, radius: 0.75, height: 1.2, exp: 18, pigment: 6, attack: "contact", range: 1.2, windMs: 0, cooldownMs: 1200, aggro: 8 },
+  crow: { kind: "crow", name: "잿까마귀", hp: 42, atk: 10, speed: 2.2, radius: 0.6, height: 1.6, exp: 17, pigment: 6, attack: "ranged", range: 10, windMs: 650, cooldownMs: 2200, aggro: 16 },
+  shademonk: { kind: "shademonk", name: "그림자 승병", hp: 68, atk: 11, speed: 2.8, radius: 0.55, height: 2.1, exp: 22, pigment: 8, attack: "melee", range: 2.8, windMs: 450, cooldownMs: 1500, aggro: 15 },
+  lantern: { kind: "lantern", name: "석등지기", hp: 130, atk: 17, speed: 1.5, radius: 1.0, height: 2.4, exp: 34, pigment: 10, attack: "slam", range: 3.2, windMs: 1100, cooldownMs: 3200, aggro: 10, slamR: 2.8 },
+  // 관문 A: 깨어난 화염선풍(5단계 이상)이 아니면 먹 갑옷이 버틴다.
+  kilnlord: { kind: "kilnlord", name: "가마 지킴이", hp: 180, atk: 12, speed: 2.2, radius: 1.1, height: 2.6, exp: 140, pigment: 40, attack: "slam", range: 3, windMs: 900, cooldownMs: 2600, aggro: 9, slamR: 3.0, armor: "awaken", awakenSkill: 1, leash: 2, respawnMs: 30_000 },
+  // 2장 보스. 관문 B: 붓 +6 미만이면 먹 갑옷이 버틴다.
+  ashboss: { kind: "ashboss", name: "잿불귀", hp: 1100, atk: 23, speed: 2.2, radius: 1.8, height: 3.4, exp: 600, pigment: 200, jade: 40, attack: "slam", range: 6, windMs: 1200, cooldownMs: 2400, aggro: 20, boss: true, armor: "plus6", slamR: 4.0 },
 };
 
 export function monsterHp(def: MonsterDef, level: number): number {

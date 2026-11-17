@@ -4,7 +4,7 @@ import {
 } from "../../src/shared/combat";
 import { REACH_SLACK, inShape } from "../../src/shared/hit";
 import type { MonsterMode, MonsterState } from "../../src/shared/types";
-import { ZONES, type ZoneDef } from "../../src/shared/world";
+import { ZONES, type SpawnRule, type ZoneDef } from "../../src/shared/world";
 
 // Hunting, all decided here: a zone room's monsters live in its room state and move on every room
 // tick; players' health lives in their room user state. Everything below the I/O helpers is pure, so
@@ -103,7 +103,6 @@ function arrivalsInto(zoneId: string): { x: number; z: number }[] {
   return out;
 }
 
-/** A random spot inside the zone disc, away from its portals and where they let you out. */
 // Random spawns (and wander goals) keep this far from the fixed ones (the vine ring, the lair), past their bodies.
 export const KEEP_FROM_FIXED = 3;
 
@@ -119,16 +118,30 @@ export function clearOfFixed(zone: ZoneDef, x: number, z: number): boolean {
   return fixedSpots(zone).every((f) => Math.hypot(x - f.x, z - f.z) >= f.r + KEEP_FROM_FIXED);
 }
 
-/** The fixed spot of monster `id` (kind + index of a rule with `at`), or null. */
-export function fixedSpotOf(zone: ZoneDef, id: string): { x: number; z: number } | null {
+/**
+ * Every spawn slot of a zone with its monster id: kind + a number counted on across all rules of that kind
+ * (a zone may have a fixed rule and a roaming rule of one kind), and its fixed spot, if any.
+ */
+export function spawnSlots(zone: ZoneDef): { id: string; rule: SpawnRule; at: { x: number; z: number } | null }[] {
+  const next = new Map<string, number>();
+  const out: { id: string; rule: SpawnRule; at: { x: number; z: number } | null }[] = [];
   for (const rule of zone.spawns) {
-    if (!rule.at || !id.startsWith(rule.kind)) continue;
-    const i = Number(id.slice(rule.kind.length));
-    if (Number.isInteger(i) && rule.at[i]) return rule.at[i];
+    const count = rule.at ? rule.at.length : rule.count;
+    for (let i = 0; i < count; i++) {
+      const n = next.get(rule.kind) ?? 0;
+      next.set(rule.kind, n + 1);
+      out.push({ id: `${rule.kind}${n}`, rule, at: rule.at ? rule.at[i] : null });
+    }
   }
-  return null;
+  return out;
 }
 
+/** The fixed spot of monster `id`, or null for a roaming one. */
+export function fixedSpotOf(zone: ZoneDef, id: string): { x: number; z: number } | null {
+  return spawnSlots(zone).find((slot) => slot.id === id)?.at ?? null;
+}
+
+/** A random spot inside the zone disc, away from its portals, where they let you out, its NPCs and its fixed spawns. */
 export function spawnSpot(zone: ZoneDef, rand: () => number): { x: number; z: number } {
   let best = { x: 0, z: 0 };
   for (let tries = 0; tries < 24; tries++) {
@@ -139,7 +152,8 @@ export function spawnSpot(zone: ZoneDef, rand: () => number): { x: number; z: nu
     const clear =
       zone.portals.every((p) => Math.hypot(spot.x - p.x, spot.z - p.z) >= KEEP_FROM_PORTAL) &&
       arrivalsInto(zone.id).every((p) => Math.hypot(spot.x - p.x, spot.z - p.z) >= KEEP_FROM_PORTAL) &&
-      clearOfFixed(zone, spot.x, spot.z);
+      clearOfFixed(zone, spot.x, spot.z) &&
+      zone.npcs.every((n) => Math.hypot(spot.x - n.x, spot.z - n.z) >= KEEP_FROM_PORTAL);
     if (clear) return spot;
   }
   return best;
@@ -158,16 +172,12 @@ export function spawnZone(zoneId: string, now: number, rand: () => number): Reco
   const zone = ZONES[zoneId];
   const out: Record<string, MonsterRow> = {};
   if (!zone || zone.safe) return out;
-  for (const rule of zone.spawns) {
+  for (const { id, rule, at: fixed } of spawnSlots(zone)) {
     const def = MONSTERS[rule.kind];
     if (!def) continue;
-    const count = rule.at ? rule.at.length : rule.count;
-    for (let i = 0; i < count; i++) {
-      const level = rule.level[0] + Math.floor(rand() * (rule.level[1] - rule.level[0] + 1));
-      const at = rule.at ? rule.at[i] : spawnSpot(zone, rand);
-      const id = `${rule.kind}${i}`;
-      out[id] = newRow(id, def, level, at.x, at.z, now);
-    }
+    const level = rule.level[0] + Math.floor(rand() * (rule.level[1] - rule.level[0] + 1));
+    const at = fixed ?? spawnSpot(zone, rand);
+    out[id] = newRow(id, def, level, at.x, at.z, now);
   }
   if (zone.boss && MONSTERS[zone.boss.kind]) {
     out.boss = { ...newRow("boss", MONSTERS[zone.boss.kind], zone.boss.level, zone.boss.x, zone.boss.z, now), by: [] };
