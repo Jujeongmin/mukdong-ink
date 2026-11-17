@@ -3,6 +3,7 @@
 
 import { DAILY_QUESTS, MAIN_QUESTS, ZONES, type QuestDef, type QuestGoal } from "../shared/world";
 import { NPC_INFO } from "../shared/story";
+import { MONSTERS } from "../shared/combat";
 import { mainDone } from "../shared/profile";
 import type { ProfileView } from "../net/api";
 
@@ -56,6 +57,26 @@ export function rewardText(q: QuestDef): string {
 
 export function npcName(id: string): string {
   return NPC_INFO[id]?.name ?? id;
+}
+
+/** The one objective line of the quest tracker: what to do, and a count when there is one. */
+export function objective(s: QuestStatus): { text: string; count: string } {
+  const g = s.q.goal;
+  if (!s.accepted) return { text: `${npcName(s.q.giver)}에게 의뢰 받기`, count: "" };
+  switch (g.type) {
+    case "kill": return { text: `${g.kind === "any" ? "먹귀신" : MONSTERS[g.kind]?.name ?? "먹귀신"} 베기`, count: `${s.prog}/${s.target}` };
+    case "level": return { text: `${s.target}단계까지 수련`, count: `${s.prog}/${s.target}` };
+    case "reach": return { text: `${ZONES[g.zone]?.name ?? g.zone}에 닿기`, count: "" };
+    case "talk": return { text: `${npcName(g.npc)}에게 말 걸기`, count: "" };
+    case "dye": return { text: "염색통에서 물들이기", count: "" };
+    case "equip": return { text: "새 장비 갖추기", count: "" };
+  }
+}
+
+/** Chapter number from a main quest id ("c1q3" → 1). */
+export function chapterOf(id: string): number {
+  const m = /^c(\d+)/.exec(id);
+  return m ? Number(m[1]) : 1;
 }
 
 /** Which zone an NPC stands in (for "go to X in Y" hints). */

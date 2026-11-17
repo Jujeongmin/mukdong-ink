@@ -9,6 +9,8 @@ export interface ProfileView extends Profile {
   maxHp: number;
   atk: number;
   expToNext: number;
+  /** training points available to spend (earned − spent) */
+  points: number;
 }
 
 export interface ZoneEntry {
@@ -35,13 +37,25 @@ export interface Hit {
   id: string; // monster id
   dmg: number;
   kill: boolean;
+  /** the monster shrugged it off: a vine against a basic blow (dmg 0), or 먹 갑옷 holding (dmg x0.1) */
+  resisted?: boolean;
 }
 export interface HitResult {
   hits: Hit[];
   exp: number;
   pigment: number;
   jade: number;
+  /** materials dropped by kills in this hit */
+  stones?: number;
+  shards?: number;
   levelUp: boolean;
+}
+
+export interface EnhanceResult {
+  outcome: import("../shared/growth").EnhanceOutcome;
+  /** the brush's level after the attempt (0 and not owned any more when destroyed) */
+  plus: number;
+  profile: ProfileView;
 }
 
 /** A projectile or telegraph the server spawned (ranged ink shot, boss slam warning). */
@@ -74,6 +88,14 @@ export interface GameApi {
   connect(): Promise<void>;
   loadProfile(): Promise<ProfileView>;
   setName(name: string): Promise<ProfileView>;
+  /** Once per account: name + scarf and sash colors (DYES hex or null), free. */
+  createCharacter(name: string, scarf: number | null, sash: number | null): Promise<ProfileView>;
+  /** Raise a skill one level (training point + pigment, 색 조각 at awakening levels). */
+  trainSkill(skill: number): Promise<ProfileView>;
+  /** Try to enhance an owned brush by one level; useProtect spends a 파괴방지권 on the attempt. */
+  enhance(itemId: string, useProtect: boolean): Promise<EnhanceResult>;
+  /** Buy 파괴방지권 with 묵옥 (PROTECT_PRICE each). */
+  buyProtect(count: number): Promise<ProfileView>;
   /** Enter a zone (first entry, through a portal, or after respawn) and join its room. */
   enterZone(zone: string, viaPortal?: string): Promise<ZoneEntry>;
   /** Fire-and-forget; throttled by the implementation to the platform limit. */

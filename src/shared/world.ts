@@ -21,7 +21,18 @@ export interface SpawnRule {
   kind: string;
   count: number;
   level: [number, number];
+  /** fixed spots (count = at.length): each one spawns and respawns there */
+  at?: { x: number; z: number }[];
 }
+
+/** 먹덩굴 around the bamboo grove's north gate (the pond portal at 0, -27): a closed half-ring, radius 8. */
+export const BAMBOO_VINES: { x: number; z: number }[] = [
+  { x: 7.79, z: -28.8 }, { x: 7.88, z: -25.63 }, { x: 6.73, z: -22.67 }, { x: 4.51, z: -20.39 }, { x: 1.59, z: -19.16 },
+  { x: -1.59, z: -19.16 }, { x: -4.51, z: -20.39 }, { x: -6.73, z: -22.67 }, { x: -7.88, z: -25.63 }, { x: -7.79, z: -28.8 },
+];
+/** 부푼 먹방울 near the bamboo entrance, and the 그림자 무사's lair behind the vines. */
+export const BAMBOO_BIGBLOB = { x: 0, z: 14 };
+export const BAMBOO_LAIR = { x: 0, z: -21 };
 export interface ZoneDef {
   id: string;
   name: string;
@@ -51,7 +62,12 @@ export const ZONES: Record<string, ZoneDef> = {
   },
   bamboo: {
     id: "bamboo", name: "죽림", radius: 30, safe: false, levels: [1, 8], ground: 0x86a35e, theme: "bamboo",
-    spawns: [{ kind: "blob", count: 10, level: [1, 3] }, { kind: "shade", count: 2, level: [4, 7] }],
+    spawns: [
+      { kind: "blob", count: 10, level: [1, 3] }, { kind: "shade", count: 2, level: [4, 7] },
+      { kind: "bigblob", count: 1, level: [2, 2], at: [BAMBOO_BIGBLOB] },
+      { kind: "vine", count: BAMBOO_VINES.length, level: [1, 1], at: BAMBOO_VINES },
+      { kind: "shadelord", count: 1, level: [4, 5], at: [BAMBOO_LAIR] },
+    ],
     portals: [
       { to: "village", x: 0, z: 27, arriveX: 0, arriveZ: -16, label: "마을로" },
       { to: "pond", x: 0, z: -27, arriveX: 0, arriveZ: 24, label: "연못가로" },
@@ -79,6 +95,8 @@ export const START_ZONE = "village";
 export const START_POS = { x: 0, z: 6 };
 export const PORTAL_REACH = 3;
 export const NPC_REACH = 4;
+/** Standing this close to a quest NPC in a hunting zone, monsters leave you be (you can read the dialogue). */
+export const NPC_SAFE_R = 5;
 
 /* ---------- channels ---------- */
 export const CHANNELS = 10;
@@ -99,6 +117,11 @@ export const MAX_SPEED = 9;
 export const MOVE_SLACK = 1.5; // network jitter per report; dashes earn their distance only when their counter moves
 export const DASH_BURST = 4.5; // basic dash (atkKind 5)
 export const WIND_BURST = 11.5; // 바람질주 (skill 3)
+/** A burst is earned at most once per gap: the client's dash cooldown is 0.42 s, 바람질주's at least 3.65 s (lv 10). */
+export const DASH_BURST_GAP_MS = 380;
+export const WIND_BURST_GAP_MS = 2900;
+/** A roll (the dash, atkKind 5) makes you untouchable this long after the server sees it. */
+export const ROLL_IFRAME_MS = 450;
 export const POSE_MIN_GAP_MS = 110; // platform allows 10 calls/s per function
 
 /* ---------- quests ---------- */
@@ -115,7 +138,7 @@ export interface QuestDef {
   title: string;
   text: string;
   goal: QuestGoal;
-  reward: { exp: number; pigment: number; jade?: number; potions?: number };
+  reward: { exp: number; pigment: number; jade?: number; potions?: number; stones?: number; shards?: number; protects?: number; points?: number };
   /** NPC who offers the quest (accept by talking to them) */
   giver: string;
   /** NPC you hand it in to */
@@ -128,21 +151,21 @@ export const MAIN_QUESTS: QuestDef[] = [
   { id: "c1q2", title: "물들이기", text: "단이의 염색통에서 허리띠나 목도리를 한 번 물들여 보자.", goal: { type: "dye" }, giver: "dyer", turnIn: "dyer", reward: { exp: 40, pigment: 30 } },
   { id: "c1q3", title: "죽림의 먹방울", text: "죽림에서 먹방울 8마리를 베고 바람이를 찾아가자.", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 8 }, giver: "elder", turnIn: "baram", reward: { exp: 100, pigment: 60 } },
   { id: "c1q4", title: "대숲의 시험", text: "4단계까지 수련해 바람이에게 화염선풍을 인정받자.", goal: { type: "level", level: 4 }, giver: "baram", turnIn: "baram", reward: { exp: 80, pigment: 60, potions: 2 } },
-  { id: "c1q5", title: "그림자 무사", text: "죽림 깊은 곳의 먹그림자 3마리를 베자.", goal: { type: "kill", kind: "shade", zone: "bamboo", count: 3 }, giver: "baram", turnIn: "baram", reward: { exp: 250, pigment: 80, jade: 40 } },
+  { id: "c1q5", title: "그림자 무사", text: "죽림 북쪽 문, 덩굴 너머 굴의 그림자 무사를 베자.", goal: { type: "kill", kind: "shadelord", zone: "bamboo", count: 1 }, giver: "baram", turnIn: "baram", reward: { exp: 250, pigment: 80, jade: 40, shards: 1, points: 1 } },
   { id: "c1q6", title: "연못으로", text: "죽림 북쪽 문을 지나 연못가의 노을을 찾아가자.", goal: { type: "reach", zone: "pond" }, giver: "baram", turnIn: "noeul", reward: { exp: 200, pigment: 60 } },
-  { id: "c1q7", title: "먹두꺼비", text: "연못을 더럽히는 먹두꺼비 10마리를 쫓아내자.", goal: { type: "kill", kind: "spitter", zone: "pond", count: 10 }, giver: "noeul", turnIn: "noeul", reward: { exp: 900, pigment: 150, potions: 3 } },
+  { id: "c1q7", title: "먹두꺼비", text: "연못을 더럽히는 먹두꺼비 10마리를 쫓아내자.", goal: { type: "kill", kind: "spitter", zone: "pond", count: 10 }, giver: "noeul", turnIn: "noeul", reward: { exp: 900, pigment: 150, potions: 3, stones: 10, shards: 1 } },
   { id: "c1q8", title: "시든 연꽃", text: "먹봉우리에 오를 만큼, 15단계까지 붓을 깊게 하자.", goal: { type: "level", level: 15 }, giver: "noeul", turnIn: "noeul", reward: { exp: 600, pigment: 150, jade: 40 } },
   { id: "c1q9", title: "봉우리로", text: "연못가 북쪽 문을 지나 먹봉우리의 흑월을 만나자.", goal: { type: "reach", zone: "peak" }, giver: "noeul", turnIn: "heukwol", reward: { exp: 800, pigment: 150 } },
-  { id: "c1q10", title: "대먹귀", text: "먹봉우리의 대먹귀를 베고 물빛 조각을 되찾자.", goal: { type: "kill", kind: "boss", zone: "peak", count: 1 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 3000, pigment: 500, jade: 160 } },
+  { id: "c1q10", title: "대먹귀", text: "먹봉우리의 대먹귀를 베고 물빛 조각을 되찾자.", goal: { type: "kill", kind: "boss", zone: "peak", count: 1 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 3000, pigment: 500, jade: 160, shards: 3, protects: 1, points: 2 } },
 ];
 
 /** Daily quests are given and handed in at 먹노인 (elder). */
 export const DAILY_GIVER = "elder";
 
 export const DAILY_QUESTS: QuestDef[] = [
-  { id: "d1", title: "오늘의 사냥", text: "먹귀신 30마리를 베어라.", goal: { type: "kill", kind: "any", count: 30 }, giver: "elder", turnIn: "elder", reward: { exp: 150, pigment: 80 } },
+  { id: "d1", title: "오늘의 사냥", text: "먹귀신 30마리를 베어라.", goal: { type: "kill", kind: "any", count: 30 }, giver: "elder", turnIn: "elder", reward: { exp: 150, pigment: 80, stones: 5 } },
   { id: "d2", title: "검법 수련", text: "오방 검법을 15번 써라.", goal: { type: "kill", kind: "skill", count: 15 }, giver: "elder", turnIn: "elder", reward: { exp: 100, pigment: 60 } },
-  { id: "d3", title: "먹그림자 퇴치", text: "먹그림자 5마리를 물리쳐라.", goal: { type: "kill", kind: "shade", count: 5 }, giver: "elder", turnIn: "elder", reward: { exp: 120, pigment: 60, jade: 10 } },
+  { id: "d3", title: "먹그림자 퇴치", text: "먹그림자 5마리를 물리쳐라.", goal: { type: "kill", kind: "shade", count: 5 }, giver: "elder", turnIn: "elder", reward: { exp: 120, pigment: 60, jade: 10, shards: 1 } },
 ];
 
 /* ---------- store (VXShop) and rewarded ads ---------- */

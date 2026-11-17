@@ -2,6 +2,7 @@
 // Shared by the Verse8 and the local implementation.
 
 import type { MonsterMode, MonsterState, Pose, RoomPlayer } from "../shared/types";
+import { SKILLS } from "../shared/combat";
 import { freshDay, profileView, readProfile } from "../shared/profile";
 import type { ProfileView, RoomEffect, RoomView } from "./api";
 
@@ -71,6 +72,7 @@ export function playersOf(users: Json[], members: string[] | null): Record<strin
       look: {
         weapon: String(look.weapon ?? ""), hat: String(look.hat ?? ""), sash: String(look.sash ?? ""),
         sashDye: typeof look.sashDye === "number" ? look.sashDye : null, scarfDye: typeof look.scarfDye === "number" ? look.scarfDye : null,
+        plus: num(look.plus), skills: SKILLS.map((_, i) => num((Array.isArray(look.skills) ? look.skills : [])[i], 1)),
       },
       at: num(u.at),
     };

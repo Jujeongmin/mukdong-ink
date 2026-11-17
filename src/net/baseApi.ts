@@ -3,7 +3,7 @@
 // supplies a Link (how calls and room subscriptions reach the server) plus ads and the shop.
 
 import type { Pose, RoomPlayer } from "../shared/types";
-import type { AttackReq, GachaResult, GameApi, HitResult, ProfileView, RoomView, SkillReq, ZoneEntry } from "./api";
+import type { AttackReq, EnhanceResult, GachaResult, GameApi, HitResult, ProfileView, RoomView, SkillReq, ZoneEntry } from "./api";
 import { sleep } from "./errors";
 import { membersOf, playersOf, profileOf, roomViewOf } from "./feed";
 import { PoseThrottle } from "./poseThrottle";
@@ -85,6 +85,20 @@ export abstract class BaseGameApi implements GameApi {
   }
   async setName(name: string): Promise<ProfileView> {
     return this.viewed(await this.call<ProfileView>("setName", [name]));
+  }
+  async createCharacter(name: string, scarf: number | null, sash: number | null): Promise<ProfileView> {
+    return this.viewed(await this.call<ProfileView>("createCharacter", [name, scarf, sash]));
+  }
+  async trainSkill(skill: number): Promise<ProfileView> {
+    return this.viewed(await this.call<ProfileView>("trainSkill", [skill]));
+  }
+  async enhance(itemId: string, useProtect: boolean): Promise<EnhanceResult> {
+    const result = await this.call<EnhanceResult>("enhance", [itemId, useProtect]);
+    this.viewed(result.profile);
+    return result;
+  }
+  async buyProtect(count: number): Promise<ProfileView> {
+    return this.viewed(await this.call<ProfileView>("buyProtect", [count]));
   }
 
   async enterZone(zone: string, viaPortal?: string): Promise<ZoneEntry> {

@@ -1,5 +1,7 @@
 import type { Hit, RoomEffect } from "../../src/net/api";
-import { MONSTERS, RESPAWN_MS, monsterAtk, monsterHp, type HitDef, type MonsterDef } from "../../src/shared/combat";
+import {
+  ARMOR_FACTOR, MONSTERS, RESPAWN_MS, armorHolds, monsterAtk, monsterHp, type HitDef, type HitShape, type MonsterDef,
+} from "../../src/shared/combat";
 import { REACH_SLACK, inShape } from "../../src/shared/hit";
 import type { MonsterMode, MonsterState } from "../../src/shared/types";
 import { ZONES, type ZoneDef } from "../../src/shared/world";
@@ -73,6 +75,18 @@ function facing(dx: number, dz: number, fallback: number): number {
   return dx === 0 && dz === 0 ? fallback : Math.atan2(-dz, dx);
 }
 
+/** A leashed monster stays within its leash of home. */
+function leashed(def: MonsterDef, m: MonsterRow): void {
+  if (!def.leash) return;
+  const dx = m.x - m.hx;
+  const dz = m.z - m.hz;
+  const d = Math.hypot(dx, dz);
+  if (d > def.leash) {
+    m.x = m.hx + (dx * def.leash) / d;
+    m.z = m.hz + (dz * def.leash) / d;
+  }
+}
+
 function keepInside(zone: ZoneDef, m: { x: number; z: number }): void {
   const limit = zone.radius - 1;
   const d = Math.hypot(m.x, m.z);
@@ -90,6 +104,31 @@ function arrivalsInto(zoneId: string): { x: number; z: number }[] {
 }
 
 /** A random spot inside the zone disc, away from its portals and where they let you out. */
+// Random spawns (and wander goals) keep this far from the fixed ones (the vine ring, the lair), past their bodies.
+export const KEEP_FROM_FIXED = 3;
+
+/** Every fixed spawn spot of a zone, with the body radius of what stands there. */
+export function fixedSpots(zone: ZoneDef): { x: number; z: number; r: number }[] {
+  const out: { x: number; z: number; r: number }[] = [];
+  for (const rule of zone.spawns) for (const at of rule.at ?? []) out.push({ x: at.x, z: at.z, r: MONSTERS[rule.kind]?.radius ?? 0 });
+  return out;
+}
+
+/** Whether (x, z) keeps clear of a zone's fixed spawns. */
+export function clearOfFixed(zone: ZoneDef, x: number, z: number): boolean {
+  return fixedSpots(zone).every((f) => Math.hypot(x - f.x, z - f.z) >= f.r + KEEP_FROM_FIXED);
+}
+
+/** The fixed spot of monster `id` (kind + index of a rule with `at`), or null. */
+export function fixedSpotOf(zone: ZoneDef, id: string): { x: number; z: number } | null {
+  for (const rule of zone.spawns) {
+    if (!rule.at || !id.startsWith(rule.kind)) continue;
+    const i = Number(id.slice(rule.kind.length));
+    if (Number.isInteger(i) && rule.at[i]) return rule.at[i];
+  }
+  return null;
+}
+
 export function spawnSpot(zone: ZoneDef, rand: () => number): { x: number; z: number } {
   let best = { x: 0, z: 0 };
   for (let tries = 0; tries < 24; tries++) {
@@ -99,7 +138,8 @@ export function spawnSpot(zone: ZoneDef, rand: () => number): { x: number; z: nu
     best = spot;
     const clear =
       zone.portals.every((p) => Math.hypot(spot.x - p.x, spot.z - p.z) >= KEEP_FROM_PORTAL) &&
-      arrivalsInto(zone.id).every((p) => Math.hypot(spot.x - p.x, spot.z - p.z) >= KEEP_FROM_PORTAL);
+      arrivalsInto(zone.id).every((p) => Math.hypot(spot.x - p.x, spot.z - p.z) >= KEEP_FROM_PORTAL) &&
+      clearOfFixed(zone, spot.x, spot.z);
     if (clear) return spot;
   }
   return best;
@@ -121,9 +161,10 @@ export function spawnZone(zoneId: string, now: number, rand: () => number): Reco
   for (const rule of zone.spawns) {
     const def = MONSTERS[rule.kind];
     if (!def) continue;
-    for (let i = 0; i < rule.count; i++) {
+    const count = rule.at ? rule.at.length : rule.count;
+    for (let i = 0; i < count; i++) {
       const level = rule.level[0] + Math.floor(rand() * (rule.level[1] - rule.level[0] + 1));
-      const at = spawnSpot(zone, rand);
+      const at = rule.at ? rule.at[i] : spawnSpot(zone, rand);
       const id = `${rule.kind}${i}`;
       out[id] = newRow(id, def, level, at.x, at.z, now);
     }
@@ -207,15 +248,18 @@ export function stepMonsters(
   for (const m of Object.values(monsters)) {
     const def = MONSTERS[m.kind];
     if (m.mode === "dead") {
-      const delay = def.boss && zone.boss ? zone.boss.respawnMs : RESPAWN_MS;
+      const delay = def.boss && zone.boss ? zone.boss.respawnMs : def.respawnMs ?? RESPAWN_MS;
       if (now - m.deadAt >= delay) {
-        const at = def.boss && zone.boss ? { x: zone.boss.x, z: zone.boss.z } : spawnSpot(zone, rand);
+        // A fixed one stands again on its own spot.
+        const at = def.boss && zone.boss ? { x: zone.boss.x, z: zone.boss.z } : fixedSpotOf(zone, m.id) ?? spawnSpot(zone, rand);
         Object.assign(m, newRow(m.id, def, m.level, at.x, at.z, now));
         if (def.boss) m.by = [];
         urgent = true;
       }
       continue;
     }
+    // An obstacle only stands there.
+    if (def.attack === "none") continue;
     const dmg = monsterAtk(def, m.level);
     const kept = m.tg ? prey.find((p) => p.account === m.tg) : undefined;
     const keptD = kept ? Math.hypot(kept.x - m.x, kept.z - m.z) : Infinity;
@@ -257,7 +301,7 @@ export function stepMonsters(
           set(m, "attack");
         } else {
           if (def.attack === "slam") {
-            effects.push({ id: `${m.id}:${now}`, kind: "slam", x: round(m.x), z: round(m.z), tx: m.tx, tz: m.tz, r: SLAM_RADIUS, at: now + def.windMs, dmg });
+            effects.push({ id: `${m.id}:${now}`, kind: "slam", x: round(m.x), z: round(m.z), tx: m.tx, tz: m.tz, r: def.slamR ?? SLAM_RADIUS, at: now + def.windMs, dmg });
           }
           set(m, "wind");
         }
@@ -271,6 +315,7 @@ export function stepMonsters(
         m.z += (dz / target.d) * step;
         m.yaw = facing(dx, dz, m.yaw);
         keepInside(zone, m);
+        leashed(def, m);
         walked = true;
       }
       continue;
@@ -292,9 +337,11 @@ export function stepMonsters(
       walked = true;
     } else if (now - m.since >= WANDER_PAUSE_MS && !def.boss) {
       const a = rand() * Math.PI * 2;
-      const r = rand() * WANDER_RANGE;
-      const goal = { x: m.hx + Math.cos(a) * r, z: m.hz + Math.sin(a) * r };
+      const r = rand() * Math.min(WANDER_RANGE, def.leash ?? WANDER_RANGE);
+      let goal = { x: m.hx + Math.cos(a) * r, z: m.hz + Math.sin(a) * r };
       keepInside(zone, goal);
+      // A roaming one does not wander into the vine ring or the lair.
+      if (!fixedSpotOf(zone, m.id) && !clearOfFixed(zone, goal.x, goal.z)) goal = { x: m.hx, z: m.hz };
       m.wx = round(goal.x);
       m.wz = round(goal.z);
       m.since = now;
@@ -320,48 +367,105 @@ export interface Felling {
   credit: string[];
 }
 
-/** A blow or technique landing: every living monster inside the shape takes `damage`. */
+/** One area a blow or technique covers: a shape swung from (x, z) facing `yaw`. */
+export interface Swept {
+  shape: HitShape;
+  x: number;
+  z: number;
+  yaw: number;
+}
+
+/** Who strikes, as far as monster defenses care: a basic blow or which technique, skill levels, brush level. */
+export interface Striker {
+  account: string;
+  /** null for a basic attack, else the SkillDef.id */
+  skill: number | null;
+  skills: number[];
+  plus: number;
+}
+
+/** The damage factor `def` takes from `who` (1 = full; 0 = immune; ARMOR_FACTOR = armor holds). */
+export function defenseFactor(def: MonsterDef, who: Striker): number {
+  if (def.skillOnly && (who.skill === null || (def.weakTo && !def.weakTo.includes(who.skill)))) return 0;
+  return armorHolds(def, who.skills, who.plus) ? ARMOR_FACTOR : 1;
+}
+
+/** A blow landing: every living monster inside the shape takes `damage` (by default a trained, +99 basic blow). */
 export function strikeMonsters(
   monsters: Record<string, MonsterRow>, hit: HitDef, x: number, z: number, yaw: number, damage: number, now: number,
-  account: string,
+  account: string, who?: Striker,
 ): { hits: Hit[]; felled: Felling[] } {
+  const striker = who ?? { account, skill: null, skills: [2], plus: 99 };
+  return strikeAreas(monsters, [{ shape: hit.hit, x, z, yaw }], hit.kb, damage, 0, now, striker);
+}
+
+/**
+ * A blow over several areas (an awakened wave fans out): each living monster inside any of them is hit
+ * once for `damage`; with `echo` > 0 the ones still standing are hit a second time for echo × damage
+ * (the awakened "여운", drawn by the client as a delayed pulse).
+ */
+export function strikeAreas(
+  monsters: Record<string, MonsterRow>, areas: Swept[], kb: number, damage: number, echo: number, now: number, who: Striker,
+): { hits: Hit[]; felled: Felling[] } {
+  const account = who.account;
   const hits: Hit[] = [];
   const felled: Felling[] = [];
+  const struck: MonsterRow[] = [];
   for (const m of Object.values(monsters)) {
     if (m.mode === "dead") continue;
     const def = MONSTERS[m.kind];
-    if (!inShape(hit.hit, x, z, yaw, m.x, m.z, def.radius, REACH_SLACK)) continue;
-    const dealt = Math.max(1, Math.round(damage));
-    m.hp = Math.max(0, m.hp - dealt);
-    m.hitAt = now;
-    if (def.boss) m.by = [...new Set([...(m.by ?? []), account])].slice(0, BOSS_HITTERS);
-    if (!def.boss) {
+    const area = areas.find((a) => inShape(a.shape, a.x, a.z, a.yaw, m.x, m.z, def.radius, REACH_SLACK));
+    if (!area) continue;
+    const factor = defenseFactor(def, who);
+    if (factor <= 0) {
+      // Nothing to it (a vine against the brush): shown, not felt.
+      hits.push({ id: m.id, dmg: 0, kill: false, resisted: true });
+      continue;
+    }
+    land(m, damage * factor, now, account, hits, felled, factor < 1);
+    if (!def.boss && def.speed > 0 && !def.leash) {
       // Knocked back along the blow.
-      const dx = m.x - x;
-      const dz = m.z - z;
+      const dx = m.x - area.x;
+      const dz = m.z - area.z;
       const d = Math.hypot(dx, dz);
-      const push = hit.kb * KNOCKBACK;
-      const fx = hit.hit.shape === "ring" && d > 0.01 ? dx / d : Math.cos(yaw);
-      const fz = hit.hit.shape === "ring" && d > 0.01 ? dz / d : -Math.sin(yaw);
+      const push = kb * KNOCKBACK;
+      const fx = area.shape.shape === "ring" && d > 0.01 ? dx / d : Math.cos(area.yaw);
+      const fz = area.shape.shape === "ring" && d > 0.01 ? dz / d : -Math.sin(area.yaw);
       m.x = round(m.x + fx * push);
       m.z = round(m.z + fz * push);
     }
-    const kill = m.hp <= 0;
-    hits.push({ id: m.id, dmg: dealt, kill });
-    if (kill) {
-      felled.push({ id: m.id, kind: m.kind, level: m.level, credit: def.boss ? [...(m.by ?? [account])] : [account] });
-      m.mode = "dead";
-      m.since = now;
-      m.deadAt = now;
-      m.tg = "";
-    } else if (m.mode === "idle" || (m.mode === "chase" && !m.tg)) {
-      // Struck, it turns on whoever struck it.
-      m.tg = account;
-      m.mode = "chase";
-      m.since = now;
+    struck.push(m);
+  }
+  if (echo > 0) {
+    for (const m of struck) {
+      if (m.mode === "dead") continue;
+      const factor = defenseFactor(MONSTERS[m.kind], who);
+      land(m, damage * echo * factor, now, account, hits, felled, factor < 1);
     }
   }
   return { hits, felled };
+}
+
+function land(m: MonsterRow, damage: number, now: number, account: string, hits: Hit[], felled: Felling[], resisted = false): void {
+  const def = MONSTERS[m.kind];
+  const dealt = Math.max(1, Math.round(damage));
+  m.hp = Math.max(0, m.hp - dealt);
+  m.hitAt = now;
+  if (def.boss) m.by = [...new Set([...(m.by ?? []), account])].slice(0, BOSS_HITTERS);
+  const kill = m.hp <= 0;
+  hits.push(resisted ? { id: m.id, dmg: dealt, kill, resisted: true } : { id: m.id, dmg: dealt, kill });
+  if (kill) {
+    felled.push({ id: m.id, kind: m.kind, level: m.level, credit: def.boss ? [...(m.by ?? [account])] : [account] });
+    m.mode = "dead";
+    m.since = now;
+    m.deadAt = now;
+    m.tg = "";
+  } else if (m.mode === "idle" || (m.mode === "chase" && !m.tg)) {
+    // Struck, it turns on whoever struck it.
+    m.tg = account;
+    m.mode = "chase";
+    m.since = now;
+  }
 }
 
 export function tidy(monsters: Record<string, MonsterRow>): Record<string, MonsterRow> {

@@ -27,6 +27,10 @@ export interface Look {
   sash: string;
   sashDye: number | null;
   scarfDye: number | null;
+  /** enhancement of the equipped brush (+0..+15), drawn as a glow others can see */
+  plus: number;
+  /** skill levels 1..10 (awakened skills look different to everyone) */
+  skills: number[];
 }
 
 export interface DailyState {
@@ -47,6 +51,18 @@ export interface Profile {
   equip: Record<SlotId, string>;
   dye: { sash: number | null; scarf: number | null };
   pity: number;
+  /** character creation (name, scarf and sash colors) is done */
+  created: boolean;
+  /** skill levels 1..10, index = SkillDef.id */
+  skills: number[];
+  /** extra training points from quests (on top of one per level) */
+  bonusPoints: number;
+  /** materials */
+  stones: number;
+  shards: number;
+  protects: number;
+  /** brush enhancement level per owned weapon id */
+  enh: Record<string, number>;
   main: number; // index into MAIN_QUESTS
   /** the current main quest was accepted from its giver; progress only counts once accepted */
   mainAccepted: boolean;

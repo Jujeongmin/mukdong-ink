@@ -13,14 +13,25 @@ import type { GameApi, ProfileView } from "../../net/api";
 import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../quests";
 import { fmt, hexCss } from "../util";
 import { attempt, el, esc, itemIcon, toast } from "./dom";
+import { enhanceHtml, growthAction, skillsHtml, type GrowthState } from "./growth";
 
 export interface SheetCtx {
   api: GameApi;
   profile(): ProfileView;
   apply(p: ProfileView): void;
+  /** discovery hints (docs/TUTORIAL.md) */
+  hint?(id: string, text: string): void;
+  seen?(id: string): boolean;
+  mark?(id: string): void;
 }
 
-type SheetId = "elder" | "dyer" | "altar" | "gear";
+/** One short line the first time each growth tab is opened. */
+const GROWTH_FIRST: Record<string, string> = {
+  skills: "포인트를 쏟을수록 검법이 깊어진다. 다섯과 열에서 깨어난다.",
+  enhance: "먹돌로 붓을 다듬는다. 너무 욕심내면 붓이 부서질 수도.",
+};
+
+type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth";
 const SLOT_NAME: Record<SlotId, string> = { weapon: "붓", hat: "머리", sash: "띠" };
 const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", 일반: "c" };
 
@@ -32,6 +43,7 @@ const TABS: Partial<Record<SheetId, [string, string][]>> = {
   elder: [["main", "이어지는 의뢰"], ["daily", "오늘의 의뢰"]],
   dyer: [["dye", "염색"], ["potion", "물약"]],
   altar: [["pull", "뽑기"], ["odds", "확률표"], ["jade", "묵옥 얻기"]],
+  growth: [["skills", "검법 단련"], ["enhance", "붓 강화"]],
 };
 
 /** NPC and gear sheets unroll as a hanging scroll (rods top and bottom, paper with a loose ink frame). */
@@ -42,9 +54,13 @@ export class Sheets {
   private tab = "";
   private busy = false;
   private lastPull = "";
+  private readonly growthState: GrowthState = { brush: "", protect: false, stage: "" };
+  /** the first-open line stays while that tab stays open */
+  private firstNote = "";
+  private firstTab = "";
 
   constructor(root: HTMLElement, private readonly ctx: SheetCtx) {
-    root.insertAdjacentHTML("beforeend", `<div class="sheet" data-sheet hidden><div class="scroll"><div class="sheet-card" role="dialog" aria-modal="true"></div></div></div>`);
+    root.insertAdjacentHTML("beforeend", `<div class="sheet" data-sheet hidden><div class="scroll"><div class="sheet-card" role="dialog" aria-modal="true"></div><i class="sheet-frame" aria-hidden="true"></i></div></div>`);
     this.wrap = el("[data-sheet]", root);
     this.card = el(".sheet-card", this.wrap);
     this.wrap.addEventListener("pointerdown", (e) => { if (e.target === this.wrap) this.close(); });
@@ -59,6 +75,14 @@ export class Sheets {
     this.lastPull = "";
     if (n.role !== "elder" && n.role !== "dyer" && n.role !== "altar") return;
     this.show(n.role, tab);
+  }
+
+  openGrowth(tab?: "skills" | "enhance"): void {
+    if (this.current === "growth") { this.close(); return; }
+    this.growthState.brush = this.ctx.profile().equip.weapon;
+    this.growthState.stage = "";
+    this.show("growth", tab);
+    if (tab === "enhance") this.card.querySelector('[data-tab="enhance"]')?.classList.add("hint-glow");
   }
 
   openGear(): void {
@@ -92,6 +116,18 @@ export class Sheets {
     else if (this.current === "dyer") html = this.dyer(p);
     else if (this.current === "altar") html = this.altar(p);
     else if (this.current === "gear") html = this.gear(p);
+    else if (this.current === "growth") {
+      const first = `growth-${this.tab}`;
+      let intro = "";
+      if (this.ctx.seen && !this.ctx.seen(first)) {
+        intro = `<p class="first-note">${esc(GROWTH_FIRST[this.tab] ?? "")}</p>`;
+        this.ctx.mark?.(first);
+        this.firstNote = intro;
+      } else if (this.firstNote && this.firstTab === this.tab) intro = this.firstNote;
+      this.firstTab = this.tab;
+      if (!intro) this.firstNote = "";
+      html = this.head("수련") + intro + (this.tab === "enhance" ? enhanceHtml(p, this.growthState, this.busy) : skillsHtml(p, this.busy));
+    }
     const scroll = this.card.scrollTop;
     this.card.innerHTML = html;
     this.card.scrollTop = scroll;
@@ -109,7 +145,7 @@ export class Sheets {
     const nav = tabs
       ? `<nav class="tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${id === this.tab}" data-tab="${id}">${esc(label)}</button>`).join("")}</nav>`
       : "";
-    return `<header><div>${seal ? `<i class="spr-seal" aria-hidden="true"></i>` : ""}<h2>${esc(title)}</h2></div><button class="close" type="button" data-close aria-label="닫기">닫기</button></header>${nav}`;
+    return `<header><div>${seal ? `<i class="seal-dab" aria-hidden="true"></i>` : ""}<h2>${esc(title)}</h2></div><button class="close btn btn-secondary btn-sm" type="button" data-close aria-label="닫기">닫기</button></header>${nav}`;
   }
 
   /* ---------- 먹노인 ---------- */
@@ -125,7 +161,7 @@ export class Sheets {
         const d = dailyStatus(p, i);
         const label = d.claimed ? "받음" : d.done ? "보상 받기" : `${d.prog} / ${d.target}`;
         return `<div class="qitem${d.claimed ? " claimed" : ""}"><div><b>${esc(d.q.title)}</b><small>${esc(d.q.text)}</small><span class="reward">${rewardText(d.q)}</span></div>
-          <button class="btn" type="button" data-do="claimDaily" data-i="${i}" ${d.done && !d.claimed && !this.busy ? "" : "disabled"}>${label}</button></div>`;
+          <button class="btn btn-sm" type="button" data-do="claimDaily" data-i="${i}" ${d.done && !d.claimed && !this.busy ? "" : "disabled"}>${label}</button></div>`;
       }).join("");
       return `${this.head("먹노인")}<p class="sub">하루에 한 번씩 새로 맡깁니다.</p><div class="qlist">${daily}</div>`;
     }
@@ -171,7 +207,7 @@ export class Sheets {
     if (this.tab === "jade") {
       const shop = JADE_PRODUCTS.map((j) => `<button type="button" data-do="buy" data-id="${esc(j.productId)}" ${this.busy ? "disabled" : ""}><b>${esc(j.label)}</b><small>${local ? "모의 결제, 바로 지급" : "결제 창이 열립니다"}</small></button>`).join("");
       return `${head}<p class="sub">가진 묵옥 ${fmt(p.jade)}</p>
-        <div class="row"><button class="ghost-btn" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>광고 보고 묵옥 ${AD_REWARD_JADE} 받기 (오늘 ${Math.max(0, p.adsLeft)}/${AD_DAILY})</button></div>
+        <div class="row"><button class="ghost-btn btn btn-secondary btn-sm" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>광고 보고 묵옥 ${AD_REWARD_JADE} 받기 (오늘 ${Math.max(0, p.adsLeft)}/${AD_DAILY})</button></div>
         <div class="shop">${shop}</div>
         <p class="mock">${local ? "지금은 오프라인(로컬) 모드라 충전은 <b>모의 결제</b>로 바로 지급되고 실제 돈은 나가지 않습니다. 광고도 모의 화면입니다." : "충전은 Verse8 결제 창에서 진행됩니다."} 광고는 버튼을 누를 때만 나옵니다. 경지와 진행은 팔지 않습니다.</p>`;
     }
@@ -180,8 +216,8 @@ export class Sheets {
       <div class="banner-art"><b>붓과 갓과 띠를 내리는 제단</b>
         <div class="pity">전설까지 <b>${left}</b>번 남았습니다. 중복은 안료 ${DUPE_PIGMENT}로 바뀝니다.</div></div>
       <div class="pull-row">
-        <button class="pull" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>1회 뽑기</b><span>묵옥 ${fmt(COST1)}</span></button>
-        <button class="pull" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>10회 뽑기</b><span>묵옥 ${fmt(COST10)}</span></button>
+        <button class="pull btn" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>1회 뽑기</b><span>묵옥 ${fmt(COST1)}</span></button>
+        <button class="pull btn" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>10회 뽑기</b><span>묵옥 ${fmt(COST10)}</span></button>
       </div>
       <div class="results" aria-live="polite">${this.lastPull}</div>`;
   }
@@ -213,7 +249,9 @@ export class Sheets {
     this.busy = true;
     this.render();
     try {
-      if (what === "claimDaily") {
+      if (what && (await growthAction(what, b, api, this.ctx.profile(), this.growthState, this.ctx.apply, () => { if (this.current) this.render(); }))) {
+        // handled by the growth sheet
+      } else if (what === "claimDaily") {
         const i = Number(b.dataset.i);
         const p = await attempt(api.claimDaily(i));
         if (p) { this.ctx.apply(p); toast(`오늘의 의뢰 완료 · ${rewardText(DAILY_QUESTS[i])}`); }

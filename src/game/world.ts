@@ -1,18 +1,21 @@
 // Zone scenery built from ZONES[zone].theme. Static scenery is baked into one mesh per material
-// (mergeGeometries) to keep draw calls low; tall scenery only goes north of the play area because the
-// camera looks from the south. On a zone change everything this file created is disposed (OWNED baked
-// geometry); materials and unit geometries come from materials.ts and are SHARED.
+// (mergeGeometries) to keep draw calls low; tall scenery only goes north of the play area (or far out to
+// the sides) because the camera looks from the south. Set dressing (grass, reeds, shore stones, walls,
+// far groves and spires) keeps clear of gates, arrival points, NPCs, the boss ground and the worn path.
+// Gates are their own mesh so one standing between the camera and the player can fade to a pale wash.
+// On a zone change everything this file created is disposed (OWNED baked geometry); materials and unit
+// geometries come from materials.ts and are SHARED.
 
 import * as THREE from "three";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
-import type { Npc, Portal, ZoneDef } from "../shared/world";
+import { ZONES, type Npc, type Portal, type ZoneDef } from "../shared/world";
 import { ITEM, type ItemDef } from "../shared/items";
 import { fbm3, rng } from "./util";
-import { G, M, dyeMat, lam } from "./render/materials";
-import { overlay, scene } from "./render/gfx";
+import { G, G2, M, M_blade, M_bladeDark, dyeMat, gateFadeMat, groundMat, lam, setGround, setGroundShade, waterMat } from "./render/materials";
+import { bakeShadows, camFocus, clearShadows, noNormalPass, overlay, scene } from "./render/gfx";
 import { QUAD_VERT } from "./render/fx";
-import { flatGeo, glowMat, moonStreakMat } from "./render/ambient";
-import { POSE, Rig } from "./render/rig";
+import { MOODS, flatGeo, glowMat, moonStreakMat } from "./render/ambient";
+import { POSE, Rig, type Build } from "./render/rig";
 import type { Collider, Field } from "./actor";
 
 export interface Anchor {
@@ -48,6 +51,7 @@ class Baker {
       owned.push(merged);
       const mesh = new THREE.Mesh(merged, mat);
       mesh.matrixAutoUpdate = false;
+      mesh.userData.noCast = NO_CAST.has(mat); // flat things cast no baked shadow
       parent.add(mesh);
     }
     this.bins.clear();
@@ -109,6 +113,20 @@ const GLOW_PARAMS: THREE.MeshBasicMaterialParameters = {
 };
 const M_lanternGlow = new THREE.MeshBasicMaterial({ color: 0xffa24a, ...GLOW_PARAMS });
 const M_windowGlow = new THREE.MeshBasicMaterial({ color: 0xf2b45e, ...GLOW_PARAMS });
+/** dark ink ring under water and puddles (the bank) */
+const M_bank = lam(0x2b2a30);
+/** materials of flat things (ground, water, path, grass) that cast no baked shadow */
+const NO_CAST = new Set<THREE.Material>([groundMat, waterMat, M_bank, M.path, M.lily, M_blade, M_bladeDark]);
+
+interface Gate {
+  mesh: THREE.Mesh;
+  veil: THREE.Mesh;
+  x: number;
+  z: number;
+  /** 1 = solid, down to ~0.2 while it stands between the camera and the player */
+  f: number;
+  init: boolean;
+}
 
 export class ZoneScene {
   readonly group = new THREE.Group();
@@ -118,16 +136,20 @@ export class ZoneScene {
   private readonly baker = new Baker();
   private readonly rand: () => number;
   private readonly colliders: Collider[] = [];
-  private readonly npcRigs: { rig: Rig; base: Float32Array; phase: number }[] = [];
+  private readonly npcRigs: { rig: Rig; base: Float32Array; phase: number; idle: (rig: Rig, t: number) => void }[] = [];
   private readonly veils: THREE.Mesh[] = [];
   /** overlay glow/reflection meshes (OWNED meshes, SHARED geometry/material) */
   private readonly glows: THREE.Mesh[] = [];
+  private readonly gates: Gate[] = [];
+  /** where players arrive in this zone (kept clear of scenery) */
+  private readonly arrivals: { x: number; z: number }[] = [];
 
   constructor(readonly def: ZoneDef) {
     this.rand = rng(def.id.length * 977 + def.radius * 31 + def.id.charCodeAt(0));
     this.field = { radius: def.radius, colliders: this.colliders };
     this.group.matrixAutoUpdate = false;
     scene.add(this.group);
+    for (const z of Object.values(ZONES)) for (const p of z.portals) if (p.to === def.id) this.arrivals.push({ x: p.arriveX, z: p.arriveZ });
     this.ground();
     switch (def.theme) {
       case "village": this.village(); break;
@@ -137,15 +159,37 @@ export class ZoneScene {
     }
     for (const p of def.portals) this.portal(p);
     for (const n of def.npcs) this.npc(n);
+    this.dressing();
     this.baker.flush(this.group, this.owned);
+    // scenery and the standing NPCs cast their shadows once, into a mask the ground samples
+    const mood = MOODS[def.theme] ?? MOODS.village;
+    const roots: THREE.Object3D[] = [this.group];
+    for (const n of this.npcRigs) roots.push(n.rig.group);
+    const baked = bakeShadows(roots, def.radius + 12, mood.sun, mood.shade);
+    setGroundShade(baked ? baked.tex : null, baked ? baked.box : null, mood.shade[0]);
   }
 
   update(dt: number, time: number): void {
     veilMat.uniforms.uTime.value = time;
+    // a gate between the camera and the player (arriving through it, walking past it) fades to a wash
+    for (const g of this.gates) {
+      const dz = g.z - camFocus.z, dx = Math.abs(g.x - camFocus.x);
+      const target = dz > -0.8 && dz < 7.5 && dx < 4.8 ? 0.16 : 1;
+      g.f = g.init ? g.f + (target - g.f) * Math.min(1, dt * 5) : target;
+      g.init = true;
+      if (g.f < 0.97) {
+        g.mesh.material = gateFadeMat;
+        gateFadeMat.opacity = g.f;
+        noNormalPass.add(g.mesh);
+      } else if (g.mesh.material !== M.gate) {
+        g.mesh.material = M.gate;
+        noNormalPass.delete(g.mesh);
+      }
+      g.veil.visible = g.f > 0.55;
+    }
     for (const n of this.npcRigs) {
       n.rig.pose.set(n.base);
-      n.rig.pose[11] += Math.sin(time * 1.8 + n.phase) * 0.02;
-      n.rig.pose[0] += Math.sin(time * 1.8 + n.phase) * 0.015;
+      n.idle(n.rig, time + n.phase);
       n.rig.apply();
     }
     void dt;
@@ -158,12 +202,17 @@ export class ZoneScene {
     for (const n of this.npcRigs) scene.remove(n.rig.group); // rig parts are SHARED
     for (const v of this.veils) overlay.remove(v); // SHARED veil geometry/material
     for (const m of this.glows) overlay.remove(m); // SHARED glow geometry/material
+    for (const g of this.gates) noNormalPass.delete(g.mesh); // gate geometry is in `owned`
+    setGroundShade(null, null, 0);
+    clearShadows(); // OWNED shadow mask
   }
 
   /* ---------- common pieces ---------- */
   private ground(): void {
     const g = new THREE.Group();
-    g.add(part(G.disc, lam(this.def.ground), 0, 0, 0, this.def.radius + 16, 1, this.def.radius + 16));
+    const th = this.def.theme;
+    setGround(this.def.ground, this.def.radius, th === "village" ? 1 : th === "peak" ? 0.75 : 0, th === "pond" ? 0.35 : th === "peak" ? 0.5 : 0.42);
+    g.add(part(G.disc, groundMat, 0, 0, 0, this.def.radius + 16, 1, this.def.radius + 16));
     // a worn path from the south portal to the north one
     const R = this.def.radius;
     for (let i = 0; i < 26; i++) {
@@ -195,7 +244,8 @@ export class ZoneScene {
   private bamboo(x: number, z: number, h: number): void {
     const r = this.rand, g = new THREE.Group();
     g.add(part(G.stalk, M.bamboo, 0, 0, 0, 1, h, 1));
-    for (let y = 1.4; y < h; y += 1.5) g.add(part(G.node, M.bamboo, 0, y, 0));
+    // nodes only where they can be seen; far stalks are a silhouette in the mist
+    if (Math.hypot(x, z) < this.def.radius + 8) for (let y = 1.4; y < h; y += 1.5) g.add(part(G.node, M.bamboo, 0, y, 0));
     for (let k = 0; k < 6; k++) g.add(part(G.leaf, M.leaf, 0, h * (0.55 + k * 0.08), 0, 0.8 + r() * 0.6, 1, 1, r() * 0.6 - 0.3, r() * 6.28, -0.4 - r() * 0.7));
     g.position.set(x, 0, z);
     g.rotation.z = (r() - 0.5) * 0.12;
@@ -218,10 +268,18 @@ export class ZoneScene {
 
   private pine(x: number, z: number, s: number): void {
     const g = new THREE.Group();
-    g.add(part(G.trunk, M.trunk, 0, 0, 0, 1.1, 3.2, 1.1, 0, 0, (this.rand() - 0.5) * 0.2));
+    // a leaning trunk carrying flat, layered crowns (the painted Korean pine, not a fir)
+    const lean = (this.rand() - 0.5) * 0.35;
+    g.add(part(G.trunk, M.trunk, 0, 0, 0, 1.1, 4.6, 1.1, 0, 0, lean));
     for (let k = 0; k < 4; k++) {
-      const y = 2.2 + k * 1.05, w = 2.1 - k * 0.42;
-      g.add(part(G.cone, M.pine, (this.rand() - 0.5) * 0.4, y, (this.rand() - 0.5) * 0.4, w, 1.3, w * 0.85, 0, this.rand() * 6, 0));
+      const y = 3.0 + k * 0.7, side = k % 2 ? 1 : -1, off = (k === 3 ? 0 : side * (0.5 + this.rand() * 0.5)) - lean * y;
+      const w = 1.5 - k * 0.22 + this.rand() * 0.25;
+      g.add(part(G.trunk, M.trunk, off * 0.5, y - 0.3, 0, 0.35, Math.abs(off) + 0.3, 0.35, 0, 0, -side * 1.1));
+      // each tier: a few overlapping cushions, so the crown reads as one ragged mass
+      for (let j = 0; j < 3; j++) {
+        const jx = off + (j - 1) * w * 0.55, jz = (this.rand() - 0.5) * 0.8;
+        g.add(part(G2.cushion, M.pine, jx, y + (j === 1 ? 0.12 : 0), jz, w * (0.6 + this.rand() * 0.25), 0.5, w * 0.6, 0, this.rand() * 6, 0));
+      }
     }
     g.position.set(x, 0, z);
     g.scale.setScalar(s);
@@ -316,6 +374,87 @@ export class ZoneScene {
     }
   }
 
+  /* ---------- set dressing ---------- */
+  /** x of the worn path (the same curve the ground shader paints) at z */
+  private pathX(z: number): number {
+    const R = this.def.radius, t = (R - 1 - z) / (R * 2 - 2);
+    return Math.sin(t * 5 + R) * 2.2;
+  }
+
+  /** A prop of radius r at (x, z) keeps clear of gates, arrivals, NPCs, the boss ground, colliders, the path. */
+  private clear(x: number, z: number, r: number, path = true): boolean {
+    const d = this.def;
+    if (path && Math.abs(z) < d.radius + 2 && Math.abs(x - this.pathX(z)) < 2.2 + r) return false;
+    for (const p of d.portals) if (Math.hypot(x - p.x, z - p.z) < 4.5 + r) return false;
+    for (const a of this.arrivals) if (Math.hypot(x - a.x, z - a.z) < 3.5 + r) return false;
+    for (const n of d.npcs) if (Math.hypot(x - n.x, z - n.z) < 2.5 + r) return false;
+    if (d.boss && Math.hypot(x - d.boss.x, z - d.boss.z) < 6 + r) return false;
+    for (const c of this.colliders) if (Math.hypot(x - c.x, z - c.z) < c.r + r + 0.2) return false;
+    return true;
+  }
+
+  /** Grass tufts (dark brush flicks), thicker toward the rim than in the open middle. */
+  private tufts(n: number, reach: number, dark: number): void {
+    const R = this.def.radius, g = new THREE.Group();
+    for (let i = 0; i < n; i++) {
+      const a = this.rand() * Math.PI * 2, d = (R + reach) * Math.pow(this.rand(), 0.42);
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (!this.clear(x, z, 0.3)) continue;
+      const sc = 0.6 + this.rand() * 0.7, h = 0.45 + this.rand() * 0.6;
+      g.add(part(G2.tuft, this.rand() < dark ? M_bladeDark : M_blade, x, 0, z, sc, h, sc, 0, this.rand() * 6.28, 0));
+      if (this.rand() < 0.4) g.add(part(G2.tuft, M_blade, x + (this.rand() - 0.5) * 0.9, 0, z + (this.rand() - 0.5) * 0.9, sc * 0.7, h * 0.8, sc * 0.7, 0, this.rand() * 6.28, 0));
+    }
+    this.baker.add(g);
+  }
+
+  /** A low lumpy stone (no collider). */
+  private stone(x: number, z: number, sc: number, mat: THREE.Material = M.rock): void {
+    this.baker.add(part(G2.stone, mat, x, 0, z, sc * (1 + this.rand() * 0.5), sc * (0.5 + this.rand() * 0.4), sc, 0, this.rand() * 6.28, 0));
+  }
+
+  /** Still water with a dark bank; the ink pass mirrors the sky into it. */
+  private water(x: number, z: number, rx: number, rz: number): void {
+    const g = new THREE.Group();
+    g.add(part(G.disc, M_bank, x, 0.012, z, rx + 0.35, 1, rz + 0.3));
+    g.add(part(G.disc, waterMat, x, 0.02, z, rx, 1, rz));
+    this.baker.add(g);
+  }
+
+  /** Dry-stone wall along an arc of the rim (outside the walkable disc, so no colliders). */
+  private wallArc(r: number, a0: number, a1: number): void {
+    const g = new THREE.Group();
+    const n = Math.round((Math.abs(a1 - a0) * r) / 0.75);
+    for (let i = 0; i <= n; i++) {
+      const a = a0 + ((a1 - a0) * i) / n, rr = r + (this.rand() - 0.5) * 0.25;
+      const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+      if (!this.clear(x, z, 0.5, false)) continue;
+      g.add(part(G2.stone, M.rock, x, 0.25, z, 0.5 + this.rand() * 0.15, 0.32, 0.4, 0, -a + this.rand() * 0.4, 0));
+      if (this.rand() < 0.8) g.add(part(G2.stone, this.rand() < 0.5 ? M.rock : M.rockDark, x + (this.rand() - 0.5) * 0.3, 0.65, z, 0.38 + this.rand() * 0.12, 0.26, 0.32, 0, this.rand() * 6.28, 0));
+    }
+    this.baker.add(g);
+  }
+
+  /** A tall karst spire with a pine or two clinging to its crown. */
+  private spire(x: number, z: number, h: number, w: number): void {
+    const geo = makeRock(w, h, w * 0.9, x * 0.31 + z * 0.17);
+    const m = new THREE.Mesh(geo, this.rand() < 0.5 ? M.rock : M.rockDark);
+    m.position.set(x, -0.5, z);
+    m.rotation.y = this.rand() * 6.28;
+    this.baker.add(m);
+    geo.dispose();
+    const t = new THREE.Group();
+    for (let k = 0; k < 2; k++) {
+      const a = this.rand() * 6.28, rr = w * 0.35;
+      t.add(part(G.cone, M.pine, x + Math.cos(a) * rr, h * 0.92 + k * 0.3, z + Math.sin(a) * rr, 0.8 + this.rand() * 0.5, 1.2, 0.8, 0, 0, (this.rand() - 0.5) * 0.4));
+    }
+    this.baker.add(t);
+  }
+
+  private dressing(): void {
+    const th = this.def.theme;
+    this.tufts(th === "bamboo" ? 240 : th === "pond" ? 200 : th === "village" ? 150 : 130, 8, th === "peak" ? 0.6 : 0.25);
+  }
+
   /* ---------- themes ---------- */
   private village(): void {
     const R = this.def.radius;
@@ -365,6 +504,15 @@ export class ZoneScene {
       this.baker.add(g);
       this.colliders.push({ x: -0.8, z: -10.6, r: 0.8 }, { x: 0.8, z: -10.6, r: 0.8 });
     }
+    // pines standing out past the square's sides, crowns dark against the ridges
+    for (const [x, z, sc] of [[-R - 3, -3, 1.5], [-R - 6, 5, 1.8], [R + 3.5, -5, 1.6], [R + 6, 4, 1.4], [-R - 1, -21, 1.4], [R + 1.5, -22, 1.5], [-R - 9, -12, 1.9], [R + 9, -13, 1.8]] as const) this.pine(x, z, sc);
+    // the far end of the village, lit windows fading in the haze beyond the field
+    for (const [x, z, ry, sc] of [[-20, -34, 0.4, 1.1], [17, -36, -0.3, 1.2], [-5, -44, 0.1, 1.3], [31, -30, -0.9, 1.2], [-33, -28, 0.9, 1.2], [8, -52, 0, 1.4], [-24, -50, 0.3, 1.4]] as const) this.house(x, z, ry, sc);
+    for (const [x, z] of [[-11, -38], [24, -42], [2, -36]] as const) this.pine(x, z, 1.6 + this.rand() * 0.4);
+    // dry-stone walls round the rim, open at the north gate
+    this.wallArc(R + 0.7, -Math.PI + 0.12, -Math.PI / 2 - 0.2);
+    this.wallArc(R + 0.7, -Math.PI / 2 + 0.2, -0.12);
+    this.wallArc(R + 0.7, 0.15, Math.PI - 0.15);
   }
 
   private bambooGrove(): void {
@@ -385,13 +533,27 @@ export class ZoneScene {
     }
     for (const [x, z, s] of [[-18, 8, 1.3], [10, 12, 0.9], [-6, -6, 1.0], [17, 15, 1.1], [20, -2, 0.8]] as const) this.rock(x, z, s, true);
     this.pavilion(-13, -17);
+    // a deeper, taller grove behind the first, lost in the mist
+    this.northRing(80, R + 15, 18, (x, z) => this.bamboo(x, z, 13 + this.rand() * 10));
+    // thick stands down both flanks
+    for (let i = 0; i < 110; i++) {
+      const side = this.rand() < 0.5 ? -1 : 1;
+      const x = side * (R - 2 + this.rand() * 13), z = -R - 2 + this.rand() * (R + 6);
+      if (!this.clear(x, z, 0.4, false)) continue;
+      this.bamboo(x, z, 8 + this.rand() * 9);
+      if (Math.hypot(x, z) < R + 0.5) this.colliders.push({ x, z, r: 0.25 });
+    }
+    for (let i = 0; i < 24; i++) {
+      const a = this.rand() * Math.PI * 2, d = R - 1 + this.rand() * 4;
+      if (this.clear(Math.cos(a) * d, Math.sin(a) * d, 0.5)) this.stone(Math.cos(a) * d, Math.sin(a) * d, 0.35 + this.rand() * 0.4, M.rockDark);
+    }
   }
 
   private pond(): void {
     const R = this.def.radius;
     const g = new THREE.Group();
-    g.add(part(G.disc, M.water, 9, 0.02, -5, 8, 1, 6.5));
-    g.add(part(G.disc, M.water, -13, 0.02, 7, 4, 1, 3.2));
+    this.water(9, -5, 8, 6.5);
+    this.water(-13, 7, 4, 3.2);
     for (let i = 0; i < 22; i++) {
       const a = this.rand() * 6.28, d = this.rand();
       const x = 9 + Math.cos(a) * d * 6.5, z = -5 + Math.sin(a) * d * 5;
@@ -428,6 +590,22 @@ export class ZoneScene {
       this.rock(Math.cos(a) * d, Math.sin(a) * d, 0.5 + this.rand() * 0.6, false);
     }
     for (const [x, z, s] of [[-18, 14, 1.0], [16, 13, 0.8], [-4, 10, 0.6]] as const) this.rock(x, z, s, true);
+    // reeds and stones along both banks (the bridge end stays open)
+    const reeds = new THREE.Group();
+    for (const [cx, cz, rx, rz, n] of [[9, -5, 8, 6.5, 46], [-13, 7, 4, 3.2, 22]] as const) {
+      for (let i = 0; i < n; i++) {
+        const a = this.rand() * Math.PI * 2, out = 0.15 + this.rand() * 0.9;
+        const x = cx + Math.cos(a) * (rx + out), z = cz + Math.sin(a) * (rz + out);
+        if (cx > 0 && x < cx - rx + 3 && Math.abs(z - cz) < 2.2) continue;
+        if (!this.clear(x, z, 0.2, false)) continue;
+        const sc = 0.8 + this.rand() * 0.6;
+        reeds.add(part(G2.reed, this.rand() < 0.3 ? M_bladeDark : M_blade, x, 0, z, sc, 1.0 + this.rand() * 1.0, sc, 0, this.rand() * 6.28, 0));
+        if (this.rand() < 0.3) this.stone(x + (this.rand() - 0.5), z + (this.rand() - 0.5), 0.25 + this.rand() * 0.3);
+      }
+    }
+    this.baker.add(reeds);
+    // willows and maples further out to the sides
+    for (const [x, z, sc] of [[-R - 3, 2, 1.3], [R + 4, -2, 1.2], [-R - 6, -12, 1.4], [R + 7, -14, 1.3]] as const) this.willow(x, z, sc);
   }
 
   private peak(): void {
@@ -460,24 +638,49 @@ export class ZoneScene {
     }
     t.position.set(0, 0, -24);
     this.baker.add(t);
+    // karst spires beyond the rim, rising out of the mist
+    for (let i = 0; i < 18; i++) {
+      const a = Math.PI + 0.1 + this.rand() * (Math.PI - 0.2), d = R + 7 + this.rand() * 24;
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (Math.abs(x) < 9 && z < -R) continue; // the ruins keep a clear sky behind them
+      this.spire(x, z, 8 + this.rand() * 14, 1.8 + this.rand() * 1.8);
+    }
+    // the storm's puddles
+    for (let i = 0, n = 0; i < 60 && n < 7; i++) {
+      const x = (this.rand() - 0.5) * R * 1.6, z = (this.rand() - 0.5) * R * 1.6;
+      if (!this.clear(x, z, 2.2)) continue;
+      this.water(x, z, 1.1 + this.rand() * 1.6, 0.6 + this.rand() * 0.9);
+      n++;
+    }
   }
 
   /* ---------- portals and NPCs ---------- */
   private portal(p: Portal): void {
     const g = new THREE.Group();
     const half = 1.6, h = 3.2;
-    for (const s of [-1, 1]) {
-      g.add(part(G.pillar, M.gate, s * half, h / 2, 0, 0.16, h, 0.16));
-      g.add(part(G.box, M.stone, s * half, 0.15, 0, 0.6, 0.3, 0.6));
-    }
-    g.add(part(G.box, M.gate, 0, h - 0.4, 0, half * 2 + 0.4, 0.16, 0.18));
-    g.add(part(G.box, M.gateRoof, 0, h + 0.05, 0, half * 2 + 1.3, 0.18, 0.5, 0, 0, 0));
-    g.add(part(G.box, M.gateRoof, -half - 0.6, h + 0.18, 0, 0.6, 0.14, 0.5, 0, 0, 0.35));
-    g.add(part(G.box, M.gateRoof, half + 0.6, h + 0.18, 0, 0.6, 0.14, 0.5, 0, 0, -0.35));
+    for (const s of [-1, 1]) g.add(part(G.box, M.stone, s * half, 0.15, 0, 0.6, 0.3, 0.6));
     g.add(part(G.disc, M.path, 0, 0.025, 0, 2.6, 1, 1.6));
     g.position.set(p.x, 0, p.z);
     g.rotation.y = Math.atan2(p.x, p.z); // gate spans across the way out
     this.baker.add(g);
+    // the gate itself: one mesh of its own (OWNED geometry) so it can fade when it hides the player
+    const gg = new THREE.Group();
+    for (const s of [-1, 1]) gg.add(part(G.pillar, M.gate, s * half, h / 2, 0, 0.16, h, 0.16));
+    gg.add(part(G.box, M.gate, 0, h - 0.4, 0, half * 2 + 0.4, 0.16, 0.18));
+    gg.add(part(G.box, M.gate, 0, h + 0.05, 0, half * 2 + 1.3, 0.18, 0.5, 0, 0, 0));
+    gg.add(part(G.box, M.gate, -half - 0.6, h + 0.18, 0, 0.6, 0.14, 0.5, 0, 0, 0.35));
+    gg.add(part(G.box, M.gate, half + 0.6, h + 0.18, 0, 0.6, 0.14, 0.5, 0, 0, -0.35));
+    gg.position.copy(g.position);
+    gg.rotation.y = g.rotation.y;
+    gg.updateMatrixWorld(true);
+    const parts: THREE.BufferGeometry[] = [];
+    gg.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) parts.push(m.geometry.clone().applyMatrix4(m.matrixWorld)); });
+    const merged = mergeGeometries(parts, false)!;
+    for (const q of parts) q.dispose();
+    this.owned.push(merged);
+    const gateMesh = new THREE.Mesh(merged, M.gate);
+    gateMesh.matrixAutoUpdate = false;
+    this.group.add(gateMesh);
     const cx = Math.cos(g.rotation.y), sz = -Math.sin(g.rotation.y);
     this.colliders.push({ x: p.x + cx * half, z: p.z + sz * half, r: 0.3 }, { x: p.x - cx * half, z: p.z - sz * half, r: 0.3 });
     const veil = new THREE.Mesh(veilGeo, veilMat);
@@ -486,69 +689,239 @@ export class ZoneScene {
     veil.frustumCulled = false;
     overlay.add(veil);
     this.veils.push(veil);
+    this.gates.push({ mesh: gateMesh, veil, x: p.x, z: p.z, f: 1, init: false });
     this.anchors.push({ x: p.x, y: h + 0.9, z: p.z, text: p.label, kind: "portal" });
   }
 
   private npc(n: Npc): void {
     const rig = new Rig();
     const look = NPC_LOOK[n.id] ?? NPC_LOOK[n.role] ?? NPC_LOOK.elder;
+    rig.setBuild(look.build);
     rig.setHat(look.hat);
     rig.setSash(look.sash);
     rig.pose.set(look.pose);
-    dressNpc(rig, n.id);
-    rig.place(n.x, 0, n.z, -Math.PI / 2 + 0.55);
+    const idle = dressNpc(rig, n.id);
+    rig.place(n.x, 0, n.z, look.head ?? -Math.PI / 2 + 0.55);
     rig.apply();
     scene.add(rig.group);
-    this.npcRigs.push({ rig, base: look.pose, phase: n.x });
-    this.anchors.push({ x: n.x, y: 2.7, z: n.z, text: n.name, kind: "npc", id: n.id });
+    this.npcRigs.push({ rig, base: look.pose, phase: n.x, idle });
+    // name plate and quest mark sit above this figure's own height
+    this.anchors.push({ x: n.x, y: rig.topY() + 0.45, z: n.z, text: n.name, kind: "npc", id: n.id });
     this.colliders.push({ x: n.x, z: n.z, r: 0.45 });
+    if (n.id === "noeul") {
+      // he sits on a bank stone, a small lantern hanging from a stake beside him (warm glow)
+      this.baker.add(part(G2.stone, M.rock, n.x - 0.15, 0, n.z, 0.6, 0.48, 0.55));
+      const g = new THREE.Group();
+      g.add(part(G.box, M.wood, 0, 0.75, 0, 0.07, 1.5, 0.07));
+      g.add(part(G.box, M.wood, 0.18, 1.48, 0, 0.42, 0.05, 0.05));
+      g.add(part(G.box, M.wood, 0.36, 1.36, 0, 0.02, 0.22, 0.02));
+      g.add(part(G.ball, M_lanternGlow, 0.36, 1.15, 0, 0.13, 0.18, 0.13));
+      g.position.set(n.x + 0.9, 0, n.z + 0.5);
+      this.baker.add(g);
+      this.glowPool(n.x + 1.2, n.z + 0.5, 2.2);
+    }
   }
 }
 
-const NPC_LOOK: Record<string, { hat: ItemDef | undefined; sash: number | null; pose: Float32Array }> = {
-  elder: { hat: ITEM.h_satgat, sash: null, pose: POSE.elder },
-  dyer: { hat: ITEM.h_none, sash: 0xc0281c, pose: POSE.bow },
-  altar: { hat: ITEM.h_gat, sash: 0xd9a640, pose: POSE.idle },
-  guide: { hat: ITEM.h_none, sash: null, pose: POSE.idle },
-  baram: { hat: ITEM.h_none, sash: 0x5fa8a0, pose: POSE.idle },
-  noeul: { hat: ITEM.h_satgat, sash: 0xe07a3a, pose: POSE.idle },
-  heukwol: { hat: ITEM.h_gat, sash: null, pose: POSE.idle },
+/* ---------- field NPCs: each its own silhouette (proportions, props, idle) ----------
+   Same ink stick-figure as 먹동이, reshaped through Rig.setBuild and dressed with props only (no robes).
+   Prop geometry and materials are SHARED (module level); the per-NPC meshes only reference them, so a
+   zone change just drops the rig from the scene. Idle closures are made once at build, never per frame. */
+const M_dark = lam(0x1a1816);
+const M_beard = lam(0xd6d0c2);
+const M_caneWood = lam(0x4e3d2c);
+const M_iron = lam(0x2c2a28);
+const M_bambooPale = lam(0x8f9a5c);
+const M_wisp = lam(0x0e0d12);
+// the hermit's crescent: pale silver that keeps its tone in the ink pass (dyed alpha path)
+const M_crescent = new THREE.MeshBasicMaterial({ color: 0xdfe5ef, ...GLOW_PARAMS });
+
+function rod(r0: number, r1: number, y0: number, y1: number, seg = 7): THREE.BufferGeometry {
+  return new THREE.CylinderGeometry(r1, r0, y1 - y0, seg).translate(0, (y0 + y1) / 2, 0);
+}
+const NG = {
+  // elder: a long tapering beard (three strands) and a gnarled cane with a knob above the hand
+  beard: mergeGeometries([
+    new THREE.ConeGeometry(0.09, 0.62, 7).rotateX(Math.PI).translate(0, -0.31, 0),
+    new THREE.ConeGeometry(0.045, 0.42, 6).rotateX(Math.PI).translate(0.04, -0.21, 0.07),
+    new THREE.ConeGeometry(0.045, 0.42, 6).rotateX(Math.PI).translate(0.04, -0.21, -0.07),
+  ])!,
+  cane: mergeGeometries([
+    rod(0.03, 0.036, -0.12, 0.98),
+    new THREE.SphereGeometry(0.07, 8, 6).translate(0, -0.15, 0),
+    new THREE.SphereGeometry(0.045, 7, 5).translate(0.01, 0.3, 0),
+    new THREE.SphereGeometry(0.04, 7, 5).translate(-0.01, 0.62, 0),
+  ])!,
+  // dyer: hair bun, ribbon tails, a long stirring paddle
+  bun: new THREE.SphereGeometry(0.11, 10, 8),
+  ribbon: new THREE.BoxGeometry(0.025, 0.62, 0.075).translate(0, -0.31, 0),
+  paddle: mergeGeometries([rod(0.028, 0.028, -0.55, 1.35), new THREE.BoxGeometry(0.2, 0.42, 0.035).translate(0, 1.5, 0)])!,
+  // altar keeper: a smith's hammer
+  hammer: mergeGeometries([rod(0.04, 0.045, -0.12, 1.02), new THREE.BoxGeometry(0.42, 0.26, 0.26).translate(0, 1.04, 0)])!,
+  // guide: hair tails, a bamboo staff, a flute
+  hair: new THREE.ConeGeometry(0.05, 0.85, 6).rotateX(Math.PI).translate(0, -0.42, 0),
+  staff: mergeGeometries([rod(0.03, 0.03, -1.0, 1.05), new THREE.CylinderGeometry(0.038, 0.038, 0.03, 7).translate(0, -0.4, 0), new THREE.CylinderGeometry(0.038, 0.038, 0.03, 7).translate(0, 0.3, 0)])!,
+  flute: rod(0.022, 0.022, -0.3, 0.3),
+  sashTail: new THREE.BoxGeometry(0.03, 0.55, 0.08).translate(0, -0.27, 0),
+  // ferryman: oar
+  oar: mergeGeometries([rod(0.03, 0.035, -0.25, 2.0), new THREE.BoxGeometry(0.2, 0.55, 0.04).translate(0, 2.2, 0)])!,
+  // hermit: a crescent behind the head, ink wisps
+  crescent: new THREE.TorusGeometry(0.2, 0.026, 6, 26, 4.3),
+  wisp: new THREE.SphereGeometry(1, 6, 5),
 };
 
-/* ---------- field NPC props (SHARED geometry/materials; nothing to dispose) ---------- */
-const G_band = new THREE.TorusGeometry(0.245, 0.035, 6, 20).rotateY(Math.PI / 2);
-const G_tail = new THREE.BoxGeometry(0.04, 0.32, 0.06).translate(0, -0.16, 0);
-const G_shaftShort = new THREE.CylinderGeometry(0.028, 0.034, 0.9, 8).translate(0, 0.45, 0);
-const G_tip = new THREE.ConeGeometry(0.07, 0.3, 8).translate(0, 1.05, 0);
-const G_oar = new THREE.CylinderGeometry(0.03, 0.035, 2.2, 8).translate(0, 0.9, 0);
-const G_blade = new THREE.BoxGeometry(0.2, 0.55, 0.04).translate(0, 2.15, 0);
-const M_shadowHalf = new THREE.MeshBasicMaterial({ color: 0x0c0b10, transparent: true, opacity: 0.38, depthWrite: false });
-const M_dark = lam(0x1a1816);
+interface NpcLook {
+  hat: ItemDef | undefined;
+  sash: number | null;
+  build: Build;
+  pose: Float32Array;
+  /** world-space heading; default faces the camera a little to the right */
+  head?: number;
+}
+const Pz = (...a: number[]) => Float32Array.from(a);
+const NPC_LOOK: Record<string, NpcLook> = {
+  // pose = [torso, head, shL, elL, shR, elR, hipL, kneeL, hipR, kneeR, weapon, rootY]
+  elder: { hat: ITEM.h_satgat, sash: null, build: { height: 0.84, head: 1.12, limb: 0.92, legs: 0.86, torso: 0.9 },
+    pose: Pz(0.55, -0.32, -0.1, 0.3, 0.55, 0.15, 0.2, -0.4, -0.05, -0.25, -0.7, -0.1), head: -0.35 },
+  dyer: { hat: ITEM.h_none, sash: 0xc0281c, build: { height: 1.0, head: 0.95, limb: 0.82, legs: 1.06, arms: 1.05 },
+    pose: Pz(0.2, 0, 0.75, 0.5, 0.95, 0.3, 0.35, -0.5, -0.2, -0.2, -0.9, -0.08), head: 0.64 },
+  altar: { hat: ITEM.h_gat, sash: 0xd9a640, build: { height: 1.14, head: 0.84, limb: 1.5, torso: 1.1, arms: 1.05, legs: 0.95 },
+    pose: Pz(0.02, 0, -0.18, 0.25, 0.6, 2.2, 0.28, -0.12, -0.28, -0.1, 0.86, -0.05), head: -0.6 },
+  guide: { hat: ITEM.h_none, sash: null, build: {}, pose: POSE.idle },
+  baram: { hat: ITEM.h_none, sash: 0x5fa8a0, build: { height: 1.13, head: 0.94, limb: 0.8, legs: 1.12, torso: 1.03 },
+    pose: Pz(0.04, 0.05, -0.4, 1.5, 0.25, 0.35, 0.15, -0.15, -0.12, -0.08, -0.6, -0.03), head: -0.3 },
+  noeul: { hat: ITEM.h_satgat, sash: 0xe07a3a, build: { height: 0.96, head: 0.95, limb: 0.74, arms: 1.05, hatW: 1.75 },
+    pose: Pz(0.28, -0.1, 0.9, -0.35, 0.4, 0.6, 1.45, -1.55, 1.3, -1.25, 2.14, -0.55), head: Math.PI + 0.35 },
+  heukwol: { hat: ITEM.h_mask, sash: null, build: { height: 1.3, head: 0.9, limb: 0.62, legs: 1.22, torso: 1.18, arms: 1.15 },
+    pose: Pz(-0.03, 0.04, -0.12, 0.12, 0.08, 0.1, 0.06, -0.04, -0.06, -0.03, 0, -0.01), head: -0.3 },
+};
 
-function dressNpc(rig: Rig, id: string): void {
-  if (id === "baram") {
-    // headband with two short tails, a short brush slung across the back
-    const band = new THREE.Group();
-    band.add(new THREE.Mesh(G_band, dyeMat(0x5fa8a0)));
-    for (const z of [-0.05, 0.05]) {
-      const t = new THREE.Mesh(G_tail, dyeMat(0x5fa8a0));
-      t.position.set(-0.24, 0.02, z);
-      t.rotation.z = 0.5 + z * 3;
-      band.add(t);
-    }
-    rig.addProp(band, "head");
-    const brush = new THREE.Group();
-    brush.add(new THREE.Mesh(G_shaftShort, lam(0xa88f5c)), new THREE.Mesh(G_tip, M_dark));
-    brush.position.z = -0.05;
-    const back = new THREE.Group();
-    back.add(brush);
-    brush.position.y = -0.5;
-    rig.addProp(back, "back");
-  } else if (id === "noeul") {
-    const oar = new THREE.Group();
-    oar.add(new THREE.Mesh(G_oar, M.wood), new THREE.Mesh(G_blade, M.wood));
-    rig.setHeld(oar);
-  } else if (id === "heukwol") {
-    rig.shadeSide(M_shadowHalf);
+type Idle = (rig: Rig, t: number) => void;
+const BREATHE: Idle = (rig, t) => {
+  rig.pose[11] += Math.sin(t * 1.8) * 0.02;
+  rig.pose[0] += Math.sin(t * 1.8) * 0.015;
+};
+
+/** Props and idle for one NPC; returns its idle animation (built once). */
+function dressNpc(rig: Rig, id: string): Idle {
+  if (id === "elder") {
+    const beard = new THREE.Group();
+    const b = new THREE.Mesh(NG.beard, M_beard);
+    b.position.set(0.17, -0.17, 0);
+    b.rotation.z = 0.15;
+    beard.add(b);
+    rig.addProp(beard, "head");
+    rig.setHeld(new THREE.Mesh(NG.cane, M_caneWood));
+    return (r, t) => {
+      // a slow sway over the cane; now and then a hand comes up to stroke the beard
+      r.pose[0] += Math.sin(t * 0.9) * 0.04;
+      r.pose[11] += Math.sin(t * 0.9) * 0.015;
+      const c = t % 8;
+      const k = c > 5.2 && c < 7.6 ? Math.sin(((c - 5.2) / 2.4) * Math.PI) : 0;
+      r.pose[2] += k * 1.25;
+      r.pose[3] += k * 1.75 + k * Math.sin(t * 6) * 0.15;
+      b.rotation.z = 0.15 + Math.sin(t * 1.3) * 0.05 - k * 0.1;
+    };
   }
+  if (id === "dyer") {
+    const hair = new THREE.Group();
+    const bun = new THREE.Mesh(NG.bun, M_dark);
+    bun.position.set(-0.13, 0.2, 0);
+    hair.add(bun);
+    const tails: THREE.Mesh[] = [];
+    for (const z of [-0.04, 0.04]) {
+      const t = new THREE.Mesh(NG.ribbon, dyeMat(0xc0281c));
+      t.position.set(-0.2, 0.22, z);
+      hair.add(t);
+      tails.push(t);
+    }
+    rig.addProp(hair, "head");
+    rig.paintForearms(dyeMat(0x2a4f8a), dyeMat(0xc0281c)); // indigo and madder up to the elbows
+    rig.setHeld(new THREE.Mesh(NG.paddle, M.wood));
+    return (r, t) => {
+      // stirring the vat: both arms trace a slow circle, the body follows
+      const s = Math.sin(t * 2.2), c = Math.cos(t * 2.2);
+      r.pose[2] += s * 0.22; r.pose[3] += c * 0.15;
+      r.pose[4] += s * 0.25; r.pose[5] += c * 0.18;
+      r.pose[0] += c * 0.05; r.pose[10] += s * 0.12;
+      for (let i = 0; i < tails.length; i++) tails[i].rotation.z = -0.9 + Math.sin(t * 5.3 + i * 1.7) * 0.25 + Math.sin(t * 2.1 + i) * 0.15;
+    };
+  }
+  if (id === "altar") {
+    rig.setHeld(new THREE.Mesh(NG.hammer, M_iron));
+    return (r, t) => {
+      // a heavy breath and, every few seconds, a roll of the hammer shoulder
+      BREATHE(r, t * 0.7);
+      const c = t % 6;
+      const k = c > 4 && c < 5.4 ? Math.sin(((c - 4) / 1.4) * Math.PI) : 0;
+      r.pose[4] += k * 0.35; r.pose[5] -= k * 0.3; r.pose[0] -= k * 0.06; r.pose[1] += k * 0.12;
+    };
+  }
+  if (id === "baram") {
+    const hair = new THREE.Group();
+    const strands: THREE.Mesh[] = [];
+    for (const z of [-0.06, 0.06]) {
+      const h = new THREE.Mesh(NG.hair, M_dark);
+      h.position.set(-0.2, 0.08, z);
+      hair.add(h);
+      strands.push(h);
+    }
+    rig.addProp(hair, "head");
+    const hip = new THREE.Group();
+    const flute = new THREE.Mesh(NG.flute, M_bambooPale);
+    flute.position.set(0.05, -0.12, 0.2);
+    flute.rotation.z = -1.0;
+    const tail = new THREE.Mesh(NG.sashTail, dyeMat(0x5fa8a0));
+    tail.position.set(-0.05, -0.05, -0.12);
+    hip.add(flute, tail);
+    rig.addProp(hip, "back");
+    rig.setHeld(new THREE.Mesh(NG.staff, M_bambooPale));
+    return (r, t) => {
+      // weight shifts from foot to foot; hair and sash tail always in the wind
+      const w = Math.sin(t * 0.8);
+      r.pose[6] += w * 0.08; r.pose[8] -= w * 0.08; r.pose[0] += w * 0.03;
+      BREATHE(r, t);
+      for (let i = 0; i < strands.length; i++) strands[i].rotation.z = -1.05 + Math.sin(t * 3.4 + i * 1.3) * 0.18 + Math.sin(t * 7.1 + i) * 0.06;
+      tail.rotation.z = -1.3 + Math.sin(t * 4.1) * 0.25;
+    };
+  }
+  if (id === "noeul") {
+    rig.setHeld(new THREE.Mesh(NG.oar, M.wood));
+    return (r, t) => {
+      // rocking as if still on the boat
+      r.pose[0] += Math.sin(t * 1.1) * 0.07;
+      r.pose[1] -= Math.sin(t * 1.1) * 0.05;
+      r.pose[4] += Math.sin(t * 1.1 + 0.6) * 0.05;
+    };
+  }
+  if (id === "heukwol") {
+    rig.setHeld(new THREE.Group());
+    const halo = new THREE.Group();
+    const moon = new THREE.Mesh(NG.crescent, M_crescent);
+    moon.position.set(-0.38, 0.14, 0);
+    moon.rotation.set(0, Math.PI / 2, 0.83); // opening to one side: a crescent, not a cup
+    halo.add(moon);
+    rig.addProp(halo, "head");
+    // ink wisps drifting off the limbs (children of the rig, in its local space)
+    const wisps: { m: THREE.Mesh; x: number; y: number; z: number; ph: number }[] = [];
+    for (let i = 0; i < 10; i++) {
+      const m = new THREE.Mesh(NG.wisp, M_wisp);
+      m.scale.setScalar(0.001); // grows in the idle; tiny at the shadow bake
+      const y = 0.3 + (i / 9) * 1.6;
+      wisps.push({ m, x: (i % 3) * 0.08 - 0.08, y, z: (i % 2 ? 1 : -1) * (0.12 + (i % 4) * 0.05), ph: i * 0.37 });
+      rig.group.add(m);
+    }
+    return (r, t) => {
+      // almost still; the crescent hangs and turns slowly, the wisps rise and thin out
+      r.pose[11] += Math.sin(t * 0.6) * 0.01;
+      moon.position.y = 0.14 + Math.sin(t * 0.9) * 0.04;
+      moon.rotation.z = 0.83 + Math.sin(t * 0.4) * 0.1;
+      for (const w of wisps) {
+        const u = (t * 0.35 + w.ph) % 1;
+        w.m.position.set(w.x - u * 0.5, w.y + u * 0.7, w.z * (1 + u * 0.6));
+        w.m.scale.set(0.07 * (1 - u), 0.1 * (1 - u) + 0.01, 0.07 * (1 - u));
+      }
+    };
+  }
+  return BREATHE;
 }

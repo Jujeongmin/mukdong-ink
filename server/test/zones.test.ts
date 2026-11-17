@@ -1,4 +1,4 @@
-import { CHANNEL_CAPACITY, MAX_SPEED, MOVE_SLACK, START_POS, ZONES, roomIdFor } from "../../src/shared/world";
+import { CHANNEL_CAPACITY, DASH_BURST_GAP_MS, MAX_SPEED, MOVE_SLACK, START_POS, ZONES, roomIdFor } from "../../src/shared/world";
 import { NO_ROOM, ago, errorOf, goTo, inVillage, join, newPlayer, walkTo } from "./helpers";
 
 const portal = (from: string, to: string) => ZONES[from].portals.find((p) => p.to === to)!;
@@ -100,6 +100,27 @@ describe("poses", () => {
     await $room.updateMyState({ at: ago(1000) });
     await server.reportPose({ x: first + 20, z: 0, y: 0, yaw: 0, atkSeq: 4, atkKind: 5, skillSeq: 0, skill: 0 });
     expect((await $room.getMyState()).pose.x - first).toBeLessThan(MAX_SPEED + MOVE_SLACK + 0.2);
+  });
+
+  test("bumping the dash or wind counter on every report earns the burst only once per its gap", async (server) => {
+    await inVillage(server, "test-a");
+    await $room.updateMyState({ at: ago(150), dashAt: 0, windAt: 0, pose: { x: -20, z: 0, y: 0, yaw: 0, atkSeq: 1, atkKind: 1, skillSeq: 1, skill: 0 } });
+    // first report: both bursts are earned
+    // (starting at the disc's west edge so every step stays inside the village disc)
+    await server.reportPose({ x: 20, z: 0, y: 0, yaw: 0, atkSeq: 2, atkKind: 5, skillSeq: 2, skill: 3 });
+    const first = (await $room.getMyState()).pose.x;
+    expect(first + 20).toBeGreaterThan(MOVE_SLACK + 4.5 + 11.5 - 0.2);
+    // 150 ms later, counters bumped again: walking pace only
+    await $room.updateMyState({ at: ago(150) });
+    await server.reportPose({ x: first + 10, z: 0, y: 0, yaw: 0, atkSeq: 3, atkKind: 5, skillSeq: 3, skill: 3 });
+    const second = (await $room.getMyState()).pose.x;
+    expect(second - first).toBeLessThan((MAX_SPEED * 150) / 1000 + MOVE_SLACK + 0.2);
+    // once the dash gap has passed the dash pays again, the wind (longer gap) still does not
+    await $room.updateMyState({ at: ago(150), dashAt: ago(DASH_BURST_GAP_MS + 10) });
+    await server.reportPose({ x: second + 10, z: 0, y: 0, yaw: 0, atkSeq: 4, atkKind: 5, skillSeq: 4, skill: 3 });
+    const third = (await $room.getMyState()).pose.x;
+    expect(third - second).toBeGreaterThan(MOVE_SLACK + 4.5 - 0.2);
+    expect(third - second).toBeLessThan((MAX_SPEED * 150) / 1000 + MOVE_SLACK + 4.5 + 0.2);
   });
 
   test("stay inside the zone disc", async (server) => {

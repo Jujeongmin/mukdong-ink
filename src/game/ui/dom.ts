@@ -13,54 +13,29 @@ export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 }
 
-/** Sprite sheet rules with URLs resolved against the page, so they work on any Verse8 sub-path. */
+/**
+ * Sprite sheets and the UI ink kit, with URLs resolved against the page so they work on any Verse8 sub-path.
+ * The kit (public/assets/ui/) is a paper tile plus alpha masks; CSS colors them (mask-image), so each image
+ * is loaded once by the browser and never copied into a canvas.
+ */
 export function installSprites(): void {
   const url = (p: string) => new URL(p, document.baseURI).href;
-  const base = `
+  const root = document.documentElement.style;
+  const kit: Record<string, string> = {
+    "--paper-tile": "./assets/ui/ui-paper.jpg",
+    "--m-frame": "./assets/ui/ui-frame.png",
+    "--m-stroke": "./assets/ui/ui-stroke.png",
+    "--m-line": "./assets/ui/ui-line.png",
+    "--m-enso": "./assets/ui/ui-enso.png",
+    "--m-dab": "./assets/ui/ui-dab.png",
+    "--m-splash": "./assets/ui/ui-splash.png",
+  };
+  for (const [k, v] of Object.entries(kit)) root.setProperty(k, `url("${url(v)}")`);
+  const style = document.createElement("style");
+  style.textContent = `
     .ic-item { background-image: url("${url("./assets/items.png")}"); }
     .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills.png")}"); }`;
-  const paintRule = (u: string) => `
-    .spr-stroke, .spr-enso, .spr-frame, .spr-seal, .tag.portal::before, .tabs [aria-selected="true"]::after, .sheet-card, .dlg-box { background-image: url("${u}"); }`;
-  const style = document.createElement("style");
-  style.textContent = base;
   document.head.appendChild(style);
-  // ui.png is painted on opaque paper. The HUD floats over the WebGL canvas in its own layer, where
-  // blend modes can't reach the canvas, so lift the paper out once: ink becomes alpha, cinnabar keeps
-  // its hue. The result is a one-time object URL (about 6 MB of pixels, decoded once).
-  const img = new Image();
-  img.onload = () => {
-    try {
-      const c = document.createElement("canvas");
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const g = c.getContext("2d", { willReadFrequently: true });
-      if (!g) throw new Error("no 2d");
-      g.drawImage(img, 0, 0);
-      const d = g.getImageData(0, 0, c.width, c.height);
-      const px = d.data;
-      const PR = 233, PG = 224, PB = 204; // the sheet's paper
-      for (let i = 0; i < px.length; i += 4) {
-        const r = px[i], gg = px[i + 1], b = px[i + 2];
-        const diff = Math.max(PR - r, PG - gg, PB - b, Math.abs(r - PR) * 0.5);
-        const a = Math.min(1, Math.max(0, (diff - 18) / 150));
-        if (a <= 0) { px[i + 3] = 0; continue; }
-        // un-mix the paper so edges stay dark instead of turning beige
-        px[i] = Math.max(0, Math.min(255, (r - PR * (1 - a)) / a));
-        px[i + 1] = Math.max(0, Math.min(255, (gg - PG * (1 - a)) / a));
-        px[i + 2] = Math.max(0, Math.min(255, (b - PB * (1 - a)) / a));
-        px[i + 3] = Math.round(a * 255);
-      }
-      g.putImageData(d, 0, 0);
-      c.toBlob((blob) => {
-        if (blob) style.textContent = base + paintRule(URL.createObjectURL(blob));
-        c.width = c.height = 0; // free the canvas backing store
-      }, "image/png");
-    } catch {
-      style.textContent = base + paintRule(url("./assets/ui.png"));
-    }
-  };
-  img.onerror = () => { style.textContent = base + paintRule(url("./assets/ui.png")); };
-  img.src = url("./assets/ui.png");
 }
 
 export function itemIcon(it: ItemDef): string {

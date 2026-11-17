@@ -14,7 +14,10 @@ export const SILVER_TRAIL: RGB = [0.78, 0.83, 0.93];
 export const GOLD_TRAIL: RGB = [0.86, 0.64, 0.18];
 export const SKILL_COL: RGB[] = SKILLS.map((s) => s.color);
 
-/* ---------- ribbons (scarf, sash tails) ---------- */
+/* ---------- ribbons (scarf, sash tails) ----------
+   A verlet chain in Float32Arrays (no allocation): the anchor is pinned to the body, the rest lags behind
+   motion, is blown back against the facing (harder the faster the body moves), flutters in a little wind
+   and is kept behind the body's front so it never hangs down the chest like a necktie. */
 export class Ribbon {
   readonly mesh: THREE.Mesh;
   private readonly geo = new THREE.BufferGeometry();
@@ -24,6 +27,7 @@ export class Ribbon {
     this.x = new Float32Array(N); this.y = new Float32Array(N); this.z = new Float32Array(N);
     this.px = new Float32Array(N); this.py = new Float32Array(N); this.pz = new Float32Array(N);
     this.geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 6), 3));
+    this.geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(N * 6).fill(1), 3));
     const idx: number[] = [];
     for (let i = 0; i < N - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     this.geo.setIndex(idx);
@@ -36,16 +40,19 @@ export class Ribbon {
       this.x[i] = this.px[i] = x; this.y[i] = this.py[i] = y - i * 0.05; this.z[i] = this.pz[i] = z + i * 0.1;
     }
   }
-  update(dt: number, ax: number, ay: number, az: number, head: number, t: number): void {
+  update(dt: number, ax: number, ay: number, az: number, head: number, t: number, speed = 0, spread = 0): void {
     const { x, y, z, px, py, pz, N } = this;
     x[0] = px[0] = ax; y[0] = py[0] = ay; z[0] = pz[0] = az;
     const fx = Math.cos(head), fz = -Math.sin(head), d2 = dt * dt;
+    // still: a slow breathing sway; running or rolling: blown straight back and snapping
+    const wind = 6 + speed * 2.6, flut = 2.2 + speed * 1.8, sx = -fz, sz = fx;
     for (let i = 1; i < N; i++) {
-      const vx = (x[i] - px[i]) * 0.94, vy = (y[i] - py[i]) * 0.94, vz = (z[i] - pz[i]) * 0.94;
+      const vx = (x[i] - px[i]) * 0.93, vy = (y[i] - py[i]) * 0.93, vz = (z[i] - pz[i]) * 0.93;
       px[i] = x[i]; py[i] = y[i]; pz[i] = z[i];
-      x[i] += vx + (-fx * 8 + Math.sin(t * 6 + i * 0.8) * 3) * d2;
-      y[i] += vy + (-6 + Math.sin(t * 7.3 + i) * 4) * d2;
-      z[i] += vz + (-fz * 8 + Math.cos(t * 5 + i) * 3) * d2;
+      const wave = Math.sin(t * (5.5 + speed * 0.9) + i * 0.75), side = Math.sin(t * 2.3 + i * 0.4) * 0.8;
+      x[i] += vx + (-fx * wind + sx * (side * flut + spread * 1.1) + fx * wave * flut * 0.3) * d2;
+      y[i] += vy + (-7 + speed * 0.9 + wave * flut) * d2;
+      z[i] += vz + (-fz * wind + sz * (side * flut + spread * 1.1) + fz * wave * flut * 0.3) * d2;
     }
     for (let it = 0; it < 4; it++) {
       for (let i = 1; i < N; i++) {
@@ -58,19 +65,37 @@ export class Ribbon {
         }
       }
     }
+    // never in front of the body: anything ahead of the anchor's plane is pushed back behind it
+    for (let i = 1; i < N; i++) {
+      const ahead = (x[i] - ax) * fx + (z[i] - az) * fz + 0.05;
+      if (ahead > 0) { x[i] -= fx * ahead; z[i] -= fz * ahead; }
+      if (y[i] < 0.04) y[i] = 0.04;
+    }
     // a teleport (zone change, far snap) would stretch the ribbon: start over
     if (Math.abs(x[N - 1] - ax) > 6 || Math.abs(z[N - 1] - az) > 6) this.reset(ax, ay, az);
-    const pos = this.geo.attributes.position.array as Float32Array;
+    const pos = this.geo.attributes.position.array as Float32Array, col = this.geo.attributes.color.array as Float32Array;
+    const amp = Math.min(0.16, 0.07 + speed * 0.012);
     for (let i = 0; i < N; i++) {
-      const a = Math.max(0, i - 1), b = Math.min(N - 1, i + 1);
+      const a = Math.max(0, i - 1), b = Math.min(N - 1, i + 1), u = i / (N - 1);
       const tx = x[b] - x[a], ty = y[b] - y[a], tz = z[b] - z[a];
       let wx = ty * camFwd.z - tz * camFwd.y, wy = tz * camFwd.x - tx * camFwd.z, wz = tx * camFwd.y - ty * camFwd.x;
-      const wl = Math.hypot(wx, wy, wz) || 1, w = (this.width * (1 - (i / (N - 1)) * 0.65)) / wl;
-      wx *= w; wy *= w; wz *= w;
-      pos[i * 6] = x[i] - wx; pos[i * 6 + 1] = y[i] - wy; pos[i * 6 + 2] = z[i] - wz;
-      pos[i * 6 + 3] = x[i] + wx; pos[i * 6 + 4] = y[i] + wy; pos[i * 6 + 5] = z[i] + wz;
+      const wl = Math.hypot(wx, wy, wz) || 1;
+      wx /= wl; wy /= wl; wz /= wl;
+      // an S-curve travelling down the tail (drawn, not simulated), growing toward the end
+      const off = Math.sin(t * 5.2 - i * 0.95) * amp * u;
+      const cx = x[i] + wx * off, cy = y[i] + wy * off, cz = z[i] + wz * off;
+      // soft cloth: the width folds and opens, tapers, and the last pieces fray
+      let w = this.width * (1 - u * 0.72) * (0.74 + 0.3 * Math.sin(t * 3.1 + i * 1.15));
+      if (i >= N - 2) w *= 0.55 + 0.45 * Math.abs(Math.sin(i * 7.7 + t * 9));
+      pos[i * 6] = cx - wx * w; pos[i * 6 + 1] = cy - wy * w; pos[i * 6 + 2] = cz - wz * w;
+      pos[i * 6 + 3] = cx + wx * w; pos[i * 6 + 4] = cy + wy * w; pos[i * 6 + 5] = cz + wz * w;
+      // fold shading along the length: one edge catches a little light, the other sinks into the fold
+      const f = 0.86 + 0.14 * Math.sin(t * 2.4 + i * 1.3);
+      col[i * 6] = col[i * 6 + 1] = col[i * 6 + 2] = f;
+      col[i * 6 + 3] = col[i * 6 + 4] = col[i * 6 + 5] = f * 0.86;
     }
     this.geo.attributes.position.needsUpdate = true;
+    this.geo.attributes.color.needsUpdate = true;
   }
   /** OWNED geometry: dispose when the actor goes away. Material is shared. */
   dispose(): void {
@@ -79,10 +104,34 @@ export class Ribbon {
   }
 }
 
-/* ---------- weapon trails (overlay) ---------- */
-const M_trail = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
+/* ---------- weapon trails (overlay): a calligraphy ribbon behind the brush tip ----------
+   One SHARED shader: the stroke is darkest and widest just behind the tip and thins out with age, its
+   edge breaks into dry-brush streaks (noise along the stroke), the hilt side is a pale wash. */
+const M_trail = new THREE.ShaderMaterial({
+  transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false, // declares its own vec4 color
+  vertexShader: /* glsl */ `
+    attribute vec4 color; attribute vec2 uv2s; varying vec4 vC; varying vec2 vS;
+    void main(){ vC = color; vS = uv2s; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    varying vec4 vC; varying vec2 vS;
+    float h(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+    float n(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(h(i), h(i + vec2(1, 0)), u.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), u.x), u.y); }
+    void main(){
+      float age = vS.x, across = vS.y;
+      // the stroke narrows toward its tail: its tip-side edge retreats with age
+      float edge = 1.0 - age * 0.55 + (n(vec2(age * 9.0, 3.0)) - 0.5) * 0.12;
+      float body = smoothstep(0.0, 0.25, across) * (1.0 - smoothstep(edge - 0.08, edge, across));
+      // dry brush: streaks along the stroke, more broken toward the tail
+      float streak = n(vec2(age * 3.0, across * 26.0));
+      body *= mix(1.0, smoothstep(0.25 + age * 0.4, 0.6 + age * 0.3, streak), 0.35 + age * 0.55);
+      float a = min(1.0, vC.a * body * 1.4);
+      if (a < 0.01) discard;
+      gl_FragColor = vec4(vC.rgb * (0.85 + 0.3 * across), a);
+    }`,
+});
 export class Trail {
-  private readonly N = 18;
+  private readonly N = 22;
   private readonly base = new Float32Array(this.N * 3);
   private readonly tip = new Float32Array(this.N * 3);
   private readonly geo = new THREE.BufferGeometry();
@@ -92,6 +141,9 @@ export class Trail {
   constructor() {
     this.geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(this.N * 6), 3));
     this.geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(this.N * 8), 4));
+    const st = new Float32Array(this.N * 4);
+    for (let i = 0; i < this.N; i++) { st[i * 4] = i / (this.N - 1); st[i * 4 + 1] = 0; st[i * 4 + 2] = i / (this.N - 1); st[i * 4 + 3] = 1; }
+    this.geo.setAttribute("uv2s", new THREE.BufferAttribute(st, 2));
     const idx: number[] = [];
     for (let i = 0; i < this.N - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
     this.geo.setIndex(idx);
@@ -114,10 +166,10 @@ export class Trail {
     }
     const pos = this.geo.attributes.position.array as Float32Array, col = this.geo.attributes.color.array as Float32Array, c = this.col;
     for (let i = 0; i < N; i++) {
-      const a = this.strength * Math.pow(1 - i / (N - 1), 1.6) * 0.92;
+      const a = this.strength * Math.pow(1 - i / (N - 1), 1.25) * 0.95;
       for (let k = 0; k < 3; k++) { pos[i * 6 + k] = this.base[i * 3 + k]; pos[i * 6 + 3 + k] = this.tip[i * 3 + k]; }
       const j = i * 8;
-      col[j] = c[0]; col[j + 1] = c[1]; col[j + 2] = c[2]; col[j + 3] = a * 0.35;
+      col[j] = c[0]; col[j + 1] = c[1]; col[j + 2] = c[2]; col[j + 3] = a * 0.55;
       col[j + 4] = c[0]; col[j + 5] = c[1]; col[j + 6] = c[2]; col[j + 7] = a;
     }
     this.geo.attributes.position.needsUpdate = true;
@@ -212,7 +264,7 @@ const CRESC_FRAG = `
     vec3 c = mix(uCol * 0.45, mix(uCol, vec3(1.0), 0.25), smoothstep(1.05, 1.35, d));
     gl_FragColor = vec4(c, a);
   }`;
-interface Crescent { mesh: THREE.Mesh; mat: THREE.ShaderMaterial; x: number; z: number; fx: number; fz: number; head: number; t: number; limit: number }
+interface Crescent { mesh: THREE.Mesh; mat: THREE.ShaderMaterial; x: number; z: number; fx: number; fz: number; head: number; t: number; limit: number; life: number }
 const crescents: Crescent[] = [];
 for (let i = 0; i < 8; i++) {
   const c = SKILL_COL[0];
@@ -226,14 +278,16 @@ for (let i = 0; i < 8; i++) {
   mesh.frustumCulled = false;
   mesh.scale.set(3.4, 1, 4.4);
   overlay.add(mesh);
-  crescents.push({ mesh, mat, x: 0, z: 0, fx: 1, fz: 0, head: 0, t: 0, limit: 30 });
+  crescents.push({ mesh, mat, x: 0, z: 0, fx: 1, fz: 0, head: 0, t: 0, limit: 30, life: 0.65 });
 }
 let crescNext = 0;
-export function fireCrescent(x: number, z: number, head: number, limit: number, local: boolean): void {
+/** `width` scales the wave sideways; `life` is how long it flies (19 m/s). */
+export function fireCrescent(x: number, z: number, head: number, limit: number, local: boolean, width = 1, life = 0.65): void {
   const c = crescents[crescNext];
   crescNext = (crescNext + 1) % crescents.length;
   c.fx = Math.cos(head); c.fz = -Math.sin(head);
-  c.x = x + c.fx * 1.2; c.z = z + c.fz * 1.2; c.head = head; c.t = 0; c.limit = limit;
+  c.x = x + c.fx * 1.2; c.z = z + c.fz * 1.2; c.head = head; c.t = 0; c.limit = limit; c.life = life;
+  c.mesh.scale.set(3.4, 1, 4.4 * width);
   c.mesh.visible = true;
   addLight(c.x, c.z, 6, 0.75, SKILL_COL[0], c);
   if (local) feel.shake = Math.max(feel.shake, 0.15);
@@ -246,9 +300,9 @@ function updateCrescents(dt: number): void {
     c.x += c.fx * 19 * dt; c.z += c.fz * 19 * dt;
     c.mesh.position.set(c.x, 0.9, c.z);
     c.mesh.rotation.set(0, c.head, 0);
-    c.mat.uniforms.uFade.value = 1 - clamp((c.t - 0.45) / 0.2, 0, 1);
+    c.mat.uniforms.uFade.value = 1 - clamp((c.t - (c.life - 0.2)) / 0.2, 0, 1);
     if (Math.random() < 0.7) sparks.emit(c.x + (Math.random() - 0.5) * 2, 0.6 + Math.random(), c.z + (Math.random() - 0.5) * 2, -c.fx * 3, 1, -c.fz * 3, 0.05 + Math.random() * 0.07, 0.5, Math.random() < 0.5 ? SKILL_COL[0] : LIGHT_BLUE, 2);
-    if (c.t > 0.65 || Math.hypot(c.x, c.z) > c.limit + 2) c.mesh.visible = false;
+    if (c.t > c.life || Math.hypot(c.x, c.z) > c.limit + 2) c.mesh.visible = false;
   }
 }
 
@@ -326,23 +380,70 @@ export const sparks = new Particles(420, new THREE.MeshBasicMaterial({ color: 0x
 const inkDrops = new Particles(300, new THREE.MeshBasicMaterial({ color: 0x141312 }), scene, false);
 
 /* ---------- ground decals (ink stains) ---------- */
-const DN = 180;
-const decals = new THREE.InstancedMesh(G.disc, new THREE.MeshBasicMaterial({ color: 0x161514, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), DN);
+/* Ink stains on the ground: a capped pool (DN, oldest overwritten) of ink-wash blots, not solid holes. Each
+   is a pale wash pooling darker at a ragged edge, appears with a quick spread and fades out over its life
+   (2.6 s by default). Only colour is blended (the scene target's dye/water alpha codes are kept). */
+const DN = 48;
+const D_LIFE = 2.6;
+const decalGeo = G.disc.clone(); // OWNED by this module for its per-instance birth/life (lives all session)
+const dBirth = new THREE.InstancedBufferAttribute(new Float32Array(DN).fill(-100), 1);
+const dLife = new THREE.InstancedBufferAttribute(new Float32Array(DN).fill(1), 1);
+decalGeo.setAttribute("aBirth", dBirth);
+decalGeo.setAttribute("aLife", dLife);
+const decalMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  blending: THREE.CustomBlending, blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneMinusSrcAlphaFactor,
+  blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: /* glsl */ `
+    attribute float aBirth; attribute float aLife; uniform float uTime;
+    varying vec2 vP; varying float vU; varying float vSeed;
+    void main(){
+      vP = position.xz; vSeed = fract(aBirth * 7.13);
+      vU = (uTime - aBirth) / aLife;
+      gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    varying vec2 vP; varying float vU; varying float vSeed;
+    float h(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+    float n(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(h(i), h(i + vec2(1, 0)), u.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), u.x), u.y); }
+    void main(){
+      if (vU < 0.0 || vU > 1.0) discard;
+      float r = length(vP), a = atan(vP.y, vP.x);
+      // ragged edge, spreading out in the first moment
+      float R = (0.7 + 0.3 * n(vec2(a * 2.2 + vSeed * 20.0, vSeed * 9.0)) + 0.08 * (n(vec2(a * 9.0, vSeed * 3.0)) - 0.5)) * min(1.0, 0.55 + vU * 9.0);
+      float m = 1.0 - smoothstep(R - 0.1, R, r);
+      // a pale wash inside, the ink pooling darker toward the rim, with paper grain
+      float wash = 0.28 + 0.32 * smoothstep(R * 0.45, R, r);
+      wash *= 0.8 + 0.35 * n(vP * 9.0 + vSeed * 30.0);
+      float a2 = m * wash * (1.0 - smoothstep(0.55, 1.0, vU));
+      if (a2 < 0.01) discard;
+      gl_FragColor = vec4(0.05, 0.047, 0.05, a2);
+    }`,
+});
+const decals = new THREE.InstancedMesh(decalGeo, decalMat, DN);
 decals.frustumCulled = false;
 scene.add(decals);
 for (let i = 0; i < DN; i++) decals.setMatrixAt(i, ZERO);
 let dNext = 0;
-export function addDecal(x: number, z: number, s: number): void {
+/** An ink stain at (x, z), radius ~s (drawn a little smaller), fading out over `life` seconds. */
+export function addDecal(x: number, z: number, s: number, life = D_LIFE): void {
+  s *= 0.7;
   dummy.position.set(x, 0.03, z);
   dummy.rotation.set(0, Math.random() * Math.PI, 0);
-  dummy.scale.set(s * (1 + Math.random()), 1, s);
+  dummy.scale.set(s * (1 + Math.random() * 0.6), 1, s);
   dummy.updateMatrix();
   decals.setMatrixAt(dNext, dummy.matrix);
+  dBirth.setX(dNext, feel.time);
+  dLife.setX(dNext, life * (0.85 + Math.random() * 0.3));
   dNext = (dNext + 1) % DN;
   decals.instanceMatrix.needsUpdate = true;
+  dBirth.needsUpdate = true;
+  dLife.needsUpdate = true;
 }
 const decalOnLand = (x: number, z: number, s: number): void => {
-  if (Math.random() < 0.45) addDecal(x, z, s * 3);
+  if (Math.random() < 0.18) addDecal(x, z, s * 2.5);
 };
 export function inkBurst(x: number, y: number, z: number, n: number, dx: number, dz: number, power = 1): void {
   for (let k = 0; k < n; k++) {
@@ -356,6 +457,44 @@ export function sparkBurst(x: number, y: number, z: number, n: number, col: RGB,
     sparks.emit(x, y, z, Math.cos(a) * s, (1 + Math.random() * 5) * up, Math.sin(a) * s, 0.05 + Math.random() * 0.1, 0.4 + Math.random() * 0.5, col, 2);
   }
 }
+/* ---------- blows landing: ink splatter, the third hit's sweep, the kill accent ----------
+   All pooled (droplets, decals, rings, sparks); nothing allocates. Ink is ink; the only color is the
+   skill light and dye, so the kill flecks are paper-white. */
+const PAPER: RGB = [0.94, 0.91, 0.84];
+const INK_RING: RGB = [0.06, 0.055, 0.06];
+/** A blow lands at (x, y, z) travelling (dx, dz): splatter and droplets, `power` ~0.6 (light) .. 2 (heavy). */
+export function inkHit(x: number, y: number, z: number, dx: number, dz: number, power: number): void {
+  inkBurst(x, y, z, Math.round(6 + power * 8), dx * 0.8, dz * 0.8, 0.7 + power * 0.35);
+  for (let k = 0; k < 1 + power; k++) addDecal(x + dx * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, z + dz * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, 0.15 + Math.random() * 0.12 * power, 2);
+  ring(x, z, 0.55 + power * 0.35, INK_RING, 0.28, 0, INK_RING);
+  screenSplash(x, y, z, 0.025 + power * 0.012);
+}
+/** The third hit: a full circle of ink swept round the body and a bloom of ink where it closes. */
+export function inkSweep(x: number, z: number, r: number): void {
+  ring(x, z, r, INK_RING, 0.55, 0, INK_RING);
+  ring(x, z, r * 0.7, INK_RING, 0.4, 1, INK_RING);
+  for (let k = 0; k < 18; k++) {
+    const a = (k / 18) * Math.PI * 2 + Math.random() * 0.2, s = 4 + Math.random() * 3;
+    inkDrops.emit(x + Math.cos(a) * r * 0.6, 0.5 + Math.random() * 0.5, z + Math.sin(a) * r * 0.6, Math.cos(a) * s, 2 + Math.random() * 3, Math.sin(a) * s, 0.035 + Math.random() * 0.055, 0.7 + Math.random() * 0.4);
+  }
+  for (let k = 0; k < 4; k++) { const a = Math.random() * Math.PI * 2; addDecal(x + Math.cos(a) * r * 0.85, z + Math.sin(a) * r * 0.85, 0.2 + Math.random() * 0.2, 2.2); }
+}
+/** A kill: a big ink burst and flecks of paper torn loose. */
+export function killBurst(x: number, y: number, z: number, size: number): void {
+  inkBurst(x, y, z, 26, 0, 0, 1.4 + size * 0.2);
+  for (let k = 0; k < 16; k++) {
+    const a = Math.random() * Math.PI * 2, s = 2 + Math.random() * 4;
+    sparks.emit(x, y, z, Math.cos(a) * s, 2 + Math.random() * 4, Math.sin(a) * s, 0.05 + Math.random() * 0.07, 0.7 + Math.random() * 0.5, PAPER, 1.2);
+  }
+  ring(x, z, 1.4 + size * 0.5, INK_RING, 0.45, 0, INK_RING);
+  screenSplash(x, y, z, 0.06 + size * 0.02);
+}
+/** Hit-stop and shake for a blow (light 0..1 heavy) or a kill. */
+export function hitFeel(weight: number, kill: boolean): void {
+  feel.hitstop = Math.max(feel.hitstop, kill ? 0.07 : 0.045 + weight * 0.02);
+  feel.shake = Math.max(feel.shake, kill ? 0.22 : 0.1 + weight * 0.08);
+}
+
 /** Ink droplet that falls with gravity (blot suction, shot trails). */
 export function inkDrop(x: number, y: number, z: number, vx: number, vy: number, vz: number, size: number, life: number): void {
   inkDrops.emit(x, y, z, vx, vy, vz, size, life);
@@ -390,15 +529,15 @@ function updateGhosts(dt: number): void {
 }
 
 /* ---------- 먹감옥 blots ---------- */
-interface Blot { on: boolean; x: number; z: number; t: number; done: boolean; local: boolean }
-const blots: Blot[] = Array.from({ length: 4 }, () => ({ on: false, x: 0, z: 0, t: 0, done: false, local: false }));
+interface Blot { on: boolean; x: number; z: number; t: number; done: boolean; local: boolean; r: number; echo: boolean; echoDone: boolean }
+const blots: Blot[] = Array.from({ length: 4 }, () => ({ on: false, x: 0, z: 0, t: 0, done: false, local: false, r: 4.4, echo: false, echoDone: false }));
 const BLOT_EDGE: RGB = [0.02, 0.02, 0.02];
 /** Visual only; the server resolves the hit. Lands 1.2 s after it is cast. */
-export function spawnBlot(x: number, z: number, local: boolean): void {
+export function spawnBlot(x: number, z: number, local: boolean, r = 4.4, echo = false): void {
   let b = blots[0];
   for (const o of blots) if (!o.on) { b = o; break; }
-  b.on = true; b.x = x; b.z = z; b.t = 0; b.done = false; b.local = local;
-  ring(x, z, 4.4, SKILL_COL[4], 1.6, 1, BLOT_EDGE);
+  b.on = true; b.x = x; b.z = z; b.t = 0; b.done = false; b.local = local; b.r = r; b.echo = echo; b.echoDone = false;
+  ring(x, z, r, SKILL_COL[4], 1.6, 1, BLOT_EDGE);
   inkBurst(x, 0.3, z, 18, 0, 0, 1.2);
 }
 export const BLOT_DELAY = 1.2;
@@ -408,29 +547,38 @@ function updateBlots(dt: number): void {
     b.t += dt;
     if (b.t < BLOT_DELAY) {
       if (Math.random() < 0.6) {
-        const a = Math.random() * 6.28, r = 3 + Math.random() * 1.5;
+        const a = Math.random() * 6.28, r = b.r * (0.68 + Math.random() * 0.34);
         inkDrops.emit(b.x + Math.cos(a) * r, 0.1, b.z + Math.sin(a) * r, -Math.cos(a) * 5, 2 + Math.random() * 2, -Math.sin(a) * 5, 0.06 + Math.random() * 0.08, 0.6);
       }
     } else if (!b.done) {
       b.done = true;
       inkBurst(b.x, 0.5, b.z, 40, 0, 0, 1.8);
-      for (let k = 0; k < 8; k++) addDecal(b.x + (Math.random() - 0.5) * 5, b.z + (Math.random() - 0.5) * 5, 0.3 + Math.random() * 0.5);
+      // the prison leaves one bigger blot that lingers a little, and a couple of splashes
+      addDecal(b.x, b.z, b.r * 0.55, 4.5);
+      for (let k = 0; k < 2; k++) addDecal(b.x + (Math.random() - 0.5) * 4, b.z + (Math.random() - 0.5) * 4, 0.3 + Math.random() * 0.3);
       if (b.local) {
         screenSplash(b.x, 0.5, b.z, 0.09);
         feel.shake = Math.max(feel.shake, 0.5);
         feel.hitstop = Math.max(feel.hitstop, 0.08);
       }
     }
-    if (b.t > 1.7) b.on = false;
+    if (b.echo && !b.echoDone && b.t >= BLOT_DELAY + 0.4) {
+      b.echoDone = true;
+      ring(b.x, b.z, b.r, SKILL_COL[4], 0.6, 1, BLOT_EDGE);
+      inkBurst(b.x, 0.5, b.z, 28, 0, 0, 1.6);
+      if (b.local) feel.shake = Math.max(feel.shake, 0.35);
+    }
+    if (b.t > (b.echo ? 2.1 : 1.7)) b.on = false;
   }
 }
 
 /* ---------- 대지낙하 landing ---------- */
 const EARTH_INNER: RGB = [1, 0.88, 0.45];
-export function earthSlam(x: number, z: number, local: boolean): void {
+export function earthSlam(x: number, z: number, local: boolean, r = 5, echo = false): void {
   const col = SKILL_COL[2];
-  ring(x, z, 5.0, col, 0.7);
-  ring(x, z, 3.2, EARTH_INNER, 0.5);
+  ring(x, z, r, col, 0.7);
+  ring(x, z, r * 0.64, EARTH_INNER, 0.5);
+  if (echo) later(0.4, x, z, r, local, "earth");
   sparkBurst(x, 0.2, z, 40, col, 1.4, 1.6);
   inkBurst(x, 0.2, z, 16, 0, 0, 1.2);
   addLight(x, z, 10, 1.1, col);
@@ -440,7 +588,41 @@ export function earthSlam(x: number, z: number, local: boolean): void {
   }
 }
 
+/* ---------- delayed echoes (여운) ---------- */
+type EchoKind = "fire" | "earth" | "wind";
+interface Echo { t: number; x: number; z: number; r: number; local: boolean; kind: EchoKind; on: boolean }
+const echoes: Echo[] = Array.from({ length: 12 }, () => ({ t: 0, x: 0, z: 0, r: 0, local: false, kind: "fire" as EchoKind, on: false }));
+export function later(delay: number, x: number, z: number, r: number, local: boolean, kind: EchoKind): void {
+  let e = echoes[0];
+  for (const o of echoes) if (!o.on) { e = o; break; }
+  e.t = delay; e.x = x; e.z = z; e.r = r; e.local = local; e.kind = kind; e.on = true;
+}
+const WIND_EDGE: RGB = [0.35, 0.37, 0.42];
+const WHITE: RGB = [1, 1, 1];
+function updateEchoes(dt: number): void {
+  for (const e of echoes) {
+    if (!e.on) continue;
+    e.t -= dt;
+    if (e.t > 0) continue;
+    e.on = false;
+    if (e.kind === "fire") {
+      ring(e.x, e.z, e.r, SKILL_COL[1], 0.6);
+      sparkBurst(e.x, 0.4, e.z, 24, SKILL_COL[1], 1, 1.2);
+    } else if (e.kind === "earth") {
+      ring(e.x, e.z, e.r * 1.1, SKILL_COL[2], 0.6);
+      sparkBurst(e.x, 0.2, e.z, 26, SKILL_COL[2], 1.2, 1.3);
+      inkBurst(e.x, 0.2, e.z, 10, 0, 0, 1);
+      if (e.local) feel.shake = Math.max(feel.shake, 0.4);
+    } else {
+      ring(e.x, e.z, e.r, WHITE, 0.45, 0, WIND_EDGE);
+      sparkBurst(e.x, 0.8, e.z, 10, WHITE, 0.8, 0.6);
+    }
+  }
+}
+
 export function updateFx(dt: number): void {
+  decalMat.uniforms.uTime.value = feel.time;
+  updateEchoes(dt);
   updateCrescents(dt);
   updateBlots(dt);
   updateRings(dt);
@@ -454,6 +636,7 @@ export function clearFx(): void {
   for (const r of rings) { r.mesh.visible = false; r.follow = null; }
   for (const c of crescents) c.mesh.visible = false;
   for (const b of blots) b.on = false;
+  for (const e of echoes) e.on = false;
   for (const g of ghosts) { g.life = 0; g.rig.group.visible = false; }
   sparks.clear();
   inkDrops.clear();

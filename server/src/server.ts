@@ -1,20 +1,25 @@
-import type { AttackReq, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
+import type { AttackReq, EnhanceResult, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
-  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, attackFor, killExp, maxHpFor, type HitDef,
+  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, attackFor, killExp, maxHpFor, type HitShape,
 } from "../../src/shared/combat";
+import {
+  DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
+  type Awakening, type EnhanceOutcome,
+} from "../../src/shared/growth";
 import { forwardX, forwardZ } from "../../src/shared/hit";
-import { COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, rollGacha } from "../../src/shared/items";
+import { COST1, COST10, DUPE_PIGMENT, DYES, DYE_COST, ITEM, STARTER_EQUIP, rollGacha } from "../../src/shared/items";
 import {
-  MAX_POTIONS, countKills, countSkillUse, dailyDone, gainExp, giveReward, mainDone, markMain, profileView, weaponAtk, type Felled,
+  MAX_POTIONS, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, pointsLeft, profileView, weaponAtk,
+  type Felled,
 } from "../../src/shared/profile";
-import { PROTOCOL_VERSION, RuleViolation, type Look, type Pose, type Profile } from "../../src/shared/types";
+import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
 import {
-  AD_REWARD_JADE, DAILY_QUESTS, DASH_BURST, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, NPC_REACH, PORTAL_REACH, START_POS, START_ZONE, ZONES,
+  AD_REWARD_JADE, DAILY_QUESTS, DASH_BURST, DASH_BURST_GAP_MS, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, WIND_BURST_GAP_MS, ROLL_IFRAME_MS, NPC_REACH, NPC_SAFE_R, PORTAL_REACH, START_POS, START_ZONE, ZONES,
   parseRoomId, roomIdFor,
 } from "../../src/shared/world";
 import { verifyAd } from "./ads";
 import {
-  MONSTER_SYNC_MS, hasMonsters, readEffects, readMonsters, stepMonsters, strikeMonsters, tidy, type Bite, type Felling, type Prey,
+  MONSTER_SYNC_MS, hasMonsters, readEffects, readMonsters, stepMonsters, strikeAreas, tidy, type Bite, type Felling, type Prey, type Swept,
 } from "./hunt";
 import {
   AD_GRANTS, PURCHASES, claimName, createProfile, currentRoom, loadAssigned, loadStored, oncePer, parseName, pickChannel, releaseName,
@@ -28,6 +33,9 @@ const PROXIMITY_SLACK = 0.5;
 const MAX_JUMP = 8;
 const MAX_POTION_BUY = 99;
 const POTION_DIRECT_GAP = POTION_GAP_MS * COOLDOWN_GRACE;
+const MAX_PROTECT_BUY = 10;
+// An awakened wave fans its extra waves out this far apart.
+const WAVE_FAN = (15 * Math.PI) / 180;
 
 // ---------- argument parsing (every argument is untrusted) ----------
 
@@ -67,6 +75,9 @@ interface Mine {
   atkAt: number;
   cds: number[];
   potAt: number;
+  /** when the last dash / 바람질주 burst was granted (server clock) */
+  dashAt: number;
+  windAt: number;
 }
 
 function readMine(state: Record<string, unknown> | null | undefined): Mine {
@@ -83,6 +94,8 @@ function readMine(state: Record<string, unknown> | null | undefined): Mine {
     atkAt: finite(s.atkAt) ? s.atkAt : 0,
     cds,
     potAt: finite(s.potAt) ? s.potAt : 0,
+    dashAt: finite(s.dashAt) ? s.dashAt : 0,
+    windAt: finite(s.windAt) ? s.windAt : 0,
   };
 }
 
@@ -91,30 +104,41 @@ function present(mine: Mine): mine is Mine & { pose: Pose } {
   return !!mine.pose && !mine.gone;
 }
 
-function lookOf(p: Profile): Look {
-  return { weapon: p.equip.weapon, hat: p.equip.hat, sash: p.equip.sash, sashDye: p.dye.sash, scarfDye: p.dye.scarf };
-}
-
 function standingPose(x: number, z: number): Pose {
   return { x, z, y: 0, yaw: 0, atkSeq: 0, atkKind: 0, skillSeq: 0, skill: 0 };
 }
 
-/** Extra distance a movement action earns once: a dash (atkKind 5) or the wind dash skill (3). */
-function burstAllowance(prev: Pose, next: Pose | null): number {
-  if (!next) return 0;
-  let extra = 0;
-  if (next.atkSeq !== prev.atkSeq && next.atkKind === 5) extra += DASH_BURST;
-  if (next.skillSeq !== prev.skillSeq && next.skill === 3) extra += WIND_BURST;
-  return extra;
+interface Burst {
+  extra: number;
+  dashAt: number;
+  windAt: number;
+}
+
+/**
+ * Extra distance a movement action earns: a dash (atkKind 5) or the wind dash skill (3), each only on the
+ * report where its counter moved AND at most once per its gap, so bumping counters every report earns nothing.
+ */
+function burstAllowance(mine: Mine & { pose: Pose }, next: Pose, now: number): Burst {
+  const out: Burst = { extra: 0, dashAt: mine.dashAt, windAt: mine.windAt };
+  const prev = mine.pose;
+  if (next.atkSeq !== prev.atkSeq && next.atkKind === 5 && now - mine.dashAt >= DASH_BURST_GAP_MS) {
+    out.extra += DASH_BURST;
+    out.dashAt = now;
+  }
+  if (next.skillSeq !== prev.skillSeq && next.skill === 3 && now - mine.windAt >= WIND_BURST_GAP_MS) {
+    out.extra += WIND_BURST;
+    out.windAt = now;
+  }
+  return out;
 }
 
 /**
  * Where the caller may be now: the reported (x, z) held to walking pace from the last stored pose.
  * Slack is small (network jitter); dashes add their distance only on the report where the dash counter moved.
  */
-function heldTo(mine: Mine & { pose: Pose }, x: number, z: number, now: number, radius: number, next: Pose | null = null): { x: number; z: number } {
+function heldTo(mine: Mine & { pose: Pose }, x: number, z: number, now: number, radius: number, burst = 0): { x: number; z: number } {
   const elapsed = Math.max(0, now - mine.at);
-  const most = (MAX_SPEED * elapsed) / 1000 + MOVE_SLACK + burstAllowance(mine.pose, next);
+  const most = (MAX_SPEED * elapsed) / 1000 + MOVE_SLACK + burst;
   let nx = x;
   let nz = z;
   const d = Math.hypot(nx - mine.pose.x, nz - mine.pose.z);
@@ -173,7 +197,15 @@ interface Pay {
   exp: number;
   pigment: number;
   jade: number;
+  stones: number;
+  shards: number;
   felled: Felled[];
+}
+
+/** One drop roll: `chance` of `amount`. */
+function dropOf(rule: [number, number] | undefined, rand: () => number): number {
+  if (!rule || rule[0] <= 0 || rule[1] <= 0) return 0;
+  return rand() < rule[0] ? rule[1] : 0;
 }
 
 /** Pays an account's share of what fell (and counts a technique use); answers whether it levelled. */
@@ -181,7 +213,8 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
   const done = await withProfileLock(account, async () => {
     const p = await loadStored(account);
     if (!p) return null;
-    let next = countKills({ ...p, pigment: p.pigment + pay.pigment, jade: p.jade + pay.jade }, pay.felled);
+    const paid = { ...p, pigment: p.pigment + pay.pigment, jade: p.jade + pay.jade, stones: p.stones + pay.stones, shards: p.shards + pay.shards };
+    let next = countKills(paid, pay.felled);
     if (skillUse) next = countSkillUse(next);
     const gained = gainExp(next, pay.exp);
     await saveProfile(account, gained.profile);
@@ -200,11 +233,13 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
   return levelUp;
 }
 
-async function reward(account: string, roomId: string, zone: string, felled: Felling[], skillUse: boolean): Promise<Omit<HitResult, "hits">> {
+async function reward(
+  account: string, roomId: string, zone: string, felled: Felling[], skillUse: boolean, rand: () => number,
+): Promise<Omit<HitResult, "hits">> {
   const pays = new Map<string, Pay>();
   const payOf = (who: string) => {
     let pay = pays.get(who);
-    if (!pay) pays.set(who, (pay = { exp: 0, pigment: 0, jade: 0, felled: [] }));
+    if (!pay) pays.set(who, (pay = { exp: 0, pigment: 0, jade: 0, stones: 0, shards: 0, felled: [] }));
     return pay;
   };
   payOf(account);
@@ -215,23 +250,37 @@ async function reward(account: string, roomId: string, zone: string, felled: Fel
       pay.exp += killExp(def, f.level);
       pay.pigment += def.pigment;
       pay.jade += def.jade ?? 0;
+      // Materials drop for each one credited (the killer; for a boss everyone who hit it), rolled here.
+      pay.stones += dropOf(DROPS[f.kind]?.stone, rand);
+      pay.shards += dropOf(DROPS[f.kind]?.shard, rand);
       pay.felled.push({ kind: f.kind, zone });
     }
   }
-  let mine = { exp: 0, pigment: 0, jade: 0, levelUp: false };
+  let mine = { exp: 0, pigment: 0, jade: 0, stones: 0, shards: 0, levelUp: false };
   for (const [who, pay] of pays) {
     const isMe = who === account;
     if (!isMe && pay.felled.length === 0) continue;
     if (isMe && pay.felled.length === 0 && !skillUse) continue;
     const levelUp = await payOut(who, roomId, pay, isMe && skillUse);
-    if (isMe) mine = { exp: pay.exp, pigment: pay.pigment, jade: pay.jade, levelUp };
+    if (isMe) mine = { exp: pay.exp, pigment: pay.pigment, jade: pay.jade, stones: pay.stones, shards: pay.shards, levelUp };
   }
   return mine;
 }
 
 /** A blow or technique from the caller, checked by `ready` (cooldowns, unlocks) under the room's lock. */
+interface Blow {
+  areas: Swept[];
+  kb: number;
+  /** multiplier on attack power */
+  mul: number;
+  /** awakened second hit, as a fraction of the damage */
+  echo: number;
+  /** null for a basic attack, else the technique (monster defenses care) */
+  skill: number | null;
+}
+
 async function swing(
-  x: number, z: number, yaw: number, hitOf: (p: Profile) => { hit: HitDef; offset: number },
+  x: number, z: number, blowOf: (p: Profile, at: { x: number; z: number }) => Blow,
   ready: (mine: Mine, p: Profile, now: number) => Record<string, unknown>, skillUse: boolean,
 ): Promise<HitResult> {
   const account = $sender.account;
@@ -246,20 +295,18 @@ async function swing(
     const patch = ready(mine, p, now);
     await $room.updateMyState(patch, { returnState: false });
     if (!hasMonsters(here.zone)) return { hits: [], felled: [] };
-    const { hit, offset } = hitOf(p);
-    const at = heldTo(mine, x, z, now, ZONES[here.zone].radius);
-    const cx = at.x + forwardX(yaw) * offset;
-    const cz = at.z + forwardZ(yaw) * offset;
+    const blow = blowOf(p, heldTo(mine, x, z, now, ZONES[here.zone].radius));
     const state = await $room.getRoomState(["monsters"]);
     const monsters = readMonsters(here.zone, state.monsters, now, Math.random);
-    const damage = attackFor(p.level, weaponAtk(p)) * hit.dmg;
-    const result = strikeMonsters(monsters, hit, cx, cz, yaw, damage, now, account);
+    const damage = attackFor(p.level, weaponAtk(p)) * blow.mul;
+    const who = { account, skill: blow.skill, skills: p.skills, plus: p.enh[p.equip.weapon] ?? 0 };
+    const result = strikeAreas(monsters, blow.areas, blow.kb, damage, blow.echo, now, who);
     if (result.hits.length > 0) {
       await $room.updateRoomState({ monsters: tidy(monsters), now, monstersAt: now }, { returnState: false });
     }
     return result;
   });
-  const paid = await reward(account, here.roomId, here.zone, struck.felled, skillUse);
+  const paid = await reward(account, here.roomId, here.zone, struck.felled, skillUse, Math.random);
   return { hits: struck.hits, ...paid };
 }
 
@@ -273,13 +320,14 @@ async function tickRoom(zone: string, delta: number, now: number): Promise<void>
   const effects = readEffects(state.effects);
   const writtenAt = finite(state.monstersAt) ? state.monstersAt : null;
   const stepMs = writtenAt === null ? delta : Math.max(delta, now - writtenAt);
-  const users = await $room.getUserStates(accounts, ["pose", "hp", "maxHp", "dead", "gone"]);
+  const users = await $room.getUserStates(accounts, ["pose", "hp", "maxHp", "dead", "gone", "dashAt"]);
   const fighters = new Map<string, Mine>();
   const prey: Prey[] = [];
   for (const u of users) {
     const m = readMine(u);
     fighters.set(u.account, m);
-    if (present(m) && !m.dead && m.hp > 0) prey.push({ account: u.account, x: m.pose.x, z: m.pose.z });
+    // beside a quest NPC (talking, reading the story) monsters leave you be
+    if (present(m) && !m.dead && m.hp > 0 && !nearSafeNpc(zone, m.pose.x, m.pose.z)) prey.push({ account: u.account, x: m.pose.x, z: m.pose.z });
   }
   const out = stepMonsters(zone, monsters, effects, prey, stepMs, now, Math.random);
   await landBites(out.bites, fighters, now);
@@ -289,12 +337,21 @@ async function tickRoom(zone: string, delta: number, now: number): Promise<void>
   }
 }
 
+function nearSafeNpc(zone: string, x: number, z: number): boolean {
+  const def = ZONES[zone];
+  if (!def || def.safe) return false;
+  for (const n of def.npcs) if (Math.hypot(x - n.x, z - n.z) <= NPC_SAFE_R) return true;
+  return false;
+}
+
 async function landBites(bites: Bite[], fighters: Map<string, Mine>, now: number): Promise<void> {
   const total = new Map<string, number>();
   for (const b of bites) total.set(b.account, (total.get(b.account) ?? 0) + b.dmg);
   for (const [account, dmg] of total) {
     const f = fighters.get(account);
     if (!f || f.dead) continue;
+    // mid-roll: the blow passes through
+    if (now - f.dashAt < ROLL_IFRAME_MS) continue;
     const hp = Math.max(0, Math.round(f.hp - dmg));
     const dead = hp <= 0;
     await $room.updateUserState(account, { hp, dead, hurtAt: now }, { returnState: false });
@@ -335,6 +392,23 @@ async function ensureProfile(account: string): Promise<Profile> {
   return made;
 }
 
+/** A technique's shape grown by its awakening: wider rings and lines, longer lines. */
+function grown(shape: HitShape, awake: Awakening | null): HitShape {
+  if (!awake) return shape;
+  if (shape.shape === "ring") return { shape: "ring", r: shape.r + awake.area };
+  if (shape.shape === "line") return { shape: "line", length: shape.length + awake.reach, half: shape.half + awake.area };
+  return { shape: "arc", reach: shape.reach + awake.reach, half: shape.half + awake.area };
+}
+
+/** The facing of each wave: the cast's own, then extra ones fanned out by WAVE_FAN, 2 x WAVE_FAN, ... either side. */
+function fanYaws(yaw: number, extra: number): number[] {
+  const out = [yaw];
+  for (let k = 1; k <= extra; k++) out.push(yaw + (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * WAVE_FAN);
+  return out;
+}
+
+const dyeOk = (hex: unknown): hex is number | null => hex === null || DYES.some((d) => d.hex !== null && d.hex === hex);
+
 export class Server {
   // An empty-looking room (nobody calling in) still ticks once a second, so monsters keep moving.
   static $roomTickIdleMs = 1_000;
@@ -373,6 +447,102 @@ export class Server {
     const p = await updateProfile(account, (q) => ({ ...q, name: parsed.name }));
     if (oldKey !== parsed.key) await withNameLock(oldKey, () => releaseName(account, oldKey));
     await showInRoom({ name: p.name });
+    return profileView(account, p);
+  }
+
+  /** Once per account: your name and the colors of your scarf and sash (DYES or plain ink), free. */
+  async createCharacter(rawName: unknown, scarf: unknown, sash: unknown): Promise<ProfileView> {
+    const parsed = parseName(rawName);
+    if (!parsed) throw new RuleViolation("bad_name");
+    if (!dyeOk(scarf) || !dyeOk(sash)) throw new RuleViolation("bad_args");
+    const account = $sender.account;
+    const before = await myProfile(account);
+    if (before.created) throw new RuleViolation("already_claimed");
+    const oldKey = before.name.toLowerCase();
+    if (oldKey !== parsed.key) {
+      const free = await withNameLock(parsed.key, () => claimName(account, parsed.key, parsed.name));
+      if (!free) throw new RuleViolation("name_taken");
+    }
+    const p = await updateProfile(account, (q) => {
+      if (q.created) throw new RuleViolation("already_claimed");
+      return { ...q, name: parsed.name, created: true, dye: { scarf, sash } };
+    });
+    if (oldKey !== parsed.key) await withNameLock(oldKey, () => releaseName(account, oldKey));
+    await showInRoom({ name: p.name, look: lookOf(p) });
+    return profileView(account, p);
+  }
+
+  /** Trains a technique one level: a training point and pigment, plus 색 조각 to awaken it at 5 and 10. */
+  async trainSkill(rawSkill: unknown): Promise<ProfileView> {
+    const skill = intIn(rawSkill, 0, SKILLS.length - 1);
+    if (skill === null) throw new RuleViolation("bad_args");
+    const account = $sender.account;
+    const p = await updateProfile(account, (q) => {
+      if (q.level < SKILLS[skill].unlock) throw new RuleViolation("locked");
+      const lv = q.skills[skill];
+      if (lv >= SKILL_MAX) throw new RuleViolation("bad_args");
+      const cost = trainCost(lv);
+      if (pointsLeft(q) < cost.points || q.pigment < cost.pigment || q.shards < cost.shards) throw new RuleViolation("no_currency");
+      const skills = q.skills.map((v, i) => (i === skill ? v + 1 : v));
+      return { ...q, skills, pigment: q.pigment - cost.pigment, shards: q.shards - cost.shards };
+    });
+    await showInRoom({ look: lookOf(p) });
+    return profileView(account, p);
+  }
+
+  /**
+   * One enhancement attempt on an owned brush, rolled here under your lock. A failure from DESTROY_FROM may
+   * destroy it; a 파괴방지권 (spent on every attempt it is used for) saves it. The starter brush never
+   * breaks: it drops back to +0 instead (outcome "destroyed", plus 0, still owned).
+   */
+  async enhance(rawId: unknown, rawProtect: unknown): Promise<EnhanceResult> {
+    if (typeof rawId !== "string" || ITEM[rawId]?.slot !== "weapon") throw new RuleViolation("bad_args");
+    if (rawProtect !== undefined && typeof rawProtect !== "boolean") throw new RuleViolation("bad_args");
+    const id = rawId;
+    const useProtect = rawProtect === true;
+    const account = $sender.account;
+    const rolled: { outcome: EnhanceOutcome; plus: number } = { outcome: "fail", plus: 0 };
+    const p = await updateProfile(account, (q) => {
+      if (!q.owned.includes(id)) throw new RuleViolation("not_owned");
+      const plus = q.enh[id] ?? 0;
+      if (plus >= ENHANCE_MAX) throw new RuleViolation("bad_args");
+      const step = ENHANCE_TABLE[plus];
+      if (q.stones < step.stones || q.pigment < step.pigment) throw new RuleViolation("no_currency");
+      if (useProtect && q.protects < 1) throw new RuleViolation("no_currency");
+      const outcome = rollEnhance(plus, useProtect, Math.random);
+      const paid = { ...q, stones: q.stones - step.stones, pigment: q.pigment - step.pigment, protects: q.protects - (useProtect ? 1 : 0) };
+      const enh = { ...q.enh };
+      rolled.outcome = outcome;
+      if (outcome === "success") {
+        enh[id] = plus + 1;
+        rolled.plus = plus + 1;
+        return { ...paid, enh };
+      }
+      if (outcome !== "destroyed") {
+        rolled.plus = plus;
+        return paid;
+      }
+      delete enh[id];
+      rolled.plus = 0;
+      if (id === UNBREAKABLE) return { ...paid, enh };
+      const owned = paid.owned.filter((o) => o !== id);
+      const weapon = paid.equip.weapon === id ? STARTER_EQUIP.weapon : paid.equip.weapon;
+      return { ...paid, enh, owned, equip: { ...paid.equip, weapon } };
+    });
+    await showInRoom({ look: lookOf(p) });
+    return { outcome: rolled.outcome, plus: rolled.plus, profile: profileView(account, p) };
+  }
+
+  /** 파괴방지권 for jade, PROTECT_PRICE each, up to MAX_PROTECT_BUY at a time. */
+  async buyProtect(rawCount: unknown): Promise<ProfileView> {
+    const count = intIn(rawCount, 1, MAX_PROTECT_BUY);
+    if (count === null) throw new RuleViolation("bad_args");
+    const account = $sender.account;
+    const p = await updateProfile(account, (q) => {
+      const cost = count * PROTECT_PRICE;
+      if (q.jade < cost) throw new RuleViolation("no_currency");
+      return { ...q, jade: q.jade - cost, protects: q.protects + count };
+    });
     return profileView(account, p);
   }
 
@@ -455,8 +625,9 @@ export class Server {
     // The fallen stay where they fell.
     if (mine.dead) return;
     const now = Date.now();
-    const at = heldTo(mine, pose.x, pose.z, now, ZONES[here.zone].radius, pose);
-    await $room.updateMyState({ pose: { ...pose, x: at.x, z: at.z }, at: now }, { returnState: false });
+    const burst = burstAllowance(mine, pose, now);
+    const at = heldTo(mine, pose.x, pose.z, now, ZONES[here.zone].radius, burst.extra);
+    await $room.updateMyState({ pose: { ...pose, x: at.x, z: at.z }, at: now, dashAt: burst.dashAt, windAt: burst.windAt }, { returnState: false });
   }
 
   /** A basic swing (atkKind 1..5): the server finds what it hits from where you stand. */
@@ -464,7 +635,10 @@ export class Server {
     const parsed = readSwing(raw, 5, "kind");
     const req: AttackReq = { kind: parsed.kind, x: parsed.x, z: parsed.z, yaw: parsed.yaw };
     const def = BASIC[req.kind];
-    return swing(req.x, req.z, req.yaw, () => ({ hit: def, offset: 0 }), (mine, _p, now) => {
+    const blow = (_p: Profile, at: { x: number; z: number }): Blow => ({
+      areas: [{ shape: def.hit, x: at.x, z: at.z, yaw: req.yaw }], kb: def.kb, mul: def.dmg, echo: 0, skill: null,
+    });
+    return swing(req.x, req.z, blow, (mine, _p, now) => {
       if (now - mine.atkAt < BASIC_MIN_GAP * 1000) throw new RuleViolation("on_cooldown");
       return { atkAt: now };
     }, false);
@@ -475,12 +649,21 @@ export class Server {
     const parsed = readSwing(raw, SKILLS.length - 1, "skill");
     const req: SkillReq = { skill: parsed.kind, x: parsed.x, z: parsed.z, yaw: parsed.yaw };
     const def = SKILLS[req.skill];
-    return swing(req.x, req.z, req.yaw, () => ({ hit: def.hits, offset: def.offset }), (mine, p, now) => {
+    const blow = (p: Profile, at: { x: number; z: number }): Blow => {
+      const lv = p.skills[req.skill] ?? 1;
+      const awake = awakeningAt(req.skill, lv);
+      const shape = grown(def.hits.hit, awake);
+      const cx = at.x + forwardX(req.yaw) * def.offset;
+      const cz = at.z + forwardZ(req.yaw) * def.offset;
+      const areas: Swept[] = fanYaws(req.yaw, awake?.extraWaves ?? 0).map((yaw) => ({ shape, x: cx, z: cz, yaw }));
+      return { areas, kb: def.hits.kb, mul: def.hits.dmg * skillDmgMul(lv), echo: awake?.echo ?? 0, skill: req.skill };
+    };
+    return swing(req.x, req.z, blow, (mine, p, now) => {
       if (p.level < def.unlock) throw new RuleViolation("locked");
       const readyAt = mine.cds[req.skill] ?? 0;
       if (now < readyAt) throw new RuleViolation("on_cooldown");
       const cds = SKILLS.map((_, i) => mine.cds[i] ?? 0);
-      cds[req.skill] = now + def.cd * 1000 * COOLDOWN_GRACE;
+      cds[req.skill] = now + def.cd * skillCdMul(p.skills[req.skill] ?? 1) * 1000 * COOLDOWN_GRACE;
       return { cds };
     }, true);
   }
@@ -555,8 +738,8 @@ export class Server {
   /** Dyes the sash or scarf one of the DYES colors for DYE_COST pigment; null washes it back to ink, free. */
   async dye(target: unknown, hex: unknown): Promise<ProfileView> {
     if (target !== "sash" && target !== "scarf") throw new RuleViolation("bad_args");
-    if (hex !== null && !DYES.some((d) => d.hex !== null && d.hex === hex)) throw new RuleViolation("bad_args");
-    const color = hex as number | null;
+    if (!dyeOk(hex)) throw new RuleViolation("bad_args");
+    const color = hex;
     const account = $sender.account;
     const p = await updateProfile(account, (q) => {
       if (q.dye[target] === color) return q;

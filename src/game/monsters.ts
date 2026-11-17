@@ -4,13 +4,13 @@
 // Views are pooled per kind and only reference SHARED geometry/materials, so a zone change just hides them.
 
 import * as THREE from "three";
-import { MONSTERS, type MonsterDef } from "../shared/combat";
+import { MONSTERS, isObstacle, type MonsterDef } from "../shared/combat";
 import type { MonsterMode, MonsterState } from "../shared/types";
 import type { RoomEffect, RoomView } from "../net/api";
 import { angDiff, clamp, type RGB } from "./util";
 import { G, M_enemy, M_eye, M_flash, M_shadow } from "./render/materials";
 import { feel, overlay, scene, screenSplash } from "./render/gfx";
-import { QUAD_VERT, addDecal, inkBurst, inkDrop, ring } from "./render/fx";
+import { QUAD_VERT, addDecal, inkBurst, inkDrop, ring, sparkBurst } from "./render/fx";
 
 interface Look {
   group: THREE.Group;
@@ -40,6 +40,12 @@ export interface MView {
   drop: number;
   shown: boolean;
   phase: number;
+  /** red ring on the ground while this monster winds up a melee blow */
+  windTele: Tele | null;
+  /** live obstacle circle (vines), reused */
+  readonly obst: { x: number; z: number; r: number };
+  /** 0..1 while a vine grows back */
+  grow: number;
   speed: number;
   stamp: number;
 }
@@ -64,6 +70,11 @@ function arm(parent: THREE.Object3D, x: number, y: number, z: number, len: numbe
   parent.add(pivot);
   return pivot;
 }
+
+/** a dark haze around the elite (SHARED) */
+const M_aura = new THREE.MeshBasicMaterial({ color: 0x0b0a10, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.BackSide });
+const FIRE: RGB = [0.95, 0.42, 0.12];
+const EMBER: RGB = [1, 0.75, 0.3];
 
 function buildLook(kind: string): Look {
   const group = new THREE.Group();
@@ -101,6 +112,32 @@ function buildLook(kind: string): Look {
     add(mesh(G.box, M_eye, 1.12, 2.45, 0, 0.05, 0.08, 0.6), false); // teeth line
     armL = arm(body, 0.2, 2.25, -1.35, 1.7, 0.24, 0.42, flash);
     armR = arm(body, 0.2, 2.25, 1.35, 1.7, 0.24, 0.42, flash);
+  } else if (kind === "vine") {
+    // 먹덩굴: a thorny bramble of ink stalks around a low clump
+    add(mesh(G.head, M_enemy, 0, 0.25, 0, 1.3, 0.38, 1.3));
+    for (let k = 0; k < 9; k++) {
+      const a = (k / 9) * Math.PI * 2, r = 0.55 + (k % 3) * 0.22, h = 1.3 + (k % 4) * 0.35;
+      const st = add(mesh(G.cone, M_enemy, Math.cos(a) * r, h * 0.5, Math.sin(a) * r, 0.13, h, 0.13));
+      st.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45);
+      const th = add(mesh(G.cone, M_enemy, Math.cos(a) * (r + 0.18), h * 0.55, Math.sin(a) * (r + 0.18), 0.05, 0.28, 0.05));
+      th.rotation.set(Math.sin(a) * 1.3, 0, -Math.cos(a) * 1.3);
+    }
+  } else if (kind === "shadelord") {
+    // 그림자 무사: a bigger shade in a dark aura
+    const cone = add(mesh(G.cone, M_enemy, 0, 0.75, 0, 0.42, 1.3, 0.42));
+    cone.rotation.x = 0;
+    add(mesh(G.head, M_enemy, 0.05, 1.58, 0, 0.3, 0.32, 0.3));
+    add(mesh(G.head, M_enemy, -0.12, 1.75, 0, 0.18, 0.22, 0.2));
+    for (const z of [0.11, -0.11]) add(mesh(G.eye, M_eye, 0.28, 1.62, z, 0.055, 0.04, 0.055), false);
+    armL = arm(body, 0.05, 1.28, -0.3, 0.75, 0.06, 0.09, flash);
+    armR = arm(body, 0.05, 1.28, 0.3, 0.75, 0.06, 0.09, flash);
+    body.scale.setScalar(1.35);
+    const aura = mesh(G.head, M_aura, 0, 1.1, 0, 0.95, 1.45, 0.95);
+    group.add(aura);
+  } else if (kind === "bigblob") {
+    add(mesh(G.head, M_enemy, 0, 0.85, 0, 1.0, 0.85, 1.0));
+    for (const z of [0.32, -0.32]) add(mesh(G.eye, M_eye, 0.82, 1.05, z, 0.14, 0.14, 0.14), false);
+    for (let k = 0; k < 4; k++) add(mesh(G.head, M_enemy, Math.cos(k * 1.7) * 0.8, 0.12, Math.sin(k * 1.7) * 0.8, 0.22, 0.12, 0.22));
   } else {
     // blob (default for unknown kinds too)
     add(mesh(G.head, M_enemy, 0, 0.52, 0, 0.6, 0.52, 0.6));
@@ -113,7 +150,7 @@ function buildLook(kind: string): Look {
 
 /* ---------- slam telegraph (overlay) ---------- */
 const TELE_FRAG = `
-  uniform float uProg, uFade, uSeed; varying vec2 vUv;
+  uniform float uProg, uFade, uSeed; uniform vec3 uCol; varying vec2 vUv;
   float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
   float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y); }
@@ -127,14 +164,16 @@ const TELE_FRAG = `
     float m = max(rim * 0.85, fill) * mix(1.0, smoothstep(0.15, 0.6, noise(vec2(a * 18.0, r * 30.0 + uSeed))), 0.35);
     float alpha = m * uFade;
     if (alpha < 0.01 || r > 1.0) discard;
-    gl_FragColor = vec4(0.07, 0.065, 0.06, alpha);
+    gl_FragColor = vec4(uCol, alpha);
   }`;
 interface Tele { mesh: THREE.Mesh; mat: THREE.ShaderMaterial }
 const teles: Tele[] = [];
-for (let i = 0; i < 6; i++) {
+// Red ink: wind-ups, slam marks and shot landings all read as "get out of here" (dodge with a roll).
+const TELE_RED = new THREE.Vector3(0.68, 0.12, 0.08);
+for (let i = 0; i < 16; i++) {
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-    uniforms: { uProg: { value: 0 }, uFade: { value: 1 }, uSeed: { value: i * 5.3 } },
+    uniforms: { uProg: { value: 0 }, uFade: { value: 1 }, uSeed: { value: i * 5.3 }, uCol: { value: TELE_RED } },
     vertexShader: QUAD_VERT, fragmentShader: TELE_FRAG,
   });
   const m = new THREE.Mesh(G.flat, mat);
@@ -152,6 +191,8 @@ interface FxView {
   stamp: number;
   shot: THREE.Mesh | null;
   tele: Tele | null;
+  /** where a shot will land */
+  mark: Tele | null;
 }
 const shots: THREE.Mesh[] = [];
 for (let i = 0; i < 14; i++) {
@@ -173,6 +214,12 @@ export class Monsters {
   private stamp = 0;
   /** players for facing: (x, z) of everyone alive, updated by the game each frame */
   readonly targets: { x: number; z: number }[] = [];
+  /** live obstacles (vines) the player collides with; refreshed on each room update, objects reused */
+  readonly obstacles: { x: number; z: number; r: number }[] = [];
+  /** elites shown with a name plate */
+  readonly elites: MView[] = [];
+  /** a server effect just appeared (gate hints) */
+  onEffect: ((kind: RoomEffect["kind"]) => void) | null = null;
 
   serverNow(): number {
     return Date.now() + this.offset;
@@ -193,14 +240,22 @@ export class Monsters {
     for (const [id, v] of this.views) {
       if (v.stamp !== stamp) { this.release(v); this.views.delete(id); }
     }
+    this.obstacles.length = 0;
+    this.elites.length = 0;
+    for (const v of this.views.values()) {
+      if (v.mode === "dead") continue;
+      if (isObstacle(v.def)) { v.obst.x = v.x; v.obst.z = v.z; v.obst.r = v.def.radius; this.obstacles.push(v.obst); }
+      if (v.def.armor === "training") this.elites.push(v);
+    }
     const now = this.serverNow();
     for (const e of room.effects) {
       let f = this.fx.get(e.id);
       if (!f) {
         if (e.at < now - 150) continue; // already over
-        f = { e, t0: now, done: false, stamp, shot: null, tele: null };
-        if (e.kind === "shot") f.shot = this.freeShot();
-        else f.tele = this.freeTele(e);
+        f = { e, t0: now, done: false, stamp, shot: null, tele: null, mark: null };
+        if (e.kind === "shot") { f.shot = this.freeShot(); f.mark = this.freeTele(e.tx, e.tz, Math.max(1, e.r)); }
+        else f.tele = this.freeTele(e.tx, e.tz, e.r);
+        this.onEffect?.(e.kind);
         this.fx.set(e.id, f);
       }
       f.e = e;
@@ -221,11 +276,12 @@ export class Monsters {
     return {
       id: s.id, kind: s.kind, def, look, shadow, x: s.x, z: s.z, y: 0, tx: s.x, tz: s.z, head: 0, mode: s.mode, since: s.since,
       hitAt: s.hitAt, hp: s.hp, maxHp: s.maxHp, level: s.level, flash: 0, flashOn: false, drop: 0, shown: false,
-      phase: Math.random() * 6, speed: 0, stamp: 0,
+      phase: Math.random() * 6, speed: 0, stamp: 0, windTele: null, obst: { x: s.x, z: s.z, r: def.radius }, grow: 1,
     };
   }
 
   private release(v: MView): void {
+    if (v.windTele) { v.windTele.mesh.visible = false; v.windTele = null; }
     v.look.group.visible = false;
     v.shadow.visible = false;
     let list = this.pool.get(v.kind);
@@ -255,10 +311,18 @@ export class Monsters {
         inkBurst(v.x, v.def.height * 0.5, v.z, 7, 0, 0);
       }
     }
-    if (s.mode === "dead" && !wasDead) {
+    if (s.mode === "dead" && !wasDead && isObstacle(v.def)) {
+      // burns away: embers up, ash down
+      sparkBurst(v.x, 0.6, v.z, 36, FIRE, 1.1, 1.6);
+      sparkBurst(v.x, 1.2, v.z, 16, EMBER, 0.6, 2.2);
+      inkBurst(v.x, 0.8, v.z, 18, 0, 0, 0.9);
+      addDecal(v.x, v.z, 0.9);
+      v.look.group.visible = false;
+      v.shadow.visible = false;
+    } else if (s.mode === "dead" && !wasDead) {
       const h = v.def.height * 0.5;
       inkBurst(v.x, h, v.z, v.def.boss ? 60 : 24, 0, 0, v.def.boss ? 2 : 1.2);
-      for (let k = 0; k < (v.def.boss ? 12 : 4); k++) addDecal(v.x + (Math.random() - 0.5) * 2 * v.def.radius * 2, v.z + (Math.random() - 0.5) * 2 * v.def.radius * 2, 0.2 + Math.random() * 0.35);
+      for (let k = 0; k < (v.def.boss ? 5 : 2); k++) addDecal(v.x + (Math.random() - 0.5) * 2 * v.def.radius * 2, v.z + (Math.random() - 0.5) * 2 * v.def.radius * 2, 0.2 + Math.random() * 0.35);
       if (Math.hypot(v.x - px, v.z - pz) < 9) {
         screenSplash(v.x, h, v.z, v.def.boss ? 0.14 : 0.06);
         feel.hitstop = Math.max(feel.hitstop, 0.06);
@@ -268,7 +332,7 @@ export class Monsters {
       v.shadow.visible = false;
     } else if (s.mode !== "dead" && wasDead) {
       v.x = s.x; v.z = s.z;
-      v.drop = 7;
+      if (isObstacle(v.def)) { v.grow = 0.05; v.drop = 0; } else v.drop = 7;
       v.look.group.visible = true;
       v.shadow.visible = true;
     }
@@ -279,12 +343,12 @@ export class Monsters {
     for (const m of shots) if (!m.visible) { m.visible = true; return m; }
     return null;
   }
-  private freeTele(e: RoomEffect): Tele | null {
+  private freeTele(x: number, z: number, r: number): Tele | null {
     for (const t of teles) {
       if (t.mesh.visible) continue;
       t.mesh.visible = true;
-      t.mesh.position.set(e.tx, 0.06, e.tz);
-      t.mesh.scale.set(e.r * 2, 1, e.r * 2);
+      t.mesh.position.set(x, 0.06, z);
+      t.mesh.scale.set(r * 2, 1, r * 2);
       t.mat.uniforms.uProg.value = 0;
       t.mat.uniforms.uFade.value = 1;
       return t;
@@ -325,6 +389,16 @@ export class Monsters {
         for (const m of v.look.flash) m.material = on ? M_flash : M_enemy;
       }
       this.animate(v, time, now);
+      // melee wind-up: a red ring that fills until the blow lands
+      if (v.mode === "wind" && v.def.attack === "melee") {
+        const r = v.def.range + v.def.radius * 0.5;
+        if (!v.windTele) v.windTele = this.freeTele(v.x, v.z, r);
+        if (v.windTele) {
+          v.windTele.mesh.position.set(v.x, 0.06, v.z);
+          v.windTele.mat.uniforms.uProg.value = clamp((now - v.since) / Math.max(1, v.def.windMs), 0, 1);
+          v.windTele.mat.uniforms.uFade.value = 1;
+        }
+      } else if (v.windTele) { v.windTele.mesh.visible = false; v.windTele = null; }
       this.place(v);
     }
     // server effects
@@ -342,8 +416,13 @@ export class Monsters {
         f.tele.mat.uniforms.uProg.value = u;
         f.tele.mat.uniforms.uFade.value = 0.5 + 0.5 * Math.min(1, u * 4);
       }
+      if (f.mark) {
+        f.mark.mat.uniforms.uProg.value = u;
+        f.mark.mat.uniforms.uFade.value = 0.6 + 0.4 * u;
+      }
       if (u >= 1) {
         f.done = true;
+        if (f.mark) { f.mark.mesh.visible = false; f.mark = null; }
         if (f.shot) {
           f.shot.visible = false;
           f.shot = null;
@@ -356,7 +435,7 @@ export class Monsters {
           f.tele = null;
           ring(e.tx, e.tz, e.r, INK, 0.6, 0, SPLAT_EDGE);
           inkBurst(e.tx, 0.3, e.tz, 30, 0, 0, 1.5);
-          for (let k = 0; k < 6; k++) addDecal(e.tx + (Math.random() - 0.5) * e.r * 1.4, e.tz + (Math.random() - 0.5) * e.r * 1.4, 0.3 + Math.random() * 0.4);
+          for (let k = 0; k < 3; k++) addDecal(e.tx + (Math.random() - 0.5) * e.r * 1.4, e.tz + (Math.random() - 0.5) * e.r * 1.4, 0.3 + Math.random() * 0.4);
           const d = Math.hypot(px - e.tx, pz - e.tz);
           if (d < e.r + 6) feel.shake = Math.max(feel.shake, d < e.r ? 0.7 : 0.35);
         }
@@ -384,6 +463,25 @@ export class Monsters {
       if (v.mode === "attack") { sac = 2.4 - atkU * 1.4; sx = 1 + (1 - atkU) * 0.1; }
       if (moving) y = Math.abs(Math.sin(time * 7 + v.phase)) * 0.25;
       if (L.sac) L.sac.scale.set(0.22 * sac, 0.2 * sac, 0.26 * sac);
+    } else if (v.kind === "vine") {
+      L.body.rotation.z = Math.sin(time * 1.3 + v.phase) * 0.04;
+      if (v.grow < 1) v.grow = Math.min(1, v.grow + 0.016 * 1.2);
+      sx = v.grow;
+      sy = v.grow;
+    } else if (v.kind === "shadelord") {
+      y = 0.12 + Math.sin(time * 3 + v.phase) * 0.07;
+      let a = 0.25 + Math.sin(time * 4 + v.phase) * 0.1, lean = moving ? 0.25 : 0;
+      if (v.mode === "wind") { a = 0.3 + windU * 2.4; lean = -0.25 * windU; }
+      if (v.mode === "attack") { a = 2.7 - atkU * 2.0; lean = 0.45 * (1 - atkU); }
+      if (L.armL && L.armR) { L.armL.rotation.z = a; L.armR.rotation.z = a * 0.85; }
+      L.body.rotation.z = -lean;
+    } else if (v.kind === "bigblob") {
+      // swells while gathering itself for the slam, then flattens
+      const q = Math.sin(time * 4 + v.phase) * 0.03;
+      sx = 1 - q; sy = 1 + q;
+      if (v.mode === "wind") { const k = 1 + windU * 0.45 + Math.sin(time * 30) * 0.02 * windU; sx = k; sy = k * (1 + windU * 0.1); }
+      if (v.mode === "attack") { sx = 1.35 - atkU * 0.35; sy = 0.6 + atkU * 0.4; }
+      if (moving && v.mode === "chase") { const h = Math.abs(Math.sin(time * 5 + v.phase)); y = h * 0.4; }
     } else if (v.kind === "boss") {
       sy = 1 + Math.sin(time * 2 + v.phase) * 0.02;
       let a = 0.15 + Math.sin(time * 2.4) * 0.08;
@@ -450,8 +548,13 @@ export class Monsters {
     for (const f of this.fx.values()) {
       if (f.shot) f.shot.visible = false;
       if (f.tele) f.tele.mesh.visible = false;
+      if (f.mark) f.mark.mesh.visible = false;
     }
     this.fx.clear();
+    // the vines of the zone just left must not keep blocking (two of them sit right on the village's
+    // bamboo portal once you are back in the village, which has no monster updates to refresh this)
+    this.obstacles.length = 0;
+    this.elites.length = 0;
     this.hasClock = false;
   }
 }

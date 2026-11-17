@@ -1,0 +1,492 @@
+// Auto-battle and auto-quest travel, like the usual Korean RPG helpers. A client-side driver: it only writes
+// the same inputs a player would (move stick, attack, skill, potion, talk, gates), so every server check
+// (speed clamp, cooldowns, BASIC_MIN_GAP) still applies. Decisions at ~5 Hz; steering per frame with no
+// allocations. Manual input pauses auto-battle for 2 s and cancels auto-travel.
+
+import * as THREE from "three";
+import { MAIN_QUESTS, NPC_REACH, PORTAL_REACH, ZONES, type Npc, type ZoneDef } from "../shared/world";
+import { SKILLS, isObstacle } from "../shared/combat";
+import type { ProfileView } from "../net/api";
+import type { Actor } from "./actor";
+import type { MView } from "./monsters";
+import { mainStatus, readyByTalk } from "./quests";
+import { overlay } from "./render/gfx";
+
+export interface AutoSettings {
+  skills: boolean[];
+  potion: boolean;
+  /** 0.2..0.6 */
+  threshold: number;
+  questFirst: boolean;
+}
+
+export interface AutoCtx {
+  player(): Actor;
+  monsters(): Map<string, MView>;
+  zone(): ZoneDef;
+  profile(): ProfileView;
+  /** false while dead, loading, in dialogue */
+  canAct(): boolean;
+  /** true while a sheet/menu is open (auto pauses, resumes on close) */
+  paused(): boolean;
+  /** ms since the last manual input */
+  sinceManual(): number;
+  skillReady(i: number): boolean;
+  drinkPotion(): void;
+  travel(to: string, from: string): Promise<void>;
+  talk(npc: Npc): Promise<void>;
+  think(id: string, text: string): void;
+  changed(): void;
+}
+
+const RANGE = 16; // hunt radius around the anchor
+const MELEE = 2.1;
+const RESUME_MS = 2000;
+const BUF = 0.15;
+
+/** A faint ink arrow at the feet pointing to the next waypoint while auto-travelling (one mesh for the session). */
+function makeArrow(): THREE.Mesh {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.55); shape.lineTo(0.32, -0.1); shape.lineTo(0.1, -0.02); shape.lineTo(0.12, -0.5);
+  shape.lineTo(-0.12, -0.5); shape.lineTo(-0.1, -0.02); shape.lineTo(-0.32, -0.1); shape.closePath();
+  const g = new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x2b2622, transparent: true, opacity: 0.45, depthTest: false, depthWrite: false }));
+  m.visible = false;
+  m.frustumCulled = false;
+  overlay.add(m);
+  return m;
+}
+
+type Goal =
+  | { kind: "npc"; zone: string; npc: Npc }
+  | { kind: "zone"; zone: string }
+  | { kind: "hunt"; zone: string; monster: string };
+
+export class AutoPlay {
+  /* ---------- auto-battle ---------- */
+  on = false;
+  settings: AutoSettings = { skills: [true, true, true, true, true], potion: true, threshold: 0.4, questFirst: true };
+  private anchorX = 0;
+  private anchorZ = 0;
+  private target: MView | null = null;
+  private tick = 0;
+  private skillTick = 0;
+  private castAimUntil = 0;
+  private potionAt = 0;
+  /* ---------- auto-travel ---------- */
+  traveling = false;
+  private goal: Goal | null = null;
+  private wpX = 0;
+  private wpZ = 0;
+  private hasWp = false;
+  private gateTo = "";
+  private stuckT = 0;
+  private stuckX = 0;
+  private stuckZ = 0;
+  private fails = 0;
+  private sideT = 0;
+  private sideSign = 1;
+  private busy = false;
+  private readonly arrow = makeArrow();
+  private settingsKey = "";
+
+  constructor(private readonly ctx: AutoCtx) {}
+
+  bind(account: string): void {
+    this.settingsKey = `ink.auto.${account}`;
+    try {
+      const raw = window.localStorage.getItem(this.settingsKey);
+      if (raw) this.settings = { ...this.settings, ...(JSON.parse(raw) as Partial<AutoSettings>) };
+    } catch {
+      // defaults
+    }
+  }
+
+  saveSettings(): void {
+    try { window.localStorage.setItem(this.settingsKey, JSON.stringify(this.settings)); } catch { /* storage blocked */ }
+  }
+
+  /** Is the driver steering this frame (used to aim swings at its target and keep gates closed)? */
+  active(): boolean {
+    return (this.on || this.traveling) && this.ctx.canAct() && !this.ctx.paused() && this.ctx.sinceManual() > (this.traveling ? 0 : RESUME_MS);
+  }
+
+  /** Heading toward the current target, for swings and casts while auto-battle drives. */
+  aimHeading(x: number, z: number): number | null {
+    const t = this.target;
+    if (!t) return null;
+    // a skill fired on its own in manual play turns toward its target for that cast
+    if (performance.now() < this.castAimUntil) return Math.atan2(-(t.z - z), t.x - x);
+    if (!this.on || !this.active()) return null;
+    return Math.atan2(-(t.z - z), t.x - x);
+  }
+
+  /** Manual play: when something is in reach and a skill is ready (and enabled), it fires by itself. ~5 Hz. */
+  manualSkills(dt: number): void {
+    this.skillTick -= dt;
+    if (this.skillTick > 0) return;
+    this.skillTick = 0.2;
+    const pl = this.ctx.player();
+    if (pl.state !== "move" && !pl.state.startsWith("atk")) return;
+    let best: MView | null = null, bd = 9.5;
+    for (const v of this.ctx.monsters().values()) {
+      if (v.mode === "dead" || v.drop > 0) continue;
+      const d = Math.hypot(v.x - pl.x, v.z - pl.z) - v.def.radius;
+      if (d < bd) { bd = d; best = v; }
+    }
+    if (!best) return;
+    // things only certain techniques can hurt get only those techniques
+    if (this.fireSkill(pl, bd, best.def.skillOnly ? best.def.weakTo : undefined)) {
+      this.target = best;
+      this.castAimUntil = performance.now() + 400;
+    }
+  }
+
+  /** Picks the first enabled, ready skill whose reach covers distance d; returns true if one was queued. */
+  private fireSkill(pl: Actor, d: number, only?: readonly number[]): boolean {
+    const inp = pl.input;
+    if (inp.sk >= 0) return false;
+    for (let i = 0; i < SKILLS.length; i++) {
+      if (!this.settings.skills[i] || !this.ctx.skillReady(i)) continue;
+      if (only && !only.includes(i)) continue;
+      const reach = i === 0 || i === 3 ? 9 : i === 4 ? 7 : 3.4;
+      if (d > reach || (i === 4 && d < 2)) continue;
+      if (i === 2 && !pl.onGround) continue;
+      inp.sk = i;
+      inp.skT = BUF;
+      return true;
+    }
+    return false;
+  }
+
+  toggle(): boolean {
+    if (this.on) { this.stop(); return false; }
+    if (this.ctx.zone().safe) return false;
+    const p = this.ctx.player();
+    this.on = true;
+    this.anchorX = p.x;
+    this.anchorZ = p.z;
+    this.target = null;
+    this.ctx.changed();
+    return true;
+  }
+
+  stop(): void {
+    if (!this.on && !this.traveling) return;
+    this.on = false;
+    this.traveling = false;
+    this.goal = null;
+    this.target = null;
+    this.hasWp = false;
+    this.arrow.visible = false;
+    this.ctx.changed();
+  }
+
+  /** Manual movement cancels travel (auto-battle merely waits 2 s). */
+  manual(moved: boolean): void {
+    if (moved && this.traveling) {
+      this.traveling = false;
+      this.goal = null;
+      this.hasWp = false;
+      this.arrow.visible = false;
+      if (!this.on) this.ctx.changed();
+    }
+  }
+
+  /** Zone changed: auto-battle ends; travel carries on toward its goal. */
+  zoneChanged(): void {
+    if (this.on && !(this.traveling && this.goal?.kind === "hunt")) this.on = false;
+    this.target = null;
+    this.hasWp = false;
+    this.fails = 0;
+    this.ctx.changed();
+  }
+
+  /* ---------- auto-quest travel ---------- */
+  /** Walk to the current main quest's objective. Returns a reason when it can't. */
+  startTravel(): string | null {
+    const p = this.ctx.profile();
+    const s = mainStatus(p);
+    if (!s) return "이어지는 의뢰가 없다.";
+    const q = s.q;
+    let goal: Goal | null = null;
+    const npcGoal = (id: string): Goal | null => {
+      for (const z of Object.values(ZONES)) {
+        const npc = z.npcs.find((n) => n.id === id);
+        if (npc) return { kind: "npc", zone: z.id, npc };
+      }
+      return null;
+    };
+    if (!s.accepted) goal = npcGoal(q.giver);
+    else if (s.done || readyByTalk(s)) goal = npcGoal(q.turnIn);
+    else if (q.goal.type === "kill") {
+      const kind = q.goal.kind;
+      const zone = q.goal.zone ?? Object.values(ZONES).find((z) => z.spawns.some((sp) => sp.kind === kind))?.id;
+      if (zone) goal = { kind: "hunt", zone, monster: kind };
+    } else if (q.goal.type === "reach") goal = { kind: "zone", zone: q.goal.zone };
+    else if (q.goal.type === "talk") goal = npcGoal(q.goal.npc);
+    else if (q.goal.type === "dye") goal = npcGoal("dyer");
+    else if (q.goal.type === "level") return "더 강해져야 한다… 사냥하며 경지를 올리자.";
+    if (!goal) return "어디로 가야 할지 모르겠다.";
+    this.goal = goal;
+    this.traveling = true;
+    this.fails = 0;
+    this.stuckT = 0;
+    this.hasWp = false;
+    this.ctx.changed();
+    return null;
+  }
+
+  /** Shortest chain of gates from one zone to another (BFS over ZONES portals); returns the first hop. */
+  private nextHop(from: string, to: string): string | null {
+    if (from === to) return null;
+    const prev = new Map<string, string>([[from, ""]]);
+    const queue = [from];
+    while (queue.length) {
+      const z = queue.shift() as string;
+      for (const p of ZONES[z]?.portals ?? []) {
+        if (prev.has(p.to)) continue;
+        prev.set(p.to, z);
+        if (p.to === to) {
+          let step = to;
+          while (prev.get(step) !== from) step = prev.get(step) as string;
+          return step;
+        }
+        queue.push(p.to);
+      }
+    }
+    return null;
+  }
+
+  /* ---------- decisions (~5 Hz) ---------- */
+  decide(dt: number): void {
+    this.tick -= dt;
+    if (this.tick > 0) return;
+    this.tick = 0.2;
+    if (!this.ctx.canAct() || this.ctx.paused() || this.busy) return;
+    const zone = this.ctx.zone();
+    const pl = this.ctx.player();
+    if (this.traveling && this.goal) this.decideTravel(zone, pl);
+    if (this.on) this.decideBattle(pl);
+  }
+
+  private decideTravel(zone: ZoneDef, pl: Actor): void {
+    const g = this.goal as Goal;
+    if (zone.id !== g.zone) {
+      const hop = this.nextHop(zone.id, g.zone);
+      const gate = hop ? zone.portals.find((p) => p.to === hop) : null;
+      if (!gate) { this.giveUp("길을 모르겠다…"); return; }
+      if (this.clearVines(pl, gate.x, gate.z)) return;
+      this.setWp(gate.x, gate.z);
+      this.gateTo = gate.to;
+      if (Math.hypot(gate.x - pl.x, gate.z - pl.z) < PORTAL_REACH - 0.8) {
+        this.busy = true;
+        this.hasWp = false;
+        void this.ctx.travel(gate.to, zone.id).finally(() => { this.busy = false; });
+      }
+      return;
+    }
+    this.gateTo = "";
+    if (g.kind === "npc") {
+      const d = Math.hypot(g.npc.x - pl.x, g.npc.z - pl.z);
+      if (d < NPC_REACH - 1.2) {
+        // the field does not pause for a conversation: deal with whatever is on us first
+        if (!zone.safe && this.threatNear(pl)) { this.hasWp = false; this.decideBattle(pl); return; }
+        // arrived: the conversation takes over; travel ends here
+        this.traveling = false;
+        this.goal = null;
+        this.hasWp = false;
+        this.arrow.visible = false;
+        this.ctx.changed();
+        void this.ctx.talk(g.npc);
+        return;
+      }
+      this.setWp(g.npc.x, g.npc.z + 1.6);
+    } else if (g.kind === "zone") {
+      this.traveling = false;
+      this.goal = null;
+      this.hasWp = false;
+      this.arrow.visible = false;
+      this.ctx.changed();
+    } else {
+      // hunt: once inside, auto-battle around the middle of the field with quest targets first
+      const s = mainStatus(this.ctx.profile());
+      if (!s || !s.accepted || s.done) {
+        this.on = false;
+        this.traveling = false;
+        this.goal = null;
+        this.ctx.changed();
+        if (s?.done) this.startTravel();
+        return;
+      }
+      if (!this.on) {
+        this.on = true;
+        this.anchorX = 0;
+        this.anchorZ = 0;
+        this.settings.questFirst = true;
+        this.ctx.changed();
+      }
+      this.hasWp = false;
+    }
+  }
+
+  /** Something hostile is awake and close (no allocation). */
+  private threatNear(pl: Actor): boolean {
+    for (const v of this.ctx.monsters().values()) {
+      if (v.mode === "dead" || v.mode === "idle" || v.def.skillOnly) continue;
+      if (Math.hypot(v.x - pl.x, v.z - pl.z) < 8) return true;
+    }
+    return false;
+  }
+
+  private decideBattle(pl: Actor): void {
+    const p = this.ctx.profile();
+    // potion first
+    if (this.settings.potion && p.potions > 0 && p.hp > 0 && p.hp / Math.max(1, p.maxHp) < this.settings.threshold && performance.now() - this.potionAt > 1600) {
+      this.potionAt = performance.now();
+      this.ctx.drinkPotion();
+    }
+    const questKind = this.settings.questFirst ? questKill(p) : null;
+    let best: MView | null = null, bestScore = 1e9;
+    for (const v of this.ctx.monsters().values()) {
+      if (v.mode === "dead" || v.drop > 0 || v.def.skillOnly) continue;
+      const fromAnchor = Math.hypot(v.x - this.anchorX, v.z - this.anchorZ);
+      const d = Math.hypot(v.x - pl.x, v.z - pl.z);
+      const engaged = v.mode !== "idle" && d < 7;
+      if (!engaged && (fromAnchor > RANGE || v.level >= p.level + 5)) continue;
+      let score = d;
+      if (engaged) score -= 100;
+      else if (questKind && (v.kind === questKind || questKind === "any")) score -= 30;
+      if (score < bestScore) { bestScore = score; best = v; }
+    }
+    this.target = best;
+    if (!best) {
+      if (Math.hypot(this.anchorX - pl.x, this.anchorZ - pl.z) > 1.5) this.setWp(this.anchorX, this.anchorZ);
+      else this.hasWp = false;
+      return;
+    }
+    const d = Math.hypot(best.x - pl.x, best.z - pl.z) - best.def.radius;
+    if (d > MELEE) this.setWp(best.x, best.z);
+    else this.hasWp = false;
+    // skills in the player's order, one per decision
+    this.fireSkill(pl, d);
+  }
+
+  /**
+   * 먹덩굴 between us and (tx, tz): walk up to it and let 화염선풍 burn it. Without the technique (below Lv 4 or
+   * switched off) travel stops with the gate-3 thought instead of looping. Returns true while it is handling one.
+   */
+  private clearVines(pl: Actor, tx: number, tz: number): boolean {
+    let dx = tx - pl.x, dz = tz - pl.z;
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len; dz /= len;
+    let block: MView | null = null, ahead = 1e9;
+    for (const v of this.ctx.monsters().values()) {
+      if (v.mode === "dead" || !isObstacle(v.def)) continue;
+      const rx = v.x - pl.x, rz = v.z - pl.z;
+      const along = rx * dx + rz * dz;
+      if (along < -1 || along > len + v.def.radius) continue;
+      const side = Math.abs(rx * -dz + rz * dx);
+      if (side > v.def.radius + 1.2 || along > 9) continue;
+      if (along < ahead) { ahead = along; block = v; }
+    }
+    if (!block) return false;
+    const weak = block.def.weakTo ?? [];
+    const canBurn = weak.some((i) => this.settings.skills[i] && this.ctx.profile().level >= SKILLS[i].unlock);
+    if (!canBurn) { this.giveUp("불이라도 있으면… 바람이에게 가 보자."); return true; }
+    const d = Math.hypot(block.x - pl.x, block.z - pl.z) - block.def.radius;
+    this.target = block;
+    if (d > 2.6) this.setWp(block.x - dx * (block.def.radius + 2), block.z - dz * (block.def.radius + 2));
+    else {
+      this.hasWp = false;
+      if (this.fireSkill(pl, d, weak)) this.castAimUntil = performance.now() + 400;
+    }
+    return true;
+  }
+
+  private setWp(x: number, z: number): void {
+    if (!this.hasWp || Math.abs(x - this.wpX) > 0.3 || Math.abs(z - this.wpZ) > 0.3) { this.stuckT = 0; }
+    this.wpX = x;
+    this.wpZ = z;
+    this.hasWp = true;
+  }
+
+  private giveUp(text: string): void {
+    this.stop();
+    this.ctx.think("auto-stuck", text);
+  }
+
+  /* ---------- steering (per frame, no allocation) ---------- */
+  /** Writes the stick for this frame; returns true if it drove. */
+  steer(dt: number): boolean {
+    const pl = this.ctx.player();
+    const inp = pl.input;
+    if (!this.active()) { this.arrow.visible = false; return false; }
+    // attack the target when in reach
+    if (this.on && this.target && !this.hasWp) {
+      const t = this.target;
+      const d = Math.hypot(t.x - pl.x, t.z - pl.z) - t.def.radius;
+      if (d <= MELEE + 0.3) inp.atk = BUF;
+    }
+    if (!this.hasWp) { inp.mx = 0; inp.mz = 0; this.arrow.visible = false; return true; }
+    let dx = this.wpX - pl.x, dz = this.wpZ - pl.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    dx /= dist; dz /= dist;
+    // keep clear of gates unless one is the way
+    const zone = this.ctx.zone();
+    for (const g of zone.portals) {
+      if (g.to === this.gateTo) continue;
+      const ex = pl.x - g.x, ez = pl.z - g.z, ed = Math.hypot(ex, ez);
+      if (ed < PORTAL_REACH + 2.5 && ed > 1e-3) { const k = (PORTAL_REACH + 2.5 - ed) / (PORTAL_REACH + 2.5) * 2; dx += (ex / ed) * k; dz += (ez / ed) * k; }
+    }
+    // slide around props ahead
+    for (const c of pl.field.colliders) {
+      const cx = c.x - pl.x, cz = c.z - pl.z;
+      const ahead = cx * dx + cz * dz;
+      if (ahead < 0 || ahead > 2.5) continue;
+      const side = cx * -dz + cz * dx;
+      if (Math.abs(side) < c.r + 0.6) {
+        const s = side > 0 ? -1 : 1, px = -dz, pz = dx;
+        dx += px * s * 0.9;
+        dz += pz * s * 0.9;
+      }
+    }
+    // stuck: sidestep, then give up after three tries
+    this.stuckT += dt;
+    if (this.sideT > 0) {
+      this.sideT -= dt;
+      const px = -dz, pz = dx;
+      dx += px * this.sideSign * 1.5;
+      dz += pz * this.sideSign * 1.5;
+    }
+    if (this.stuckT > 2) {
+      if (Math.hypot(pl.x - this.stuckX, pl.z - this.stuckZ) < 0.5 && dist > 1) {
+        this.fails++;
+        if (this.fails >= 3) { this.giveUp("길이 막혔다…"); return false; }
+        this.sideT = 0.8;
+        this.sideSign = Math.random() < 0.5 ? -1 : 1;
+      } else this.fails = 0;
+      this.stuckT = 0;
+      this.stuckX = pl.x;
+      this.stuckZ = pl.z;
+    }
+    const l = Math.hypot(dx, dz) || 1;
+    const slow = this.on && !this.traveling && dist < 1.2 ? 0.5 : 1;
+    inp.mx = (dx / l) * slow;
+    inp.mz = (dz / l) * slow;
+    // the arrow points at the waypoint while travelling
+    if (this.traveling) {
+      this.arrow.visible = true;
+      this.arrow.position.set(pl.x + (dx / l) * 1.3, 0.1, pl.z + (dz / l) * 1.3);
+      this.arrow.rotation.set(0, Math.atan2(-dx, -dz), 0);
+    } else this.arrow.visible = false;
+    return true;
+  }
+}
+
+/** The monster kind the current main quest wants killed, if any. */
+function questKill(p: ProfileView): string | null {
+  const q = MAIN_QUESTS[p.main];
+  if (!q || !p.mainAccepted || q.goal.type !== "kill") return null;
+  return q.goal.kind;
+}

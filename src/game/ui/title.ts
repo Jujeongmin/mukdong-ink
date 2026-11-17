@@ -1,6 +1,7 @@
 // Title screen (press to start, connection status, first-time name) and the mock rewarded-ad overlay.
 
 import { el, esc } from "./dom";
+import { TitleScene } from "../titleScene";
 
 /** Mock rewarded ad: a clearly labeled 3-second countdown that always counts as watched. */
 export function mockAdPresenter(): Promise<boolean> {
@@ -25,63 +26,111 @@ export function mockAdPresenter(): Promise<boolean> {
 
 export class Title {
   private readonly box: HTMLElement;
+  private scene: TitleScene | null = null;
+  private live = false;
 
   constructor(root: HTMLElement) {
+    // The backdrop is the game itself (TitleScene, live in the ink pass); the logo, drifting petals and ink
+    // drops are DOM/CSS over it (their animations stop while the title is hidden).
     root.insertAdjacentHTML("beforeend", `
       <section class="title" data-title>
+        <div class="title-drift" aria-hidden="true">${"<i></i>".repeat(9)}</div>
         <div class="title-inner">
-          <div class="enso"><i class="spr-enso" aria-hidden="true"></i><h1>채묵</h1></div>
-          <p class="subtitle">잃어버린 색</p>
-          <i class="spr-stroke stroke" aria-hidden="true"></i>
-          <p>먹으로 그린 세상, 색은 오직 검법과 물들인 장비에만.<br>큰 붓을 든 먹동이가 되어 먹귀신을 베어 보세요.</p>
-          <div data-slot><button class="start" type="button" data-start>눌러서 시작</button></div>
+          <div class="logo">
+            <h1>채묵</h1>
+            <i class="logo-stroke" aria-hidden="true"></i>
+            <p class="subtitle">잃어버린 색</p>
+          </div>
+          <p class="title-lead">먹으로 그린 세상, 색은 검법과 물들인 천에만 남았다.</p>
+          <div class="title-cta" data-slot><button class="start title-start" type="button" data-start><span>눌러서 시작</span></button></div>
           <div class="status" data-status aria-live="polite"></div>
         </div>
+        <i class="ink-wipe" data-wipe aria-hidden="true"></i>
       </section>`);
     this.box = el("[data-title]", root);
   }
 
-  /** Resolves when the player presses start (button, Enter or Space). */
+  /** Where the player tapped to start; the ink wipe spreads from there. */
+  private tapAt: { x: number; y: number } | null = null;
+
+  /** Resolves when the player taps/clicks anywhere on the title, or presses Enter/Space. */
   waitStart(label = "눌러서 시작"): Promise<void> {
     const slot = el("[data-slot]", this.box);
-    slot.innerHTML = `<button class="start" type="button" data-start>${esc(label)}</button>`;
+    slot.innerHTML = `<button class="start title-start" type="button" data-start><span>${esc(label)}</span></button>`;
     const btn = el<HTMLButtonElement>("[data-start]", slot);
     btn.focus();
+    this.tapAt = null;
+    this.box.classList.add("tap-start");
     return new Promise((resolve) => {
       const go = () => {
         window.removeEventListener("keydown", key);
+        this.box.removeEventListener("click", tap);
+        this.box.classList.remove("tap-start");
         btn.disabled = true;
         resolve();
       };
+      const tap = (e: MouseEvent) => {
+        this.tapAt = { x: e.clientX, y: e.clientY };
+        go();
+      };
       const key = (e: KeyboardEvent) => { if (e.code === "Enter" || e.code === "Space") { e.preventDefault(); go(); } };
-      btn.addEventListener("click", go, { once: true });
+      this.box.addEventListener("click", tap);
       window.addEventListener("keydown", key);
     });
+  }
+
+  /** Ink washes over the screen from the start button, then the title steps aside. */
+  async wipeOut(): Promise<void> {
+    const wipe = el("[data-wipe]", this.box);
+    const btn = this.box.querySelector<HTMLElement>("[data-start]");
+    const r = btn?.getBoundingClientRect();
+    const x = this.tapAt?.x ?? (r ? r.left + r.width / 2 : window.innerWidth / 2);
+    const y = this.tapAt?.y ?? (r ? r.top + r.height / 2 : window.innerHeight / 2);
+    wipe.style.setProperty("--wx", `${x}px`);
+    wipe.style.setProperty("--wy", `${y}px`);
+    wipe.classList.remove("go");
+    void wipe.offsetWidth;
+    wipe.classList.add("go");
+    await new Promise((res) => window.setTimeout(res, 640));
+    this.conceal();
+    wipe.classList.remove("go");
   }
 
   status(text: string): void {
     el("[data-status]", this.box).textContent = text;
   }
 
-  /** First visit: pick a name. Resolves with the trimmed name (validation is the server's). */
-  askName(initial: string): Promise<string> {
-    const slot = el("[data-slot]", this.box);
-    slot.innerHTML = `<form class="name-row" data-form><input data-name maxlength="10" autocomplete="off" placeholder="이름 (2~10자)" value="${esc(initial)}" aria-label="이름"><button class="start" type="submit">이 이름으로</button></form>`;
-    const input = el<HTMLInputElement>("[data-name]", slot);
-    input.focus();
-    return new Promise((resolve) => {
-      el("[data-form]", slot).addEventListener("submit", (e) => {
-        e.preventDefault();
-        resolve(input.value.trim());
-      });
-    });
-  }
-
   busy(): void {
     el("[data-slot]", this.box).innerHTML = "";
   }
 
+  /** Run the live backdrop (call once the renderer exists). Without it the title keeps a painted gradient. */
+  startScene(): void {
+    this.live = true;
+    this.box.classList.add("live");
+    this.scene ??= new TitleScene();
+    this.scene.start();
+  }
+
+  private stopScene(): void {
+    this.scene?.dispose();
+    this.scene = null;
+  }
+
+  /** Gone for good. */
   hide(): void {
+    this.stopScene();
     this.box.remove();
+  }
+
+  /** Step aside (character creation, loading): hidden, CSS animations stop, the 3D scene is freed. */
+  conceal(): void {
+    this.box.hidden = true;
+    this.stopScene();
+  }
+
+  reveal(): void {
+    this.box.hidden = false;
+    if (this.live) this.startScene();
   }
 }

@@ -1,10 +1,12 @@
 // Renderer, scenes, camera and the ink post pass (from proto/ink-swordsman.html), retuned for a moonlit /
 // dusk mood. The world scene is rendered to a color+depth target and a normal target; the ink shader turns
 // it into paper and ink (edges from depth+normals, quantized washes); dyed materials (alpha 0.5) keep their
-// color and glow a little against the dark; skill "lights" reveal the world's color. Atmosphere lives here
-// too: a painted sky with a moon on far/empty pixels, distance + height haze that fades into that sky,
-// drifting ground mist, three parallax haze bands, a lightning flash. The overlay scene (skill VFX, rain,
-// fireflies) is drawn on top in full color.
+// color and glow a little against the dark; water (alpha ~0.05) mirrors the painted sky; skill "lights"
+// reveal the world's color. Atmosphere lives here too: a painted sky with a haloed moon and cloud bands,
+// four layers of distant silhouettes (karst, ridges or bamboo) sinking into mist, distance + height haze
+// that fades into that sky, drifting ground mist, a dark foreground wash, painted framing silhouettes at
+// the screen corners, a lightning flash. The overlay scene (skill VFX, rain, fireflies) is drawn on top
+// in full color.
 
 import * as THREE from "three";
 
@@ -24,6 +26,13 @@ scene.add(moonLight);
 export const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 300);
 /** Camera forward, kept current every frame (ribbons face the camera with it). */
 export const camFwd = new THREE.Vector3(0, 0, -1);
+/** The ground point the camera follows (the player, give or take the look-ahead); set with the camera. */
+export const camFocus = new THREE.Vector3();
+/**
+ * Objects that are fading out (a gate between the camera and the player): left out of the normal pass,
+ * so the ink pass draws no outline for them. world.ts adds/removes its own meshes.
+ */
+export const noNormalPass = new Set<THREE.Object3D>();
 
 /** Screen feel shared by gameplay and effects. */
 export const feel = { shake: 0, hitstop: 0, time: 0 };
@@ -49,6 +58,18 @@ export interface Mood {
   pillars: number;
   /** backdrop height scale */
   pillarH: number;
+  /** 1 = the two near backdrop layers are distant bamboo instead of ridges */
+  stalks: number;
+  /** warm/pale glow along the horizon behind the silhouettes (0..1) */
+  glow: number;
+  /** brushed cloud bands in the sky (0..1.5); storm clouds are darker */
+  clouds: number;
+  /** dark wash along the bottom of the screen (painted foreground, 0..1) */
+  fgDark: number;
+  /** where the key light (and the shadows it casts) comes from: [azimuth deg, elevation deg], +x east, -z north */
+  sun: readonly number[];
+  /** baked scenery shadow: [strength 0..1 (a linear-space multiply), softness, contact fade length in world units] */
+  shade: readonly number[];
 }
 const moodU = {
   uPaper: { value: new THREE.Vector3(0.66, 0.7, 0.76) },
@@ -66,6 +87,13 @@ const moodU = {
   uEdgeR: { value: 30 },
   uPillars: { value: 1 },
   uPillarH: { value: 1 },
+  uStalks: { value: 0 },
+  uGlow: { value: 0.3 },
+  uClouds: { value: 0.6 },
+  uFgDark: { value: 0 },
+  tFrame: { value: null as THREE.Texture | null },
+  uFrameOn: { value: 0 },
+  uFrameOff: { value: new THREE.Vector2(0, 0) },
 };
 export function setMood(m: Mood): void {
   moodU.uPaper.value.fromArray(m.paper as number[]);
@@ -82,8 +110,14 @@ export function setMood(m: Mood): void {
   hemi.intensity = m.hemiI;
   moonLight.color.setHex(m.moonCol);
   moonLight.intensity = m.moonI;
+  sunDir(m.sun, moonLight.position).multiplyScalar(40);
   moodU.uPillars.value = m.pillars;
   moodU.uPillarH.value = m.pillarH;
+  moodU.uStalks.value = m.stalks;
+  moodU.uGlow.value = m.glow;
+  moodU.uClouds.value = m.clouds;
+  moodU.uFgDark.value = m.fgDark;
+  setFraming(null);
 }
 /** Where the painted backdrop sits: screen uv y of the field's far edge, and the camera x for parallax. */
 export function setHorizon(uvY: number, camX: number): void {
@@ -97,6 +131,18 @@ export function setEdge(r: number): void {
 /** Lightning: 0..1 brightens the sky and lifts the scene for a moment. */
 export function setFlash(v: number): void {
   moodU.uFlash.value = v;
+}
+/**
+ * Painted framing silhouettes at the screen corners (alpha = ink), or null for none. The texture is four
+ * corner pieces (see POST_FRAG frameA); the caller owns and disposes it.
+ */
+export function setFraming(tex: THREE.Texture | null): void {
+  moodU.tFrame.value = tex;
+  moodU.uFrameOn.value = tex ? 1 : 0;
+}
+/** Slight drift of the framing (screen-height units), so the foreground moves against the scene. */
+export function setFramingOffset(x: number, y: number): void {
+  moodU.uFrameOff.value.set(x, y);
 }
 
 /* ---------- color lights (skill light reveals the world's color) ---------- */
@@ -159,7 +205,7 @@ let lastW = 0, lastH = 0;
 
 const POST_FRAG = /* glsl */ `
 precision highp float;
-uniform sampler2D tColor, tDepth, tNormal;
+uniform sampler2D tColor, tDepth, tNormal, tFrame;
 uniform vec2 uRes;
 uniform float uAspect, uTime, uNear, uFar, uEdge, uBleed, uTones;
 uniform mat4 uInvProj, uCamWorld;
@@ -169,6 +215,8 @@ uniform vec4 uSplash[6];
 uniform vec3 uPaper, uInk, uSkyTop, uSkyLow, uMist;
 uniform vec4 uMoon;
 uniform float uFogLow, uHazeNear, uHazeFar, uFlash, uHorizon, uCamX, uEdgeR, uPillars, uPillarH;
+uniform float uStalks, uGlow, uClouds, uFgDark, uFrameOn;
+uniform vec2 uFrameOff;
 varying vec2 vUv;
 float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
@@ -181,7 +229,7 @@ vec3 nrm(vec2 uv){ return texture2D(tNormal, uv).xyz * 2.0 - 1.0; }
 vec3 toSRGB(vec3 c){ return pow(max(c, 0.0), vec3(1.0 / 2.2)); }
 float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 
-// Height of one layer of distant shapes at screen x: tall round-topped karst pillars or soft ridges.
+// Height of one layer of distant shapes at x: tall round-topped karst pillars or soft wooded ridges.
 float layerH(float x, float seed){
   float c = floor(x), h = 0.0;
   for (int j = -1; j <= 1; j++) {
@@ -190,55 +238,133 @@ float layerH(float x, float seed){
     float w = 0.12 + 0.16 * hash(vec2(cc, seed + 1.0));
     float dx = abs(x - center) / w;
     float top = 0.3 + 0.7 * pow(hash(vec2(cc * 1.7, seed + 3.0)), 1.3);
-    // a tall column with a domed crown, leaning a touch
-    float pillar = dx < 1.0 ? top * (0.6 + 0.4 * sqrt(1.0 - dx * dx)) * (1.0 - 0.08 * (x - center) / w) : 0.0;
+    // a steep column, its crown broken into knuckles and tufts of pine, leaning a touch
+    float prof = pow(max(1.0 - dx * dx, 0.0), 0.3);
+    float crown = 0.86 + 0.18 * noise(vec2(x * 22.0, seed + 9.0)) + 0.06 * noise(vec2(x * 75.0, seed));
+    float pillar = dx < 1.0 ? top * prof * crown * (1.0 - 0.08 * (x - center) / w) : 0.0;
     h = max(h, pillar);
   }
-  float ridge = 0.25 + 0.5 * fbm3(vec2(x * 0.6, seed));
+  float ridge = 0.25 + 0.55 * fbm3(vec2(x * 0.6, seed));
+  // treeline fuzz on the ridges
+  ridge += (noise(vec2(x * 26.0, seed)) - 0.5) * 0.05 * (1.0 - uPillars);
   h = mix(ridge, max(h, ridge * 0.35), uPillars);
   return h + (noise(vec2(x * 9.0, seed)) - 0.5) * 0.025;
 }
 
-// Painted sky in screen space: night toward the top, a glow at the horizon, brushed cloud bands, the moon,
-// then three layers of distant silhouettes (far = pale, near = inky) sinking into mist at their feet.
+// Distant bamboo in screen units: thin stalks with leaf clouds near the top. X in screen-height units,
+// Y above the layer's base. Returns coverage.
+float stalks(float X, float Y, float sp, float Hm, float seed){
+  float c = floor(X / sp), m = 0.0;
+  for (int j = -1; j <= 1; j++) {
+    float cc = c + float(j);
+    float top = Hm * (0.45 + 0.55 * hash(vec2(seed, cc * 1.3)));
+    float lean = (hash(vec2(cc * 2.1, seed)) - 0.5) * sp * 0.9;
+    float cx = (cc + 0.2 + 0.6 * hash(vec2(cc, seed))) * sp + lean * clamp(Y / max(top, 0.001), 0.0, 1.0);
+    float w = sp * (0.05 + 0.03 * hash(vec2(cc, seed + 4.0)));
+    float dx = X - cx;
+    float stem = (1.0 - smoothstep(w * 0.5, w, abs(dx))) * step(Y, top);
+    // leaf sprays: two lumpy clouds hanging off the upper stalk
+    vec2 q1 = vec2(dx - sp * 0.35, (Y - top * 0.92) * 1.8);
+    vec2 q2 = vec2(dx + sp * 0.4, (Y - top * 0.7) * 1.8);
+    float n = noise(vec2(X * 90.0, Y * 60.0) + seed) - 0.5;
+    float lv = max(1.0 - smoothstep(0.7, 1.0, length(q1) / (sp * 0.75) + n * 0.7),
+                   1.0 - smoothstep(0.7, 1.0, length(q2) / (sp * 0.6) + n * 0.7));
+    m = max(m, max(stem, lv * step(0.1, top)));
+  }
+  return m;
+}
+
+// Painted sky in screen space: night toward the top, a glow at the horizon, brushed cloud bands, a haloed
+// moon with clouds drifting across it, then four layers of distant silhouettes (far = pale, near = inky)
+// each sinking into its own bank of mist.
 vec3 skyAt(vec2 uv){
+  vec3 grain = vec3(0.94 + 0.08 * fbm3(uv * uRes / 7.0));
+  // well below the backdrop everything is the mist bank (most of the ground's haze lands here)
+  if (uv.y < uHorizon - 0.035) return uMist * grain;
   float t = smoothstep(uHorizon - 0.04, 1.0, uv.y);
-  vec3 s = mix(uSkyLow, uSkyTop, pow(t, 0.8));
-  float c = fbm3(vec2(uv.x * 2.2 + uTime * 0.006, uv.y * 10.0 - uTime * 0.002));
-  s = mix(s, mix(uSkyLow, uSkyTop, 0.35), smoothstep(0.5, 0.85, c) * 0.35 * t);
+  vec3 s = mix(uSkyLow, uSkyTop, pow(t, 0.7));
+  // pale glow hugging the horizon
+  s = mix(s, uSkyLow * 1.08 + 0.03, exp(-pow((uv.y - uHorizon - 0.06) / 0.11, 2.0)) * uGlow);
   if (uMoon.z > 0.0) {
     vec2 p = uv - uMoon.xy; p.x *= uAspect;
     float r = length(p);
-    vec3 mc = vec3(0.97, 0.95, 0.86);
-    float halo = exp(-r / (uMoon.z * 1.8));
-    s = mix(s, mc, clamp(halo * 0.55 * uMoon.w, 0.0, 1.0));
-    float disc = 1.0 - smoothstep(uMoon.z * 0.9, uMoon.z, r);
-    float mare = fbm3(p / uMoon.z * 1.6 + 4.0);
-    s = mix(s, mc * (0.86 + 0.14 * mare), disc * uMoon.w);
+    vec3 mc = vec3(0.97, 0.95, 0.87);
+    float halo = exp(-r / (uMoon.z * 1.6)) * 0.55 + exp(-r / (uMoon.z * 5.0)) * 0.22;
+    s = mix(s, mc, clamp(halo * uMoon.w, 0.0, 1.0) * 0.8);
+    float wob = (noise(vec2(atan(p.y, p.x) * 4.0, 3.0)) - 0.5) * 0.05 * uMoon.z;
+    float disc = 1.0 - smoothstep(uMoon.z * 0.93, uMoon.z, r + wob);
+    float mare = fbm3(p / uMoon.z * 1.7 + 4.0);
+    s = mix(s, mc * (0.82 + 0.18 * mare), disc * uMoon.w);
   }
+  // long brushed cloud bands, darker and heavier in a storm (uClouds > 1)
+  float cy = uv.y - uHorizon;
+  float cl = fbm3(vec2(uv.x * uAspect * 1.1 + uTime * 0.007, uv.y * 8.0 + 3.0));
+  float band = smoothstep(0.5, 0.78, cl) * smoothstep(0.03, 0.14, cy) * min(uClouds, 1.0);
+  vec3 cloudCol = mix(uSkyLow, uSkyTop, 0.55 + 0.35 * max(uClouds - 1.0, 0.0));
+  // under-lit rims where the clouds pass the moon
+  float rim = smoothstep(0.5, 0.6, cl) * (1.0 - smoothstep(0.6, 0.72, cl));
+  if (uMoon.z > 0.0) {
+    vec2 p = uv - uMoon.xy; p.x *= uAspect;
+    s = mix(s, vec3(0.95, 0.93, 0.86), rim * exp(-length(p) / (uMoon.z * 2.5)) * 0.5 * uMoon.w);
+  }
+  s = mix(s, cloudCol, band * 0.6);
+  float storm = max(uClouds - 1.0, 0.0) * smoothstep(0.08, 0.3, cy) * (0.4 + 0.6 * fbm3(vec2(uv.x * uAspect * 0.8 - uTime * 0.02, uv.y * 3.0)));
+  s = mix(s, uSkyTop * 0.7, clamp(storm, 0.0, 0.85));
   s += vec3(0.5, 0.58, 0.78) * uFlash * (0.45 + 0.55 * t);
-  for (int k = 0; k < 3; k++) {
+  for (int k = 0; k < 4; k++) {
     float fk = float(k);
-    float scale = 2.6 + fk * 1.7;
-    float x = uv.x * uAspect * scale + uCamX * (0.006 + fk * 0.006) * scale + fk * 13.7;
-    float H = (0.11 + fk * 0.06) * uPillarH;
-    float y = uv.y - uHorizon + 0.015 * fk;
-    float h = layerH(x, 7.0 + fk * 11.0) * H;
-    float inside = 1.0 - smoothstep(h - 0.004, h + 0.004, y);
-    vec3 shade = mix(uSkyLow, uInk, 0.18 + fk * 0.2);
-    shade = mix(shade, shade * 0.85, smoothstep(0.0, h + 0.001, y) * 0.5);
-    shade *= 0.92 + 0.12 * fbm3(vec2(x * 5.0, y * 30.0));
-    shade = mix(shade, shade * 0.6, uFlash * (0.5 + fk * 0.2));
-    float feet = smoothstep(-0.01, 0.08 + fk * 0.02, y);
+    float scale = 1.8 + fk * 1.25;
+    float par = 0.003 + fk * 0.005;
+    float x = uv.x * uAspect * scale + uCamX * par * scale + fk * 13.7;
+    float base = uHorizon + (3.0 - fk) * 0.02;
+    float H = (0.13 + fk * 0.025) * uPillarH;
+    float y = uv.y - base;
+    float inside;
+    float h;
+    if (uStalks > 0.5 && k >= 1) {
+      float X = uv.x * uAspect + uCamX * par;
+      float sp = 0.035 + fk * 0.025;
+      inside = stalks(X + fk * 3.1, y, sp, 0.1 + fk * 0.1, 7.0 + fk * 11.0);
+      h = 0.1 + fk * 0.1;
+    } else {
+      h = layerH(x, 7.0 + fk * 11.0) * H;
+      inside = 1.0 - smoothstep(h - 0.003, h + 0.003, y);
+    }
+    float dark = 0.12 + fk * 0.15;
+    // distant shapes sit cooler than the glow behind them
+    vec3 shade = mix(mix(uSkyLow, uSkyTop, 0.3), uInk, dark);
+    // vertical texture strokes, darker crowns
+    shade *= 0.88 + 0.2 * noise(vec2(x * 16.0, y * 4.0 + fk * 7.0));
+    shade = mix(shade, shade * 0.78, smoothstep(h - 0.06, h, y) * 0.7);
+    shade = mix(shade, shade * 0.6, uFlash * (0.5 + fk * 0.15));
+    float feet = smoothstep(-0.005, 0.05 + 0.025 * fk, y);
     s = mix(s, mix(uMist, shade, feet), inside);
-    // a drifting veil of mist between layers
-    float veil = exp(-pow((y - 0.02) / 0.035, 2.0)) * smoothstep(0.35, 0.75, fbm3(vec2(x * 0.5 + uTime * 0.02, fk)));
-    s = mix(s, uMist, veil * 0.55);
+    // a bank of mist drifting in front of this layer's feet
+    float mb = exp(-pow((y + 0.004) / (0.024 + 0.008 * fk), 2.0));
+    mb *= 0.5 + 0.5 * smoothstep(0.3, 0.7, fbm3(vec2(x * 0.45 + uTime * (0.012 + 0.006 * fk), fk * 3.1)));
+    s = mix(s, uMist, mb * 0.75);
   }
-  float below = 1.0 - smoothstep(uHorizon - 0.06, uHorizon + 0.01, uv.y);
+  float below = 1.0 - smoothstep(uHorizon - 0.03, uHorizon + 0.012, uv.y);
   s = mix(s, uMist, below * 0.85);
-  s *= 0.94 + 0.08 * fbm3(uv * uRes / 7.0);
-  return s;
+  return s * grain;
+}
+
+// Corner framing: four pieces (TL, BL in the texture's left half; TR, BR in its right half), each a
+// square of side S screen heights anchored to its corner, so they never squash on any aspect.
+float frameA(vec2 uv){
+  float S = min(1.0, uAspect * 0.62);
+  float px = uv.x * uAspect + uFrameOff.x, py = uv.y + uFrameOff.y;
+  float ty;
+  float by = py / S, td = (1.0 - py) / S;
+  if (by < 0.5) ty = by; else if (td < 0.5) ty = 1.0 - td; else return 0.0;
+  // leaves and branches at the top sway a little
+  float sway = step(0.5, ty) * sin(uTime * 0.9 + ty * 7.0 + px * 3.0) * 0.004 * (ty - 0.5) * 2.0;
+  float a = 0.0;
+  float lx = px / S;
+  if (lx < 1.0) a = texture2D(tFrame, vec2(clamp(lx * 0.5 + sway, 0.0, 0.499), ty)).a;
+  float rx = (uAspect - px) / S;
+  if (rx < 1.0) a = max(a, texture2D(tFrame, vec2(clamp(1.0 - rx * 0.5 + sway, 0.501, 1.0), ty)).a);
+  return a;
 }
 
 void main(){
@@ -247,7 +373,9 @@ void main(){
   vec2 suv = uv + wob * px * 16.0 * uBleed;
   vec4 s4 = texture2D(tColor, suv);
   vec3 src = toSRGB(s4.rgb);
-  float dyed = 1.0 - step(0.75, s4.a);
+  // alpha codes: 1 = ink world, ~0.5 = dyed (keeps its color), ~0.05 = water (mirrors the sky)
+  float water = 1.0 - step(0.3, s4.a);
+  float dyed = (1.0 - step(0.75, s4.a)) * (1.0 - water);
   float raw = texture2D(tDepth, suv).x;
   bool isSky = raw > 0.99995;
   float d = linFromRaw(raw);
@@ -280,11 +408,13 @@ void main(){
     float qf = fract(q), ws = 0.06 + 0.3 * uBleed;
     float soft = smoothstep(0.5 - ws, 0.5 + ws, qf);
     float tone = (floor(q) + soft) / uTones;
-    tone = pow(clamp(tone, 0.0, 1.0), 1.45) * 0.95;
+    tone = pow(clamp(tone, 0.0, 1.0), 1.3) * 0.98;
     tone += 0.07 * soft * (1.0 - soft) * 4.0 * step(0.08, tone);
     tone *= 0.82 + 0.3 * fbm(uv * uRes / 6.0);
+    // value by distance: near ink stays rich, far ink thins toward the paper
+    tone *= mix(1.08, 0.62, smoothstep(16.0, 64.0, d));
 
-    vec3 inkImg = mix(paper, uInk, clamp(tone, 0.0, 1.0) * 0.9);
+    vec3 inkImg = mix(paper, uInk, clamp(tone, 0.0, 1.0) * 0.92);
     inkImg = mix(inkImg, uInk * 0.8, clamp(edge, 0.0, 1.0) * 0.92);
 
     // skill light: reveal the world's own color, tinted by the skill
@@ -308,6 +438,18 @@ void main(){
     vec3 colImg = mix(lit, uInk * 0.85, clamp(edge, 0.0, 1.0) * 0.8);
     col = mix(inkImg, colImg, max(reveal, dyed));
 
+    if (water > 0.5) {
+      // still water: the painted sky turned upside down (horizon glow, silhouettes, the moon's light),
+      // broken by horizontal ripples, darkening toward the near bank
+      float rip = noise(vec2(wp.x * 0.6, wp.z * 7.0 + uTime * 0.6)) - 0.5;
+      float below = clamp(uHorizon - uv.y, 0.0, 1.0);
+      vec2 ruv = vec2(uv.x + rip * 0.012, uHorizon + 0.015 + below * 0.32 + rip * 0.006);
+      vec3 refl = skyAt(ruv);
+      refl = mix(refl, uInk, 0.18 + 0.25 * smoothstep(0.0, 0.5, below));
+      refl *= 0.9 + 0.18 * smoothstep(0.2, 0.5, abs(rip));
+      col = mix(refl, colImg, reveal * 0.6);
+    }
+
     // distance haze fades into the sky; tall things keep their silhouette above the mist
     float fd = smoothstep(uHazeNear, uHazeFar, d);
     fd *= mix(1.0, 0.42, smoothstep(2.0, 40.0, wp.y));
@@ -315,11 +457,11 @@ void main(){
     fd = max(fd, edgeFade);
     // three drifting haze bands in the distance layer the silhouettes
     for (int k = 0; k < 3; k++) {
-      float D = 46.0 + float(k) * 26.0;
-      float band = exp(-pow((d - D) / 9.0, 2.0));
+      float D = 40.0 + float(k) * 22.0;
+      float band = exp(-pow((d - D) / 8.0, 2.0));
       float drift = fbm3(vec2(wp.x * 0.025 + uTime * (0.01 + 0.006 * float(k)), wp.y * 0.05 + float(k) * 5.0));
       band *= smoothstep(0.3, 0.75, drift) * (1.0 - smoothstep(4.0, 30.0, wp.y) * 0.6);
-      fd = max(fd, band * 0.7);
+      fd = max(fd, band * 0.75);
     }
     fd *= 1.0 - dyed * 0.55;
     // low ground mist drifting through the field
@@ -329,6 +471,11 @@ void main(){
     col = mix(col, sky, clamp(fd, 0.0, 1.0));
     col += uFlash * 0.16 * vec3(0.7, 0.78, 1.0) * (1.0 - fd);
   }
+
+  // painted foreground: a dark, uneven wash along the bottom of the frame
+  float fg = (1.0 - smoothstep(0.0, 0.2, uv.y + (fbm3(vec2(uv.x * 3.0, 1.3)) - 0.5) * 0.12)) * uFgDark;
+  fg *= 0.55 + 0.6 * fbm3(uv * vec2(5.0, 11.0) + 1.7);
+  col = mix(col, col * 0.55 + uInk * 0.12, clamp(fg, 0.0, 0.85));
 
   float spl = 0.0;
   for (int i = 0; i < 6; i++) {
@@ -352,8 +499,15 @@ void main(){
     spl = max(spl, max(core * 0.85, drops * 0.8) * (1.0 - smoothstep(1.2, 4.0, age)));
   }
   col = mix(col, uInk, spl);
+
+  if (uFrameOn > 0.5) {
+    float fa = frameA(uv);
+    // dry-brush grain in the framing ink
+    float g = 0.82 + 0.3 * fbm3(uv * uRes / 5.0);
+    col = mix(col, uInk * g + uMist * 0.04, clamp(fa, 0.0, 1.0) * 0.94);
+  }
   vec2 vc = (uv - 0.5) * vec2(1.0, 1.15);
-  col *= 1.0 - 0.42 * smoothstep(0.25, 0.75, length(vc));
+  col *= 1.0 - 0.36 * smoothstep(0.3, 0.8, length(vc));
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -362,6 +516,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
   DPR = Math.min(window.devicePixelRatio || 1, 1.25);
   renderer.setPixelRatio(DPR);
+  renderer.info.autoReset = false; // counts cover the whole frame (scene, normals, post, overlay)
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace; // the post shader writes display values itself
   colorRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
   colorRT.depthTexture = new THREE.DepthTexture(4, 4);
@@ -415,13 +570,16 @@ export function resize(): void {
 export function renderFrame(dt: number): void {
   if (!renderer) return;
   updateLights(dt);
+  renderer.info.reset();
   postMat.uniforms.uTime.value = feel.time;
   renderer.setRenderTarget(colorRT);
   renderer.render(scene, camera);
   scene.overrideMaterial = normalMat;
   scene.background = BLACK;
+  for (const o of noNormalPass) o.visible = false;
   renderer.setRenderTarget(normalRT);
   renderer.render(scene, camera);
+  for (const o of noNormalPass) o.visible = true;
   scene.overrideMaterial = null;
   scene.background = BG;
   renderer.setRenderTarget(null);
@@ -435,9 +593,161 @@ export function setLoop(fn: (() => void) | null): void {
   renderer?.setAnimationLoop(fn);
 }
 
+/* ---------- baked scenery shadows ----------
+   Once per zone: the static scenery is drawn into a depth map from the zone's light (ortho, fitted to the
+   field), then a mask pass paints the shadow it casts onto the ground plane into a small world-space R8
+   texture: soft, wider the further it falls from its caster (darker contact at the base, thinning toward
+   the tip), with a dry-brush wobble at the edges. The depth target is freed right after; only the mask
+   lives on (OWNED here, disposed by clearShadows on zone change). groundMat samples it once per pixel. */
+const SHADOW_FRAG = /* glsl */ `
+precision highp float;
+uniform sampler2D tDepth;
+uniform mat4 uLightVP;
+uniform vec3 uBox;      // min x, min z, size (world units)
+uniform float uRange;   // light camera far - near (world units)
+uniform float uTexel;   // one depth texel in uv
+uniform float uSpan;    // world units across the light camera's width
+uniform vec3 uShade;    // strength (unused here), softness, cast fade length (world units)
+varying vec2 vUv;
+float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a * noise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return v / 0.9375; }
+void main(){
+  vec2 w = uBox.xy + vUv * uBox.z;
+  // the brush wobbles: the receiver point drifts a little, more at fine scale (dry edges)
+  w += (vec2(fbm(w * 0.5), fbm(w * 0.5 + 7.3)) - 0.5) * 0.5 + (vec2(noise(w * 4.0), noise(w * 4.0 + 3.1)) - 0.5) * 0.12;
+  vec4 lp = uLightVP * vec4(w.x, 0.0, w.y, 1.0);
+  vec3 sc = lp.xyz / lp.w * 0.5 + 0.5;
+  if (sc.x <= 0.0 || sc.x >= 1.0 || sc.y <= 0.0 || sc.y >= 1.0) { gl_FragColor = vec4(0.0); return; }
+  float bias = 0.04 / uRange;
+  float rot = hash(vUv * 977.0) * 6.2831;
+  // blocker search: how far above the ground (along the light) the shadowing scenery is
+  float sum = 0.0, cnt = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float fi = float(i);
+    float a = fi * 2.39996 + rot, r = sqrt((fi + 0.5) / 12.0) * 1.3 / uSpan;
+    float d = texture2D(tDepth, sc.xy + vec2(cos(a), sin(a)) * r).x;
+    if (d < sc.z - bias) { sum += d; cnt += 1.0; }
+  }
+  if (cnt < 0.5) { gl_FragColor = vec4(0.0); return; }
+  float gap = (sc.z - sum / cnt) * uRange;               // world units from caster to ground
+  // penumbra grows with the gap: crisp at the foot, a soft wash toward the tip
+  float penUv = max(clamp(0.06 + gap * 0.1 * uShade.y, 0.06, 1.4) / uSpan, uTexel);
+  float hit = 0.0;
+  for (int i = 0; i < 16; i++) {
+    float fi = float(i);
+    float a = fi * 2.39996 + rot, r = sqrt((fi + 0.5) / 16.0) * penUv;
+    float d = texture2D(tDepth, sc.xy + vec2(cos(a), sin(a)) * r).x;
+    hit += step(d, sc.z - bias);
+  }
+  float s = hit / 16.0;
+  // contact: darkest right at the base, thinning along the cast
+  s *= mix(0.55, 1.0, 1.0 - smoothstep(0.0, uShade.z, gap));
+  s *= 0.85 + 0.3 * fbm(w * 1.3 + 5.0);
+  gl_FragColor = vec4(clamp(s, 0.0, 1.0), 0.0, 0.0, 1.0);
+}`;
+let shadeRT: THREE.WebGLRenderTarget | null = null;
+const coarseShadows = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
+const shadowCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 400);
+const shadowScene = new THREE.Scene();
+shadowScene.overrideMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+const shadeQuadMat = new THREE.ShaderMaterial({
+  depthTest: false, depthWrite: false,
+  uniforms: {
+    tDepth: { value: null as THREE.Texture | null },
+    uLightVP: { value: new THREE.Matrix4() },
+    uBox: { value: new THREE.Vector3() },
+    uRange: { value: 399 },
+    uTexel: { value: 1 / 2048 },
+    uSpan: { value: 100 },
+    uShade: { value: new THREE.Vector3(0.5, 1, 6) },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: SHADOW_FRAG,
+});
+const shadeScene = new THREE.Scene();
+{
+  const q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), shadeQuadMat);
+  q.frustumCulled = false;
+  shadeScene.add(q);
+}
+const vSun = new THREE.Vector3();
+/** Unit vector toward the light for a mood's sun [azimuth deg, elevation deg] (+x east, -z north). */
+export function sunDir(sun: readonly number[], out: THREE.Vector3): THREE.Vector3 {
+  const az = (sun[0] * Math.PI) / 180, el = (sun[1] * Math.PI) / 180;
+  return out.set(Math.cos(el) * Math.cos(az), Math.sin(el), Math.cos(el) * Math.sin(az));
+}
+
+/**
+ * Bakes the shadow the given roots cast onto the ground into a world-space mask covering the square
+ * [-half, half]^2. Meshes with userData.noCast (ground, water, path, grass) are left out. Returns the mask
+ * and its box, or null without a renderer (tests). The previous mask is disposed.
+ */
+export function bakeShadows(roots: THREE.Object3D[], half: number, sun: readonly number[], shade: readonly number[]): { tex: THREE.Texture; box: THREE.Vector3 } | null {
+  clearShadows();
+  if (!renderer) return null;
+  const caps = renderer.capabilities;
+  const N = Math.min(caps.maxTextureSize, coarseShadows ? 1024 : 2048);
+  const depthRT = new THREE.WebGLRenderTarget(N, N, { depthBuffer: true });
+  depthRT.depthTexture = new THREE.DepthTexture(N, N);
+  // fit an ortho camera, looking down the light, around the field
+  sunDir(sun, vSun);
+  shadowCam.position.copy(vSun).multiplyScalar(200);
+  shadowCam.up.set(0, 1, 0);
+  shadowCam.lookAt(0, 0, 0);
+  // the ground square, seen down the light: its width, foreshortened depth, plus the tallest casters
+  const ext = half * 1.42, cosEl = Math.sqrt(1 - vSun.y * vSun.y);
+  shadowCam.left = -ext; shadowCam.right = ext;
+  const vy = ext * vSun.y + 26 * cosEl + 4;
+  shadowCam.top = vy; shadowCam.bottom = -vy;
+  shadowCam.near = 1; shadowCam.far = 400;
+  shadowCam.updateProjectionMatrix();
+  shadowCam.updateMatrixWorld(true);
+  // borrow the casters into the bake scene, leaving flat things out
+  const parents: (THREE.Object3D | null)[] = [];
+  const hidden: THREE.Object3D[] = [];
+  for (const r of roots) {
+    parents.push(r.parent);
+    r.traverse((o) => { if (o.userData.noCast && o.visible) { o.visible = false; hidden.push(o); } });
+    shadowScene.add(r);
+  }
+  const prevTarget = renderer.getRenderTarget();
+  renderer.setRenderTarget(depthRT);
+  renderer.render(shadowScene, shadowCam);
+  for (let i = 0; i < roots.length; i++) {
+    const p = parents[i];
+    if (p) p.add(roots[i]); else shadowScene.remove(roots[i]);
+  }
+  for (const o of hidden) o.visible = true;
+  // paint the mask in world space
+  const M = 1024;
+  shadeRT = new THREE.WebGLRenderTarget(M, M, { format: THREE.RedFormat, depthBuffer: false });
+  const u = shadeQuadMat.uniforms;
+  u.tDepth.value = depthRT.depthTexture;
+  u.uLightVP.value.multiplyMatrices(shadowCam.projectionMatrix, shadowCam.matrixWorldInverse);
+  u.uBox.value.set(-half, -half, half * 2);
+  u.uRange.value = shadowCam.far - shadowCam.near;
+  u.uTexel.value = 1 / N;
+  u.uSpan.value = ext * 2;
+  (u.uShade.value as THREE.Vector3).fromArray(shade as number[]);
+  renderer.setRenderTarget(shadeRT);
+  renderer.render(shadeScene, postCam);
+  renderer.setRenderTarget(prevTarget);
+  u.tDepth.value = null;
+  depthRT.depthTexture.dispose();
+  depthRT.dispose(); // the depth map was only needed for the bake
+  return { tex: shadeRT.texture, box: new THREE.Vector3(-half, -half, half * 2) };
+}
+/** Frees the current zone's shadow mask. */
+export function clearShadows(): void {
+  shadeRT?.dispose();
+  shadeRT = null;
+}
+
 /** For debugging leaks from the console: window.__ink.info(). */
-export function memoryInfo(): { geometries: number; textures: number; programs: number; calls: number } | null {
+export function memoryInfo(): { geometries: number; textures: number; programs: number; calls: number; triangles: number } | null {
   if (!renderer) return null;
   const i = renderer.info;
-  return { geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0, calls: i.render.calls };
+  return { geometries: i.memory.geometries, textures: i.memory.textures, programs: i.programs?.length ?? 0, calls: i.render.calls, triangles: i.render.triangles };
 }

@@ -80,7 +80,7 @@ describe("attacks", () => {
   test("attacks need a room you arrived in; the village has nothing to hit", async (server) => {
     await inVillage(server, "test-a");
     await readyAt(server);
-    expect(await server.attack(swing(1))).toEqual({ hits: [], exp: 0, pigment: 0, jade: 0, levelUp: false });
+    expect(await server.attack(swing(1))).toEqual({ hits: [], exp: 0, pigment: 0, jade: 0, stones: 0, shards: 0, levelUp: false });
   });
 
   test("a kill past the level's exp levels you up: more health, healed to full, shown in the room", async (server) => {

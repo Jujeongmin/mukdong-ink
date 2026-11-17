@@ -1,5 +1,5 @@
 import { MONSTERS, RESPAWN_MS, maxHpFor, monsterAtk } from "../../src/shared/combat";
-import { START_POS, ZONES, roomIdFor } from "../../src/shared/world";
+import { ROLL_IFRAME_MS, START_POS, ZONES, roomIdFor } from "../../src/shared/world";
 import { MONSTER_SYNC_MS, spawnZone } from "../src/hunt";
 import { ago, errorOf, goTo, inVillage, join, only, profileOf, walkTo } from "./helpers";
 
@@ -14,7 +14,8 @@ describe("monsters", () => {
     for (const m of Object.values(monsters) as any[]) {
       expect(m.hp).toBe(m.maxHp);
       expect(Math.hypot(m.x, m.z)).toBeLessThanOrEqual(ZONES.bamboo.radius);
-      for (const p of ZONES.bamboo.portals) expect(Math.hypot(m.x - p.x, m.z - p.z)).toBeGreaterThan(6);
+      // The fixed ones (the vine ring and the lair at the north gate) stand where the zone puts them.
+      if (!["vine", "shadelord", "bigblob"].includes(m.kind)) for (const p of ZONES.bamboo.portals) expect(Math.hypot(m.x - p.x, m.z - p.z)).toBeGreaterThan(6);
     }
   });
 
@@ -38,6 +39,31 @@ describe("monsters", () => {
     // Its next bite waits for its cooldown.
     await server.simulateTick(entry.roomId, 200);
     expect((await $room.getMyState()).hp).toBe(hp);
+  });
+
+  test("beside a quest NPC in a hunting zone, monsters leave you be", async (server) => {
+    const entry = await goTo(server, "test-a", "bamboo");
+    const npc = ZONES.bamboo.npcs[0];
+    await walkTo(server, npc.x + 1, npc.z);
+    await only("bamboo", "blob0", npc.x + 1.8, npc.z, { level: 3 });
+    const full = (await $room.getMyState()).hp;
+    await server.simulateTick(entry.roomId, 200);
+    expect((await $room.getMyState()).hp).toBe(full);
+  });
+
+  test("a blow landing mid-roll passes through; after the roll it lands", async (server) => {
+    const entry = await goTo(server, "test-a", "bamboo");
+    await walkTo(server, 0, 0);
+    await only("bamboo", "blob0", 0.8, 0, { level: 3 });
+    const full = (await $room.getMyState()).hp;
+    await $room.updateMyState({ dashAt: Date.now() });
+    await server.simulateTick(entry.roomId, 200);
+    expect((await $room.getMyState()).hp).toBe(full);
+    // the roll is long over and the blob's cooldown has passed: it bites
+    await $room.updateMyState({ dashAt: ago(ROLL_IFRAME_MS + 50) });
+    await only("bamboo", "blob0", 0.8, 0, { level: 3 });
+    await server.simulateTick(entry.roomId, 200);
+    expect((await $room.getMyState()).hp).toBe(full - monsterAtk(MONSTERS.blob, 3));
   });
 
   test("a monster chases the nearest player within its aggro and lets the far ones be", async (server) => {

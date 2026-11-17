@@ -23,6 +23,8 @@ describe("the local GameApi (server code in the page)", () => {
     api.onProfile((p) => profiles.push(p.jade));
     const first = await api.loadProfile();
     expect(first.name).toMatch(/^먹동이\d{4}$/);
+    const made = await api.createCharacter("먹선이", 0xe58aa5, null);
+    expect([made.created, made.name, made.dye.scarf, made.points]).toEqual([true, "먹선이", 0xe58aa5, 0]);
 
     const players: Record<string, RoomPlayer>[] = [];
     const rooms: RoomView[] = [];
@@ -30,7 +32,7 @@ describe("the local GameApi (server code in the page)", () => {
     api.onRoom((r) => rooms.push(r));
     const village = await api.enterZone("village");
     expect([village.zone, village.x, village.z]).toEqual(["village", START_POS.x, START_POS.z]);
-    expect(players.at(-1)?.["local-test"]?.name).toBe(first.name);
+    expect(players.at(-1)?.["local-test"]?.name).toBe(made.name);
 
     // A watched mock ad pays through the server's own claim; a skipped one pays nothing.
     expect((await api.watchAdForJade())?.jade).toBe(AD_REWARD_JADE);

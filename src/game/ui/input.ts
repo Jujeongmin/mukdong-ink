@@ -1,6 +1,10 @@
-// Keyboard (WASD/arrows, Space, J, K, 1–5, Q, E, G, H, Esc) and touch (joystick + buttons).
+// Controls (user layout): WASD/arrows move, left click on the field attacks (hold to keep the combo; J as a
+// keyboard fallback), Space / Shift / right click rolls (구르기, the dodge), Z auto-battle, 1 potion, G talk,
+// I gear, K training, H help, Esc closes. Skills fire on their own (their rings can be clicked to fire early).
+// Mouse users aim at the cursor on the ground; touch keeps the joystick and on-screen buttons.
 
-export type Act = "atk" | "dash" | "jump";
+/** "dash" is the roll (sent to the server as the dash action) */
+export type Act = "atk" | "dash";
 export interface InputHandlers {
   /** true while a sheet or overlay owns the input */
   blocked(): boolean;
@@ -10,12 +14,21 @@ export interface InputHandlers {
   interact(): void;
   gear(): void;
   help(): void;
+  growth(): void;
   escape(): void;
+  /** any manual input (auto-battle yields to it) */
+  manual?(): void;
+  /** Z: auto-battle on/off */
+  auto?(): void;
 }
 
-const KEYMAP: Record<string, "up" | "down" | "left" | "right" | Act> = {
+/** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
+export const KEYS = {
+  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "1", talk: "G", gear: "I", growth: "K", help: "H",
+} as const;
+
+const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
   KeyW: "up", ArrowUp: "up", KeyS: "down", ArrowDown: "down", KeyA: "left", ArrowLeft: "left", KeyD: "right", ArrowRight: "right",
-  Space: "jump", KeyJ: "atk", KeyZ: "atk", KeyK: "dash", KeyX: "dash", ShiftLeft: "dash", ShiftRight: "dash",
 };
 
 export class Input {
@@ -23,23 +36,62 @@ export class Input {
   private readonly joy = { x: 0, y: 0, id: -1 };
   mx = 0;
   mz = 0;
+  /** left button (or J) held down on the field: keep the combo going */
+  holdAtk = false;
+  private holdKey = false;
+  private holdMouse = false;
+  /** mouse users aim at the cursor; screen position in normalized device coordinates */
+  mouseAim = false;
+  readonly ndc = { x: 0, y: 0 };
 
-  constructor(private readonly h: InputHandlers, root: HTMLElement) {
+  constructor(private readonly h: InputHandlers, root: HTMLElement, canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", (e) => this.down(e));
     window.addEventListener("keyup", (e) => {
-      const a = KEYMAP[e.code];
-      if (a) this.held.delete(a);
+      const m = MOVE[e.code];
+      if (m) this.held.delete(m);
+      if (e.code === "KeyJ") { this.holdKey = false; this.syncHold(); }
     });
     window.addEventListener("blur", () => this.clear());
     root.querySelectorAll<HTMLElement>("[data-act]").forEach((b) => {
       const a = b.dataset.act as string;
       b.addEventListener("pointerdown", (e) => {
         e.preventDefault();
+        this.h.manual?.();
         if (a === "potion") this.h.potion();
         else if (a === "interact") this.h.interact();
         else if (!this.h.blocked()) this.h.act(a as Act);
       });
     });
+    // the field itself: left click attacks, right click dashes, the cursor aims
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    canvas.addEventListener("pointermove", (e) => {
+      if (e.pointerType !== "mouse") return;
+      this.mouseAim = true;
+      this.ndc.x = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
+      this.ndc.y = -(e.clientY / Math.max(1, window.innerHeight)) * 2 + 1;
+    });
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse") return;
+      this.mouseAim = true;
+      this.ndc.x = (e.clientX / Math.max(1, window.innerWidth)) * 2 - 1;
+      this.ndc.y = -(e.clientY / Math.max(1, window.innerHeight)) * 2 + 1;
+      if (this.h.blocked()) return;
+      this.h.manual?.();
+      if (e.button === 0) {
+        this.holdMouse = true;
+        this.syncHold();
+        canvas.setPointerCapture(e.pointerId);
+        this.h.act("atk");
+      } else if (e.button === 2) {
+        e.preventDefault();
+        this.h.act("dash");
+      }
+    });
+    const release = (e: PointerEvent) => {
+      if (e.button === 0 || e.type === "pointercancel") { this.holdMouse = false; this.syncHold(); }
+    };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
     const stick = root.querySelector<HTMLElement>(".stick");
     const knob = stick?.querySelector<HTMLElement>("i");
     if (stick && knob) {
@@ -51,6 +103,7 @@ export class Input {
         this.joy.x = dx / m;
         this.joy.y = dy / m;
         knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        this.h.manual?.();
       };
       stick.addEventListener("pointerdown", (e) => {
         e.preventDefault();
@@ -65,26 +118,43 @@ export class Input {
     }
   }
 
+  private syncHold(): void {
+    this.holdAtk = this.holdKey || this.holdMouse;
+  }
+
   private down(e: KeyboardEvent): void {
     const tgt = e.target as HTMLElement | null;
     if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return;
     if (e.code === "Escape") { this.h.escape(); return; }
-    if (e.repeat && !KEYMAP[e.code]) return;
-    if (e.code === "KeyG") { this.h.gear(); return; }
+    const move = MOVE[e.code];
+    if (e.repeat && !move) return;
+    if (e.code === "KeyI") { this.h.gear(); return; }
     if (e.code === "KeyH") { this.h.help(); return; }
+    if (e.code === "KeyK") { this.h.growth(); return; }
     if (this.h.blocked()) return;
-    if (/^Digit[1-5]$/.test(e.code)) { e.preventDefault(); this.h.skill(+e.code.slice(5) - 1); return; }
-    if (e.code === "KeyQ") { this.h.potion(); return; }
-    if (e.code === "KeyE" || e.code === "Enter") { this.h.interact(); return; }
-    const a = KEYMAP[e.code];
-    if (!a) return;
-    e.preventDefault();
-    if (!this.held.has(a) && (a === "atk" || a === "dash" || a === "jump")) this.h.act(a);
-    this.held.add(a);
+    if (move) {
+      e.preventDefault();
+      this.held.add(move);
+      this.h.manual?.();
+      return;
+    }
+    if (e.code === "Digit1" || e.code === "Numpad1") { this.h.potion(); return; }
+    if (e.code === "KeyG") { this.h.interact(); return; }
+    if (e.code === "KeyZ") { this.h.auto?.(); return; }
+    if (e.code === "Space" || e.code === "ShiftLeft" || e.code === "ShiftRight") { e.preventDefault(); this.h.manual?.(); this.h.act("dash"); return; }
+    if (e.code === "KeyJ") {
+      this.h.manual?.();
+      this.holdKey = true;
+      this.syncHold();
+      this.h.act("atk");
+    }
   }
 
   clear(): void {
     this.held.clear();
+    this.holdKey = false;
+    this.holdMouse = false;
+    this.syncHold();
   }
 
   /** Movement this frame (camera looks north, so screen-down is +z). */

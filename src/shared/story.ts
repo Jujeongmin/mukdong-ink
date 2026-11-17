@@ -98,12 +98,15 @@ export const QUEST_STORY: Record<string, QuestStory> = {
   },
   c1q5: {
     offer: [
-      { who: "baram", text: "대숲 깊은 곳에 사람 모양 그림자들이 돌아다녀. 붓 같은 걸 들고." },
-      { who: "baram", text: "먹그림자라고 불러. 그런데 이상하지. 걔들 칼놀림이… 스승님 칼놀림이랑 닮았어." },
-      { who: "baram", text: "셋만 베고 와. 뭔가 떨어뜨리면 가져오고." },
+      { who: "baram", text: "대숲 북쪽 문 앞에 먹덩굴이 엉켜 있어. 그 너머 굴에 그림자 무사가 살아." },
+      { who: "baram", text: "이상하지. 그 칼놀림이… 스승님 칼놀림이랑 닮았어." },
+      { who: "baram", text: "덩굴은 화염선풍으로 태워. 그리고 굴의 무사를 베고 와." },
     ],
-    accept: "먹그림자를 찾는다",
-    progress: [{ who: "baram", text: "그림자는 바로 달려들지 않아. 붓을 치켜드는 순간을 봐. 그때 피해." },],
+    accept: "그림자 무사를 찾는다",
+    progress: [
+      { who: "baram", text: "칼이 미끄러졌지? 먹 갑옷이야. 단련 안 한 검법은 그냥 튕겨 나가." },
+      { who: "baram", text: "수련에서 검법 하나라도 한 단계 올리고 다시 가. 붓을 치켜드는 순간엔 굴러서 피하고." },
+    ],
     complete: [
       { who: "baram", text: "…이건 붓 검객의 매듭이야. 스승님 띠에 달린 거랑 똑같아." },
       { who: "baram", text: "그러니까 먹그림자는… 번짐에 삼켜진 옛 붓 검객들이었던 거야." },
@@ -173,7 +176,11 @@ export const QUEST_STORY: Record<string, QuestStory> = {
       { who: "heukwol", text: "놈을 베면 물빛이 돌아올 거다. 그리고 너는… 네가 왜 색을 가졌는지 조금은 알게 되겠지." },
     ],
     accept: "대먹귀에게 간다",
-    progress: [{ who: "heukwol", text: "놈은 쓰러져도 다시 고인다. 때를 기다렸다가 다시 올라가라." }],
+    progress: [
+      { who: "heukwol", text: "놈의 먹 갑옷은 무딘 붓을 받아 내지 않는다. 붓을 +3까지 다듬고 와라." },
+      { who: "heukwol", text: "수련에서 먹돌로 붓을 벼려라. +3까지는 부서질 걱정 없다." },
+      { who: "heukwol", text: "놈은 쓰러져도 다시 고인다. 때를 기다렸다가 다시 올라가라." },
+    ],
     complete: [
       { who: "heukwol", text: "…해냈군. 봐라. 놈이 남긴 먹 속에서 푸른빛이 떨린다." },
       { who: "", text: "먹동이가 손을 뻗자, 푸른 조각이 붓끝으로 스며든다. 순간 봉우리 아래 연못이 아주 잠깐, 물빛으로 반짝였다." },

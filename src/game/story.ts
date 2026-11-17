@@ -14,6 +14,8 @@ export interface StoryCtx {
   api: GameApi;
   dialogue: Dialogue;
   sheets: Sheets;
+  /** discovery-hint memory (first death → 단이 mentions potions once) */
+  hints?: { has(id: string): boolean; mark(id: string): void };
   profile(): ProfileView;
   apply(p: ProfileView): void;
 }
@@ -104,6 +106,12 @@ export class Story {
         const pick = await dialogue.play(DAILY_INTRO, { choices: [{ label: "오늘의 의뢰 보기", value: "daily" }, LATER] });
         if (pick === "daily") sheets.openNpc(npc, "daily");
       }
+      return;
+    }
+    if (npc.role === "dyer" && !handled && this.ctx.hints?.has("death") && !this.ctx.hints.has("dyer-potion")) {
+      this.ctx.hints.mark("dyer-potion");
+      const pick = await dialogue.play([{ who: "dyer", text: "또 먹에 잠겼다면서요? 물약 몇 개 챙겨 가요! 여기서 팔아요." }], { choices: [{ label: "물약 보기", value: "potion" }, { label: "그만 가 볼게", value: "" }] });
+      if (pick === "potion") sheets.openNpc(npc, "potion");
       return;
     }
     if (npc.role === "dyer" || npc.role === "altar") {

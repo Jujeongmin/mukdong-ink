@@ -23,6 +23,8 @@ export class Dialogue {
   private full = "";
   private shown = 0;
   private advance: (() => void) | null = null;
+  /** put away while the player lies dead; the conversation resumes after getting up */
+  private held = false;
 
   constructor(private readonly root: HTMLElement, private readonly myName: () => string) {
     root.insertAdjacentHTML("beforeend", `
@@ -46,7 +48,7 @@ export class Dialogue {
     });
     // capture so the field never sees the keys while a conversation is up
     window.addEventListener("keydown", (e) => {
-      if (!this.open) return;
+      if (!this.open || this.held) return;
       if (e.code === "Space" || e.code === "KeyE" || e.code === "Enter") {
         if (this.choiceEl.childElementCount > 0 && this.shown >= this.full.length) {
           (this.choiceEl.firstElementChild as HTMLButtonElement | null)?.focus();
@@ -63,6 +65,12 @@ export class Dialogue {
     return this.open;
   }
 
+  /** Hide an open conversation without ending it (death screen on top), or bring it back. */
+  hold(on: boolean): void {
+    this.held = on;
+    if (this.open) this.box.hidden = on;
+  }
+
   /**
    * Plays the lines in order. With choices, the last line waits for a pick and the promise resolves to
    * its value (Escape or tapping outside never picks one). Without, it resolves to "" at the end.
@@ -72,7 +80,7 @@ export class Dialogue {
     if (lines.length === 0 && !opts.choices) return "";
     this.open = true;
     this.root.classList.add("talking");
-    this.box.hidden = false;
+    this.box.hidden = this.held;
     this.box.classList.toggle("dark", !!opts.dark);
     let result = "";
     for (let i = 0; i < lines.length; i++) {
@@ -100,7 +108,7 @@ export class Dialogue {
     return new Promise((resolve) => {
       const showChoices = () => {
         if (!choices) return;
-        this.choiceEl.innerHTML = choices.map((c, k) => `<button type="button" class="dlg-choice${k === 0 ? " main" : ""}" data-v="${esc(c.value)}">${esc(c.label)}</button>`).join("");
+        this.choiceEl.innerHTML = choices.map((c, k) => `<button type="button" class="dlg-choice btn${k === 0 ? " main" : " btn-secondary"}" data-v="${esc(c.value)}">${esc(c.label)}</button>`).join("");
         this.choiceEl.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.addEventListener("click", (e) => {
           e.stopPropagation();
           resolve(b.dataset.v ?? "");
