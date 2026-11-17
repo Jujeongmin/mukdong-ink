@@ -92,6 +92,12 @@ const GUARD_HOLD = 4;
 const vA = new THREE.Vector3(), vB = new THREE.Vector3();
 let actorCount = 0;
 
+/**
+ * Sound hook for every actor, local and remote (the game points it at the audio module):
+ * 1..3 combo swings, 4 air spin, 5 roll, 10 + i skill i.
+ */
+export const actorSound: { fn: ((code: number, a: Actor) => void) | null } = { fn: null };
+
 export class Actor {
   readonly rig = new Rig();
   /** the scarf: a knot at the neck (rig collar) and two long tails trailing behind */
@@ -222,6 +228,7 @@ export class Actor {
     this.fired = false;
     this.trail.col = this.weaponTrail;
     const kind = STATE_KIND[s];
+    if (kind && s !== "dash") actorSound.fn?.(kind, this);
     if (kind) {
       this.atkSeq++;
       this.atkKind = kind;
@@ -252,6 +259,7 @@ export class Actor {
   private startSkill(i: number): void {
     if (this.local) this.aim();
     this.start(("sk" + i) as ActState);
+    actorSound.fn?.(10 + i, this);
     this.skillSeq++;
     this.skill = i;
     const col = SKILL_COL[i], fx = this.fx, fz = this.fz;

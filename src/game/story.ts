@@ -9,6 +9,7 @@ import { dailyStatus, mainStatus, readyByTalk, rewardText } from "./quests";
 import type { Dialogue } from "./ui/dialogue";
 import type { Sheets } from "./ui/sheets";
 import { attempt, toast } from "./ui/dom";
+import { audio } from "./audio";
 
 export interface StoryCtx {
   api: GameApi;
@@ -63,6 +64,7 @@ export class Story {
         if (r) {
           this.ctx.apply(r);
           toast(`의뢰 완료: ${s.q.title} (${rewardText(s.q)})`);
+          audio.play("quest-done");
           if (!MAIN_QUESTS[r.main]) await dialogue.play(CHAPTER_END, { dark: true });
           else await this.offer(npc);
         }

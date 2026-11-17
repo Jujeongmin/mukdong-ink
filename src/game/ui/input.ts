@@ -20,11 +20,13 @@ export interface InputHandlers {
   manual?(): void;
   /** Z: auto-battle on/off */
   auto?(): void;
+  /** M: sound on/off */
+  mute?(): void;
 }
 
 /** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
 export const KEYS = {
-  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "1", talk: "G", gear: "I", growth: "K", help: "H",
+  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "1", talk: "G", gear: "I", growth: "K", help: "H", mute: "M",
 } as const;
 
 const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
@@ -124,8 +126,11 @@ export class Input {
 
   private down(e: KeyboardEvent): void {
     const tgt = e.target as HTMLElement | null;
-    if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return;
     if (e.code === "Escape") { this.h.escape(); return; }
+    // text fields keep their keys; a slider (range) still lets M through
+    if (tgt && tgt.tagName === "TEXTAREA") return;
+    if (tgt && tgt.tagName === "INPUT" && (tgt as HTMLInputElement).type !== "range") return;
+    if (e.code === "KeyM" && !e.repeat) { this.h.mute?.(); return; }
     const move = MOVE[e.code];
     if (e.repeat && !move) return;
     if (e.code === "KeyI") { this.h.gear(); return; }

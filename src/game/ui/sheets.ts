@@ -14,6 +14,7 @@ import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../q
 import { fmt, hexCss } from "../util";
 import { attempt, el, esc, itemIcon, toast } from "./dom";
 import { enhanceHtml, growthAction, skillsHtml, type GrowthState } from "./growth";
+import { audio } from "../audio";
 
 export interface SheetCtx {
   api: GameApi;
@@ -91,6 +92,7 @@ export class Sheets {
   }
 
   private show(id: SheetId, tab?: string): void {
+    if (!this.current) audio.play("ui-open");
     this.current = id;
     this.tab = tab ?? TABS[id]?.[0][0] ?? "";
     this.wrap.hidden = false;
@@ -254,7 +256,7 @@ export class Sheets {
       } else if (what === "claimDaily") {
         const i = Number(b.dataset.i);
         const p = await attempt(api.claimDaily(i));
-        if (p) { this.ctx.apply(p); toast(`오늘의 의뢰 완료 · ${rewardText(DAILY_QUESTS[i])}`); }
+        if (p) { this.ctx.apply(p); toast(`오늘의 의뢰 완료 · ${rewardText(DAILY_QUESTS[i])}`); audio.play("quest-done"); }
       } else if (what === "dye") {
         const d = DYES[Number(b.dataset.k)];
         const p = await attempt(api.dye(b.dataset.t === "scarf" ? "scarf" : "sash", d.hex));

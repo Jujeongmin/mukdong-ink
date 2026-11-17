@@ -9,3 +9,7 @@
 ## Images
 
 - UI ink kit, title/loading reference paintings, skill/item icons: generated for this project with Codex (prompts in `docs/IMAGE-PROMPT*.md`).
+
+## Audio
+
+- Music and sound effects: generated for this project with PixelLab (pixellab.ai).

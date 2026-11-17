@@ -11,6 +11,7 @@ import {
 import type { GameApi, ProfileView } from "../../net/api";
 import { fmt } from "../util";
 import { attempt, esc, itemIcon, skillIconPos, toast } from "./dom";
+import { audio } from "../audio";
 
 export interface GrowthState {
   brush: string;
@@ -141,6 +142,7 @@ export async function growthAction(
     const name = ITEM[id]?.name ?? "붓";
     st.stage = "trying";
     redraw();
+    audio.play("enhance-charge");
     const [r] = await Promise.all([attempt(api.enhance(id, st.protect)), new Promise((res) => window.setTimeout(res, 950))]);
     if (!r) { st.stage = ""; return true; }
     // the starter brush can't break: the server keeps it and only resets it to +0
@@ -148,6 +150,8 @@ export async function growthAction(
     st.gone = r.outcome === "destroyed" && !kept ? id : undefined;
     apply(r.profile);
     st.stage = r.outcome === "destroyed" && kept ? "fail" : r.outcome;
+    // 먹붓 only resets, so it sounds like a failure; "protected" too
+    audio.play(r.outcome === "success" ? "enhance-success" : r.outcome === "destroyed" && !kept ? "enhance-destroy" : "enhance-fail");
     if (r.outcome === "success") toast(`강화 성공! ${name} +${r.plus}`);
     else if (r.outcome === "fail") toast(`강화 실패. 재료만 사라졌다 (+${r.plus})`, true);
     else if (r.outcome === "protected") toast(`${MATERIALS.protect.name}이 ${name}을 지켰다 (+${r.plus})`);

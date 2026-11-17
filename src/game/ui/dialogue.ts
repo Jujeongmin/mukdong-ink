@@ -4,6 +4,7 @@
 
 import { NPC_INFO, type Line } from "../../shared/story";
 import { el, esc } from "./dom";
+import { audio } from "../audio";
 
 export interface Choice {
   label: string;
@@ -130,6 +131,7 @@ export class Dialogue {
       this.advance = () => {
         if (this.shown < this.full.length) { finish(); return; }
         if (choices) return; // must pick
+        audio.play("dialogue-next");
         resolve("");
       };
     });

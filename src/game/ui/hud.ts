@@ -14,6 +14,7 @@ import { fmt, hexCss } from "../util";
 import { chapterOf, mainStatus, npcName, npcZone, objective, progressText } from "../quests";
 import { el, esc, skillIconPos } from "./dom";
 import { KEYS } from "./input";
+import { audio } from "../audio";
 
 export interface HudHandlers {
   potion(): void;
@@ -49,6 +50,7 @@ const MARKUP = `
 <div class="purse">
   <span class="ui-later" data-ui="gear" title="안료: 사냥으로 얻는 재화"><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
   <span class="ui-later" data-ui="gear" title="묵옥: 뽑기에 쓰는 재화"><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 (${KEYS.mute} 음소거)" aria-haspopup="dialog"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear><span>장비</span><kbd>${KEYS.gear}</kbd></button>
 </div>
@@ -71,6 +73,7 @@ const MARKUP = `
 </div>
 <button class="prompt btn" type="button" data-prompt hidden></button>
 <div class="auto-pop" data-autopop hidden role="dialog" aria-label="자동 사냥 설정"></div>
+<div class="auto-pop sound-pop" data-soundpop hidden role="dialog" aria-label="소리"></div>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
 <div class="levelup passive" data-lvup hidden><i class="spr-enso"></i><b>경지 상승</b><small data-lvtext></small></div>
@@ -140,6 +143,9 @@ export class Hud {
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
     el("[data-auto]", root).addEventListener("click", () => this.h.auto());
     el("[data-autoset]", root).addEventListener("click", () => this.toggleAutoPop());
+    el("[data-sound]", root).addEventListener("click", () => this.toggleSoundPop());
+    audio.onChange(() => this.syncSound());
+    this.syncSound();
     el("[data-prompt]", root).addEventListener("click", () => this.h.interact());
     el("[data-respawn]", root).addEventListener("click", () => this.h.respawn());
   }
@@ -391,14 +397,49 @@ export class Hud {
     }
   }
 
+  /** The sound settings: master, music, effects, ambience (0–100) and mute; saved and applied live. */
+  private toggleSoundPop(): void {
+    const pop = el("[data-soundpop]", this.root);
+    if (!pop.hidden) { pop.hidden = true; return; }
+    el("[data-autopop]", this.root).hidden = true;
+    const st = audio.settings;
+    const row = (k: "master" | "music" | "sfx" | "amb", label: string) =>
+      `<label class="ink-slider"><span>${label}</span><span class="rng" style="--v:${st[k]}"><input type="range" min="0" max="100" step="1" value="${st[k]}" data-vol="${k}" aria-label="${label}"></span><b data-volv="${k}">${st[k]}</b></label>`;
+    pop.innerHTML = `<h4>소리</h4>
+      ${row("master", "전체")}${row("music", "음악")}${row("sfx", "효과음")}${row("amb", "주변 소리")}
+      <label class="ink-check"><input type="checkbox" data-mute ${st.muted ? "checked" : ""}><i aria-hidden="true"></i> 음소거 <kbd>${KEYS.mute}</kbd></label>
+      <button type="button" class="close btn btn-secondary btn-sm" data-soundclose>닫기</button>`;
+    pop.hidden = false;
+    pop.querySelectorAll<HTMLInputElement>("[data-vol]").forEach((r) => r.addEventListener("input", () => {
+      const k = r.dataset.vol as "master" | "music" | "sfx" | "amb", v = Number(r.value);
+      r.parentElement?.style.setProperty("--v", String(v));
+      el(`[data-volv="${k}"]`, pop).textContent = String(v);
+      audio.set({ [k]: v });
+    }));
+    el<HTMLInputElement>("[data-mute]", pop).addEventListener("change", (e) => audio.set({ muted: (e.target as HTMLInputElement).checked }));
+    el("[data-soundclose]", pop).addEventListener("click", () => { pop.hidden = true; });
+  }
+
+  closeSoundPop(): void {
+    el("[data-soundpop]", this.root).hidden = true;
+  }
+
+  /** The speaker shows a cross while muted; an open panel follows M. */
+  private syncSound(): void {
+    el("[data-sound]", this.root).classList.toggle("muted", audio.settings.muted);
+    const m = this.root.querySelector<HTMLInputElement>("[data-soundpop] [data-mute]");
+    if (m) m.checked = audio.settings.muted;
+  }
+
   private toggleAutoPop(): void {
     const pop = el("[data-autopop]", this.root);
     if (!pop.hidden) { pop.hidden = true; return; }
+    this.closeSoundPop();
     const st = this.h.autoSettings();
     pop.innerHTML = `<h4>자동 사냥</h4>
       <div class="auto-skills">${SKILLS.map((sk, i) => `<label><input type="checkbox" data-sk="${i}" ${st.skills[i] ? "checked" : ""}> ${esc(sk.name)}</label>`).join("")}</div>
       <label><input type="checkbox" data-potion-auto ${st.potion ? "checked" : ""}> 생명이 낮으면 물약</label>
-      <label class="auto-range">기준 <input type="range" min="20" max="60" step="5" value="${Math.round(st.threshold * 100)}" data-thr> <b data-thrv>${Math.round(st.threshold * 100)}%</b></label>
+      <label class="auto-range ink-slider"><span>기준</span><span class="rng" style="--v:${(Math.round(st.threshold * 100) - 20) * 2.5}"><input type="range" min="20" max="60" step="5" value="${Math.round(st.threshold * 100)}" data-thr aria-label="물약 기준"></span><b data-thrv>${Math.round(st.threshold * 100)}%</b></label>
       <label><input type="checkbox" data-quest-first ${st.questFirst ? "checked" : ""}> 의뢰 대상 먼저</label>
       <button type="button" class="close btn btn-secondary btn-sm" data-popclose>닫기</button>`;
     pop.hidden = false;
@@ -408,6 +449,7 @@ export class Hud {
     el<HTMLInputElement>("[data-thr]", pop).addEventListener("input", (e) => {
       const v = Number((e.target as HTMLInputElement).value);
       st.threshold = v / 100;
+      (e.target as HTMLInputElement).parentElement?.style.setProperty("--v", String((v - 20) * 2.5));
       el("[data-thrv]", pop).textContent = `${v}%`;
       this.h.saveAutoSettings();
     });

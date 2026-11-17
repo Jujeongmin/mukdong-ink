@@ -6,7 +6,8 @@ import type { GameApi, HitResult, ProfileView, RoomView, ZoneEntry } from "../ne
 import type { Look, Pose, RoomPlayer } from "../shared/types";
 import { MONSTERS, SKILLS } from "../shared/combat";
 import { NPC_REACH, START_ZONE, ZONES, type Npc, type Portal } from "../shared/world";
-import { Actor, IMPACT, type ActorHooks } from "./actor";
+import { Actor, IMPACT, actorSound, type ActorHooks } from "./actor";
+import { audio, SKILL_SFX, type SfxName } from "./audio";
 import { Monsters } from "./monsters";
 import { ZoneScene } from "./world";
 import * as THREE from "three";
@@ -35,6 +36,9 @@ const ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const ndcV = new THREE.Vector2();
 const hitV = new THREE.Vector3();
 /** 먹동이's thought when a skill first stirs in his hands (index = skill id). */
+/** actor sound codes (see actorSound) → clips: 1..3 combo, 4 air spin, 5 roll */
+const ACT_SFX: readonly (SfxName | null)[] = [null, "swing-1", "swing-2", "swing-3-spin", "swing-3-spin", "roll"];
+
 const SKILL_THOUGHT: Record<number, string> = {
   1: "손끝에 불기운이… 화염선풍?",
   2: "발밑이 무겁게 울린다… 대지낙하?",
@@ -128,7 +132,8 @@ export class Game {
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       help: () => this.hud.help(),
-      escape: () => this.sheets.close(),
+      escape: () => { this.hud.closeSoundPop(); this.sheets.close(); },
+      mute: () => { toast(audio.toggleMute() ? "소리를 껐습니다 (M)" : "소리를 켰습니다 (M)"); },
       manual: () => this.onManual(),
       auto: () => this.toggleAuto(),
     }, root, document.getElementById("stage") as HTMLCanvasElement);
@@ -147,6 +152,14 @@ export class Game {
       think: (id, text) => { this.hints.think(id, text, { urgent: true, repeat: true }); },
       changed: () => this.hud.setAuto(this.auto.on, this.auto.traveling),
     });
+    // sounds: every actor's swings, rolls and casts (others by distance); monster spits and slams
+    actorSound.fn = (code, a) => {
+      const name = code >= 10 ? SKILL_SFX[code - 10] : ACT_SFX[code];
+      if (!name) return;
+      if (a.local) audio.play(name);
+      else audio.play(name, a.x, a.z, 0.8, true);
+    };
+    this.monsters.onSound = (name, x, z) => audio.play(name, x, z);
   }
 
   /** Any manual move/attack/skill: auto-battle steps aside for a moment, auto-travel stops. */
@@ -200,13 +213,15 @@ export class Game {
     this.camZ = this.entry.z;
     this.hud.setZone(this.entry.zone, this.entry.channel);
     this.loading.channel(this.entry.channel);
+    audio.musicForZone(this.entry.zone);
+    audio.ambience(this.entry.zone);
     this.applyProfile(profile);
     this.zoneTags();
     this.api.onProfile((p) => this.applyProfile(p));
     this.api.onRoom((r) => this.onRoom(r));
     this.api.onPlayers((pl) => this.onPlayers(pl));
     window.addEventListener("resize", resize);
-    (window as unknown as { __ink?: unknown }).__ink = { info: memoryInfo, game: this };
+    (window as unknown as { __ink?: unknown }).__ink = { info: memoryInfo, game: this, audio };
     this.lastFrame = performance.now();
     setLoop(() => this.frame());
   }
@@ -234,6 +249,7 @@ export class Game {
     if (prev && p.level > prev.level && this.player) {
       const sk = SKILLS.find((s) => s.unlock > prev.level && s.unlock <= p.level);
       this.hud.levelUp(p.level, sk ? sk.name : null);
+      audio.play("levelup");
       ring(this.player.x, this.player.z, 4, GOLD_RGB, 1.0);
       sparkBurst(this.player.x, 0.5, this.player.z, 40, GOLD_RGB, 0.9, 1.4);
       addLight(this.player.x, this.player.z, 9, 1.4, GOLD_RGB, this.player);
@@ -275,6 +291,7 @@ export class Game {
       }
       if (best > 12) { nx = 0; nz = 0; }
       this.player.hurt(nx, nz);
+      if (!dead) audio.play("player-hurt");
       this.hud.number(this.player.x, 2.3, this.player.z, `-${Math.round(before - after)}`, "hurt");
     }
     if (dead && !this.dead) {
@@ -286,11 +303,15 @@ export class Game {
       this.sheets.close();
       this.dialogue.hold(true);
       this.hud.death(true);
+      audio.play("death");
+      audio.duck(true);
     } else if (!dead && this.dead && !this.respawning) {
       this.dead = false;
       this.player.revive();
       this.dialogue.hold(false);
       this.hud.death(false);
+      audio.duck(false);
+      audio.play("respawn");
     }
   }
 
@@ -394,6 +415,7 @@ export class Game {
         inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power);
         if (h.kill) { killed = true; killBurst(v.x, v.def.height * 0.5, v.z, v.def.radius); }
       }
+      audio.play(h.resisted ? "resisted" : h.kill ? "kill-burst" : "hit-ink", v.x, v.z);
       const def = MONSTERS[v.kind] ?? v.def;
       if (h.resisted) this.hud.number(v.x, def.height + 0.5, v.z, h.dmg > 0 ? `${h.dmg} 먹혀들지 않는다` : "먹혀들지 않는다", "resist");
       else this.hud.number(v.x, def.height + 0.5, v.z, String(h.dmg), h.kill ? "kill" : "");
@@ -407,7 +429,7 @@ export class Game {
     const drops: string[] = [];
     if (res.stones) drops.push(`먹돌 +${res.stones}`);
     if (res.shards) drops.push(`색 조각 +${res.shards}`);
-    if (drops.length) toast(drops.join(" / "));
+    if (drops.length) { toast(drops.join(" / ")); audio.play("pickup"); }
     if (res.levelUp || res.exp > 0 || res.pigment > 0 || res.jade > 0 || res.stones || res.shards) this.profileCheckAt = performance.now() + 700;
   }
 
@@ -439,6 +461,7 @@ export class Game {
     const healed = p.hp - before;
     if (healed > 0) this.hud.number(this.player.x, 2.4, this.player.z, `+${healed}`, "gain");
     sparkBurst(this.player.x, 1, this.player.z, 14, SKILL_COL[3], 0.5, 1.2);
+    audio.play("potion");
   }
 
   private openGrowth(): void {
@@ -484,6 +507,7 @@ export class Game {
     this.transitioning = true;
     this.sheets.close();
     this.input.clear();
+    if (viaPortal) audio.play("portal");
     this.loading.show(to, "길을 건너는 중…");
     try {
       const entry = await this.api.enterZone(to, viaPortal);
@@ -519,6 +543,8 @@ export class Game {
       this.zoneTags();
       this.hud.setZone(entry.zone, entry.channel);
       this.loading.channel(entry.channel);
+      audio.musicForZone(entry.zone);
+      audio.ambience(entry.zone);
       this.auto.zoneChanged();
     }
     this.player.teleport(entry.x, entry.z);
@@ -555,6 +581,8 @@ export class Game {
       this.player.revive();
       this.dialogue.hold(false);
       this.hud.death(false);
+      audio.duck(false);
+      audio.play("respawn");
       this.hud.deathThought(null);
       const p = await attempt(this.api.loadProfile());
       if (p) this.applyProfile(p);
@@ -572,6 +600,7 @@ export class Game {
   /* ---------- frame ---------- */
   private frame(): void {
     const now = performance.now();
+    if (this.player) audio.listen(this.player.x, this.player.z);
     const realDt = Math.min((now - this.lastFrame) / 1000, 1 / 30);
     this.lastFrame = now;
     feel.time += realDt;
@@ -784,6 +813,9 @@ export async function boot(): Promise<void> {
     return;
   }
   const loading = new Loading(root);
+  // sound waits for the first tap/click/key (the title tap); the title theme is queued for it
+  audio.arm();
+  audio.music("title");
   await title.waitStart();
   const api = createGameApi({ mode: "auto", adPresenter: mockAdPresenter });
   let game: Game | null = null;

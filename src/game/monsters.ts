@@ -220,6 +220,8 @@ export class Monsters {
   readonly elites: MView[] = [];
   /** a server effect just appeared (gate hints) */
   onEffect: ((kind: RoomEffect["kind"]) => void) | null = null;
+  /** a spit leaves the mouth / a slam lands (sound) */
+  onSound: ((name: "monster-spit" | "monster-slam", x: number, z: number) => void) | null = null;
 
   serverNow(): number {
     return Date.now() + this.offset;
@@ -256,6 +258,7 @@ export class Monsters {
         if (e.kind === "shot") { f.shot = this.freeShot(); f.mark = this.freeTele(e.tx, e.tz, Math.max(1, e.r)); }
         else f.tele = this.freeTele(e.tx, e.tz, e.r);
         this.onEffect?.(e.kind);
+        if (e.kind === "shot") this.onSound?.("monster-spit", e.x, e.z);
         this.fx.set(e.id, f);
       }
       f.e = e;
@@ -433,6 +436,7 @@ export class Monsters {
         if (f.tele) {
           f.tele.mesh.visible = false;
           f.tele = null;
+          this.onSound?.("monster-slam", e.tx, e.tz);
           ring(e.tx, e.tz, e.r, INK, 0.6, 0, SPLAT_EDGE);
           inkBurst(e.tx, 0.3, e.tz, 30, 0, 0, 1.5);
           for (let k = 0; k < 3; k++) addDecal(e.tx + (Math.random() - 0.5) * e.r * 1.4, e.tz + (Math.random() - 0.5) * e.r * 1.4, 0.3 + Math.random() * 0.4);

@@ -108,10 +108,10 @@ export class Ribbon {
    One SHARED shader: the stroke is darkest and widest just behind the tip and thins out with age, its
    edge breaks into dry-brush streaks (noise along the stroke), the hilt side is a pale wash. */
 const M_trail = new THREE.ShaderMaterial({
-  transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false, // declares its own vec4 color
+  transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false, // its own vec4 tcol (three reserves `color`)
   vertexShader: /* glsl */ `
-    attribute vec4 color; attribute vec2 uv2s; varying vec4 vC; varying vec2 vS;
-    void main(){ vC = color; vS = uv2s; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    attribute vec4 tcol; attribute vec2 uv2s; varying vec4 vC; varying vec2 vS;
+    void main(){ vC = tcol; vS = uv2s; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
     varying vec4 vC; varying vec2 vS;
     float h(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -140,7 +140,7 @@ export class Trail {
   col: RGB = INK_TRAIL;
   constructor() {
     this.geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(this.N * 6), 3));
-    this.geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(this.N * 8), 4));
+    this.geo.setAttribute("tcol", new THREE.BufferAttribute(new Float32Array(this.N * 8), 4));
     const st = new Float32Array(this.N * 4);
     for (let i = 0; i < this.N; i++) { st[i * 4] = i / (this.N - 1); st[i * 4 + 1] = 0; st[i * 4 + 2] = i / (this.N - 1); st[i * 4 + 3] = 1; }
     this.geo.setAttribute("uv2s", new THREE.BufferAttribute(st, 2));
@@ -164,7 +164,7 @@ export class Trail {
         this.tip[i * 3] = t.x; this.tip[i * 3 + 1] = t.y; this.tip[i * 3 + 2] = t.z;
       }
     }
-    const pos = this.geo.attributes.position.array as Float32Array, col = this.geo.attributes.color.array as Float32Array, c = this.col;
+    const pos = this.geo.attributes.position.array as Float32Array, col = this.geo.attributes.tcol.array as Float32Array, c = this.col;
     for (let i = 0; i < N; i++) {
       const a = this.strength * Math.pow(1 - i / (N - 1), 1.25) * 0.95;
       for (let k = 0; k < 3; k++) { pos[i * 6 + k] = this.base[i * 3 + k]; pos[i * 6 + 3 + k] = this.tip[i * 3 + k]; }
@@ -173,7 +173,7 @@ export class Trail {
       col[j + 4] = c[0]; col[j + 5] = c[1]; col[j + 6] = c[2]; col[j + 7] = a;
     }
     this.geo.attributes.position.needsUpdate = true;
-    this.geo.attributes.color.needsUpdate = true;
+    this.geo.attributes.tcol.needsUpdate = true;
   }
   dispose(): void {
     overlay.remove(this.mesh);
