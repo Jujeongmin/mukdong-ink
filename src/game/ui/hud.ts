@@ -82,11 +82,16 @@ const MARKUP = `
   <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 설정 (${KEYS.mute} 음소거)" data-tip-title="소리" data-tip="음량 조절. ${KEYS.mute} 키로 끄고 켠다."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
   <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <i class="purse-break" aria-hidden="true"></i>
+  <div class="menu open" data-menu>
+  <div class="menu-items" data-menu-items>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>장비</span><kbd>${KEYS.gear}</kbd></button>
   <button class="brush-label btn btn-sm" type="button" data-shop data-tip-title="상점 (${KEYS.shop})" data-tip="오방 병기전: 어디서든 뽑기, 확률표, 묵옥 얻기."><i class="hud-ic" style="--c:4" aria-hidden="true"></i><span>상점</span><kbd>${KEYS.shop}</kbd></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="화첩 (${KEYS.album})" data-tip="벤 몬스터와 보스를 벤 순간 돌아온 색을 그림으로 모아 둔다."><i class="hud-ic" style="--c:2" aria-hidden="true"></i><span>화첩</span><kbd>${KEYS.album}</kbd></button>
   <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="랭킹 (${KEYS.rank})" data-tip="전투력 순위."><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>랭킹</span><kbd>${KEYS.rank}</kbd></button>
+  </div>
+  <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="true" aria-label="메뉴 접기" data-tip-title="메뉴" data-tip="수련·장비·상점·화첩·랭킹을 접고 편다."><i aria-hidden="true"></i><b class="menu-dot" data-menu-dot hidden></b></button>
+  </div>
 </div>
 <aside class="jokja" data-quest hidden></aside>
 <div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>돌아가기<kbd>Esc</kbd></button></div>
@@ -234,6 +239,7 @@ export class Hud {
     el("[data-album]", root).addEventListener("click", () => this.h.album());
     el("[data-rank]", root).addEventListener("click", () => this.h.rank());
     el("[data-shop]", root).addEventListener("click", () => this.h.shop());
+    this.wireMenu(root);
     el("[data-memory-exit]", root).addEventListener("click", () => this.h.exitMemory());
     // the daily card is rebuilt often; one delegated listener on its box
     el("[data-quest]", root).addEventListener("click", (e) => {
@@ -278,6 +284,34 @@ export class Hud {
     f.dataset.url = url;
     f.style.backgroundImage = `url("${url}")`;
     el("[data-portrait]", this.root).classList.add("has-face");
+  }
+
+  /**
+   * The menu icons fold away to the right behind one button and unfold leftward. Remembered per browser (a
+   * convenience only). Folded, the button carries a red dot while 수련 has points waiting.
+   */
+  private wireMenu(root: HTMLElement): void {
+    const menu = el("[data-menu]", root);
+    const toggle = el<HTMLButtonElement>("[data-menu-toggle]", root);
+    let open = true;
+    try { open = window.localStorage.getItem("ink.menu") !== "0"; } catch { /* storage blocked: start open */ }
+    const set = (v: boolean, save: boolean) => {
+      open = v;
+      menu.classList.toggle("open", v);
+      toggle.setAttribute("aria-expanded", String(v));
+      toggle.setAttribute("aria-label", v ? "메뉴 접기" : "메뉴 펼치기");
+      this.syncMenuDot();
+      if (save) { try { window.localStorage.setItem("ink.menu", v ? "1" : "0"); } catch { /* not kept */ } }
+    };
+    set(open, false);
+    toggle.addEventListener("click", () => { audio.play("ui-click"); set(!open, true); });
+  }
+  private syncMenuDot(): void {
+    const menu = this.root.querySelector<HTMLElement>("[data-menu]");
+    const dot = this.root.querySelector<HTMLElement>("[data-menu-dot]");
+    const pts = this.root.querySelector<HTMLElement>("[data-pts]");
+    if (!menu || !dot) return;
+    dot.hidden = menu.classList.contains("open") || !pts || pts.hidden;
   }
 
   /** 전투력 on the HUD: a rise rolls the number up and a "+N" floats off it, gold; a drop just sets it. */
@@ -361,6 +395,7 @@ export class Hud {
     const ptsEl = el("[data-pts]", this.root);
     ptsEl.hidden = pts <= 0;
     ptsEl.textContent = String(pts);
+    this.syncMenuDot();
     this.setQuest(p);
   }
 
