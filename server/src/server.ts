@@ -1,6 +1,6 @@
 import type { AttackReq, EnhanceResult, GachaPull, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
-  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, attackFor, killExp, maxHpFor, type HitShape,
+  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, attackFor, killExp, type HitShape,
 } from "../../src/shared/combat";
 import {
   DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
@@ -13,7 +13,7 @@ import { chatName } from "../../src/shared/filter";
 import { forwardX, forwardZ } from "../../src/shared/hit";
 import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
 import {
-  MAX_POTIONS, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, nextSub, pointsLeft, profileView, settleSub, subDef, subDone, weaponAtk,
+  MAX_POTIONS, cdMulOf, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, maxHpOf, nextSub, pointsLeft, profileView, settleSub, subDef, subDone, weaponAtk,
   type Felled,
 } from "../../src/shared/profile";
 import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
@@ -231,7 +231,8 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
     await withRoomLock(roomId, async () => {
       const [state] = await $room.getUserStates([account], ["pose", "gone"]);
       if (!state || state.gone === true || !state.pose) return;
-      await $room.updateUserState(account, { level, maxHp: maxHpFor(level), hp: maxHpFor(level), dead: false }, { returnState: false });
+      const maxHp = maxHpOf(done.profile);
+      await $room.updateUserState(account, { level, maxHp, hp: maxHp, dead: false }, { returnState: false });
     });
   }
   return levelUp;
@@ -604,7 +605,7 @@ export class Server {
       // A fresh start (or a room we never sent you to): the village, whole if you had fallen.
       if (here) await stepOff();
       const channel = await pickChannel(START_ZONE, account, p.channel);
-      const hp = p.hp <= 0 ? maxHpFor(p.level) : p.hp;
+      const hp = p.hp <= 0 ? maxHpOf(p) : Math.min(maxHpOf(p), p.hp);
       return assign(account, START_ZONE, channel, START_POS.x, START_POS.z, now, hp);
     }
     if (mine.dead) throw new RuleViolation("dead");
@@ -634,7 +635,7 @@ export class Server {
     if (!assigned || assigned.roomId !== here.roomId) throw new RuleViolation("wrong_room");
     let p = await myProfile(account);
     const now = Date.now();
-    const maxHp = maxHpFor(p.level);
+    const maxHp = maxHpOf(p);
     const placed = await withRoomLock(here.roomId, async () => {
       const mine = readMine(await $room.getMyState());
       // The same entry again (a reload of the room, a rejoin): as the room already has you.
@@ -701,7 +702,7 @@ export class Server {
       const readyAt = mine.cds[req.skill] ?? 0;
       if (now < readyAt) throw new RuleViolation("on_cooldown");
       const cds = SKILLS.map((_, i) => mine.cds[i] ?? 0);
-      cds[req.skill] = now + def.cd * skillCdMul(p.skills[req.skill] ?? 1) * 1000 * COOLDOWN_GRACE;
+      cds[req.skill] = now + def.cd * skillCdMul(p.skills[req.skill] ?? 1) * cdMulOf(p) * 1000 * COOLDOWN_GRACE;
       return { cds };
     }, true);
   }
@@ -719,7 +720,7 @@ export class Server {
       let hp = mine.hp;
       const next = await updateProfile(account, (q) => {
         if (q.potions <= 0) throw new RuleViolation("no_currency");
-        const maxHp = maxHpFor(q.level);
+        const maxHp = maxHpOf(q);
         hp = Math.min(maxHp, Math.round(mine.hp + maxHp * POTION_HEAL));
         return { ...q, potions: q.potions - 1, hp };
       });
@@ -792,7 +793,7 @@ export class Server {
     const fallen = (mine && present(mine) && mine.dead) || p.hp <= 0;
     if (!fallen) throw new RuleViolation("bad_args");
     const channel = await pickChannel(START_ZONE, account, here?.channel ?? p.channel);
-    const entry = await assign(account, START_ZONE, channel, START_POS.x, START_POS.z, Date.now(), maxHpFor(p.level));
+    const entry = await assign(account, START_ZONE, channel, START_POS.x, START_POS.z, Date.now(), maxHpOf(p));
     await stepOff();
     return entry;
   }
@@ -805,7 +806,17 @@ export class Server {
       if (!q.owned.includes(item.id)) throw new RuleViolation("not_owned");
       return { ...q, equip: { ...q.equip, [item.slot]: item.id } };
     });
-    await showInRoom({ look: lookOf(p) });
+    // a hat changes max health: the health you have keeps its share of it (no healing by swapping hats)
+    const here = currentRoom();
+    if (item.slot === "hat" && here) {
+      await withRoomLock(here.roomId, async () => {
+        const mine = readMine(await $room.getMyState());
+        if (!present(mine)) return;
+        const maxHp = maxHpOf(p);
+        const hp = mine.dead ? mine.hp : Math.max(1, Math.min(maxHp, Math.round((mine.hp * maxHp) / Math.max(1, mine.maxHp))));
+        await $room.updateMyState({ look: lookOf(p), maxHp, hp }, { returnState: false });
+      });
+    } else await showInRoom({ look: lookOf(p) });
     return profileView(account, p);
   }
 
@@ -940,7 +951,7 @@ export class Server {
       levelUp = paid.levelUp;
       return { ...paid.profile, main: q.main + 1, mainProgress: 0, mainAccepted: false };
     });
-    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpFor(p.level), hp: maxHpFor(p.level) });
+    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpOf(p), hp: maxHpOf(p) });
     return profileView(account, p);
   }
 
@@ -957,7 +968,7 @@ export class Server {
       const claimed = q.daily.claimed.map((c, i) => c || i === index);
       return { ...paid.profile, daily: { ...paid.profile.daily, claimed } };
     });
-    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpFor(p.level), hp: maxHpFor(p.level) });
+    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpOf(p), hp: maxHpOf(p) });
     return profileView(account, p);
   }
 
@@ -973,7 +984,7 @@ export class Server {
       levelUp = paid.levelUp;
       return nextSub(paid.profile);
     });
-    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpFor(p.level), hp: maxHpFor(p.level) });
+    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpOf(p), hp: maxHpOf(p) });
     return profileView(account, p);
   }
 
@@ -995,7 +1006,7 @@ export class Server {
       if (!paidAny) throw new RuleViolation("quest_not_done");
       return cur;
     });
-    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpFor(p.level), hp: maxHpFor(p.level) });
+    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpOf(p), hp: maxHpOf(p) });
     return profileView(account, p);
   }
 

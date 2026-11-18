@@ -7,7 +7,7 @@ import {
   AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, type Npc, type QuestDef,
 } from "../../shared/world";
 import {
-  COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, itemOdds, type Grant, type ItemDef,
+  COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, gearBonusText, itemOdds, type Grant, type ItemDef,
 } from "../../shared/items";
 import { enhancedAtk } from "../../shared/growth";
 import { POTION_COST, SKILLS } from "../../shared/combat";
@@ -49,7 +49,7 @@ const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ?
 const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", 일반: "c" };
 
 function itemStat(it: ItemDef, plus = 0): string {
-  return it.atk ? `공격 ${enhancedAtk(it.atk, plus)}` : it.tint ? "색 있는 장비" : kindName(it);
+  return it.atk ? `공격 ${enhancedAtk(it.atk, plus)}` : gearBonusText(it.id) || kindName(it);
 }
 
 /** 으로 / 로 after a word (로 after a vowel or ㄹ): 파랑으로, 보라로. */
@@ -399,7 +399,7 @@ export class Sheets {
     return `${this.head("장비")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["stone", p.stones ?? 0]], "새 장비는 병기 제단에서, 띠와 목도리 염색은 염색 장인에게.\n붓은 수련 › 붓 강화에서 다듬는다.")}
       <div class="gear2">
         <div class="gear2-eq"><h4 class="sec">착용</h4><div class="eqslots">${slots}</div>
-          <p class="stats"><span${tipAttr("공격력", "붓과 경지로 오른다.")}><small>공격</small><b>${p.atk}</b></span><span${tipAttr("생명", "경지가 오를수록 늘어난다.")}><small>생명</small><b>${p.maxHp}</b></span></p>
+          <p class="stats"><span${tipAttr("공격력", "붓과 경지로 오른다.")}><small>공격</small><b>${p.atk}</b></span><span${tipAttr("생명", "경지가 오를수록 늘어난다. 머리 장비가 더 올려 준다.")}><small>생명</small><b>${p.maxHp}</b></span></p>
           ${nextSkill ? `<p class="cap">${esc(nextSkill.name)} · Lv ${nextSkill.unlock}에 열림</p>` : ""}</div>
         <div class="gear2-inv"><div class="inv-head"><h4 class="sec">가진 장비 <small>${owned.size} / ${ITEMS.length}</small></h4><div class="seg" role="radiogroup" aria-label="부위">${filters}</div></div>
           <div class="tiles">${tiles}</div>${detail}</div>

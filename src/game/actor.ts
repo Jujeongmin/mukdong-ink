@@ -3,7 +3,7 @@
 // same VFX). Damage is never decided here: the local actor asks the server through hooks.
 
 import * as THREE from "three";
-import { ITEM } from "../shared/items";
+import { ITEM, sashCdCut } from "../shared/items";
 import type { Look, Pose } from "../shared/types";
 import { BASIC, SKILLS } from "../shared/combat";
 import { ROLL_IFRAME_MS } from "../shared/world";
@@ -179,6 +179,8 @@ export class Actor {
   private weaponTrail: RGB = INK_TRAIL;
   /** skill levels (1..10) and brush enhancement from the look: awakened skills and glows show for everyone */
   readonly skillLv = [1, 1, 1, 1, 1];
+  /** the worn sash cuts every 검법 cooldown by this much (1 = none) */
+  private cdMul = 1;
   private plus = 0;
   private windX = 0;
   private windZ = 0;
@@ -209,6 +211,7 @@ export class Actor {
   applyLook(look: Look): void {
     const sk = look.skills ?? [];
     for (let i = 0; i < 5; i++) this.skillLv[i] = Math.max(1, sk[i] ?? 1);
+    this.cdMul = 1 - sashCdCut(look.sash);
     const key = `${look.weapon}|${look.hat}|${look.sash}|${look.sashDye}|${look.scarfDye}|${look.plus ?? 0}`;
     if (key === this.lookKey) return;
     this.lookKey = key;
@@ -594,7 +597,7 @@ export class Actor {
   }
   /** Effective cooldown at the trained level. */
   skillCd(i: number): number {
-    return SKILL_CD[i] * skillCdMul(this.skillLv[i]);
+    return SKILL_CD[i] * skillCdMul(this.skillLv[i]) * this.cdMul;
   }
   private windDur(): number {
     return 0.22 + (this.aw(3)?.reach ?? 0) / 50;

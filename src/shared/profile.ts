@@ -5,7 +5,7 @@
 import type { ProfileView } from "../net/api";
 import { MAX_LEVEL, MONSTERS, SKILLS, attackFor, expToNext, isObstacle, maxHpFor } from "./combat";
 import { ENHANCE_MAX, SKILL_MAX, enhancedAtk, pointsEarned, pointsSpent } from "./growth";
-import { ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED } from "./items";
+import { ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED, hatHpBonus, sashCdCut } from "./items";
 import { type Look, type Profile, type SlotId, today } from "./types";
 import { AD_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, SUB_QUESTS, ZONES, type QuestDef } from "./world";
 
@@ -81,7 +81,7 @@ export function readProfile(raw: unknown): Profile | null {
     name: r.name,
     level,
     exp: int(r.exp, 0),
-    hp: int(r.hp, maxHpFor(level), 0, maxHpFor(level)),
+    hp: int(r.hp, maxHpFor(level), 0, Math.round(maxHpFor(level) * (1 + hatHpBonus(equip.hat)))),
     potions: int(r.potions, 0, 0, MAX_POTIONS),
     pigment: int(r.pigment, 0),
     jade: int(r.jade, 0),
@@ -124,6 +124,16 @@ export function freshDay(p: Profile, now: number): Profile {
   return next;
 }
 
+/** Max health: the level's, raised by the hat worn. */
+export function maxHpOf(p: Pick<Profile, "level" | "equip">): number {
+  return Math.round(maxHpFor(p.level) * (1 + hatHpBonus(p.equip.hat)));
+}
+
+/** Every 검법 cooldown is multiplied by this (the sash worn cuts it). */
+export function cdMulOf(p: Pick<Profile, "equip">): number {
+  return 1 - sashCdCut(p.equip.sash);
+}
+
 /** The equipped brush's attack, with its enhancement. */
 export function weaponAtk(p: Profile): number {
   const base = ITEM[p.equip.weapon]?.atk ?? ITEM[STARTER_EQUIP.weapon].atk ?? 10;
@@ -137,7 +147,7 @@ export function pointsLeft(p: Profile): number {
 
 export function profileView(account: string, p: Profile): ProfileView {
   return {
-    ...p, sub: settleSub(p).sub, account, maxHp: maxHpFor(p.level), atk: attackFor(p.level, weaponAtk(p)), expToNext: expToNext(p.level), points: pointsLeft(p),
+    ...p, sub: settleSub(p).sub, account, maxHp: maxHpOf(p), atk: attackFor(p.level, weaponAtk(p)), expToNext: expToNext(p.level), points: pointsLeft(p),
   };
 }
 
@@ -160,7 +170,7 @@ export function gainExp(p: Profile, exp: number): { profile: Profile; levelUp: b
     levelUp = true;
   }
   if (level >= MAX_LEVEL) total = 0;
-  return { profile: { ...p, level, exp: total, hp: levelUp ? maxHpFor(level) : p.hp }, levelUp };
+  return { profile: { ...p, level, exp: total, hp: levelUp ? maxHpOf({ ...p, level }) : p.hp }, levelUp };
 }
 
 /** A quest's reward added to the profile. */

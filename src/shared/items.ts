@@ -61,6 +61,27 @@ export const ITEM: Record<string, ItemDef> = Object.fromEntries(ITEMS.map((i) =>
 export const STARTER_OWNED = ["w_brush", "h_none", "h_satgat", "s_plain"];
 export const STARTER_EQUIP: Record<SlotId, string> = { weapon: "w_brush", hat: "h_none", sash: "s_plain" };
 
+/** 머리: more health, by grade (생명 +%). The bare head and the starting 무명 띠 give nothing. */
+export const HAT_HP: Record<Rarity, number> = { 일반: 0.02, 희귀: 0.05, 영웅: 0.1, 전설: 0.16 };
+/** 띠: shorter 검법 cooldowns, by grade (재사용 -%). */
+export const SASH_CD: Record<Rarity, number> = { 일반: 0.02, 희귀: 0.04, 영웅: 0.08, 전설: 0.12 };
+
+/** The fraction of max health a hat adds (0 for anything that isn't a hat, and for 맨머리). */
+export function hatHpBonus(id: string): number {
+  const it = ITEM[id];
+  return it && it.slot === "hat" && id !== STARTER_EQUIP.hat ? HAT_HP[it.r] : 0;
+}
+/** The fraction a sash cuts off every 검법 cooldown (0 for anything that isn't a sash, and for 무명 띠). */
+export function sashCdCut(id: string): number {
+  const it = ITEM[id];
+  return it && it.slot === "sash" && id !== STARTER_EQUIP.sash ? SASH_CD[it.r] : 0;
+}
+/** What a hat or sash does, in a few words for the gear sheet ("" for a weapon or a plain one). */
+export function gearBonusText(id: string): string {
+  const hp = hatHpBonus(id), cd = sashCdCut(id);
+  return hp > 0 ? `생명 +${Math.round(hp * 100)}%` : cd > 0 ? `재사용 -${Math.round(cd * 100)}%` : "";
+}
+
 export interface DyeDef {
   name: string;
   hex: number | null; // null = remove dye (back to ink)
