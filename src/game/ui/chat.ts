@@ -1,5 +1,5 @@
-// Room chat UI: a log in the bottom-left (last 8 lines on a fading paper strip, fades after 8 s of quiet and
-// comes back on a new line; system lines in cinnabar), and an input opened with Enter (or the 말 button on
+// Room chat UI: a log in the bottom-left (last 8 lines on a fading paper strip, fades after 5 s of quiet and
+// comes back on a new line; system lines in cinnabar), and an input opened with Enter (or the 채팅 button on
 // touch). While typing, game keys are ignored and the layout is locked so a phone's soft keyboard (inside
 // the Verse8 iframe) doesn't resize the game under it. Only nicknames are shown, never account ids.
 
@@ -16,7 +16,9 @@ export interface ChatLine {
 
 export const CHAT_LIMIT = CHAT_MAX;
 const KEEP = 8;
-const FADE_MS = 8000;
+const FADE_MS = 5000;
+/** the log holding only the room label ("— 죽림 1채널 —") goes sooner: it is a sign, not talk */
+const LABEL_FADE_MS = 2500;
 
 export interface ChatHooks {
   /** send a line; reject with an error carrying the server's code (on_cooldown …) */
@@ -105,13 +107,13 @@ export class Chat {
     p.textContent = text;
     this.log.prepend(p);
     while (this.log.childElementCount > KEEP) this.log.firstElementChild?.remove();
-    this.wake();
+    this.wake(this.log.querySelector("p:not(.room)") ? FADE_MS : LABEL_FADE_MS);
   }
 
-  private wake(): void {
+  private wake(ms = FADE_MS): void {
     this.log.classList.remove("idle");
     window.clearTimeout(this.fadeTimer);
-    this.fadeTimer = window.setTimeout(() => { if (!this.open) this.log.classList.add("idle"); }, FADE_MS);
+    this.fadeTimer = window.setTimeout(() => { if (!this.open) this.log.classList.add("idle"); }, ms);
   }
 
   private async submit(): Promise<void> {
