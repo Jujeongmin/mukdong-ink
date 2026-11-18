@@ -122,7 +122,7 @@ const MARKUP = `
 <div class="fade" data-fade><span data-fadetext></span></div>
 `;
 
-interface TagSlot { el: HTMLElement; lx: number; ly: number; shown: boolean; w: number; h: number; rank: number; dim: boolean }
+interface TagSlot { el: HTMLElement; lx: number; ly: number; shown: boolean; w: number; h: number; rank: number; dim: boolean; html: string; cls: string }
 /** which name wins when two overlap (lower = kept clear); speech bubbles never dim */
 const TAG_RANK: Record<string, number> = { me: 0, npc: 1, elite: 2, portal: 3, pc: 4 };
 const tagOrder: TagSlot[] = [];
@@ -199,7 +199,7 @@ export class Hud {
     for (let i = 0; i < 28; i++) {
       const d = document.createElement("span");
       d.className = "dmg";
-      d.addEventListener("animationend", () => d.classList.remove("go"));
+      d.addEventListener("animationend", () => d.classList.remove("go", "go2"));
       dmgBox.appendChild(d);
       this.dmgPool.push(d);
     }
@@ -582,14 +582,15 @@ export class Hud {
     if (vProj.z > 1) return;
     const d = this.dmgPool[this.dmgNext];
     this.dmgNext = (this.dmgNext + 1) % this.dmgPool.length;
-    d.className = cls ? `dmg ${cls}` : "dmg";
+    // a reused element restarts its float by switching between two identical animations (go / go2), with no
+    // forced layout: reading offsetWidth here cost one reflow per number, many per frame on an area hit
+    const flip = d.classList.contains("go") ? "go2" : "go";
+    d.className = cls ? `dmg ${cls} ${flip}` : `dmg ${flip}`;
     d.textContent = text;
     const sx = (vProj.x * 0.5 + 0.5) * window.innerWidth + (Math.random() - 0.5) * 24;
     const sy = (-vProj.y * 0.5 + 0.5) * window.innerHeight;
     d.style.left = `${sx}px`;
     d.style.top = `${sy}px`;
-    void d.offsetWidth; // restart the animation on a reused element
-    d.classList.add("go");
   }
 
   /* ---------- name tags (actors, NPCs, portals) ---------- */
@@ -598,12 +599,18 @@ export class Hud {
     if (!t) {
       const e = document.createElement("div");
       this.tagBox.appendChild(e);
-      t = { el: e, lx: -1e9, ly: -1e9, shown: true, w: 0, h: 0, rank: 9, dim: false };
+      t = { el: e, lx: -1e9, ly: -1e9, shown: true, w: 0, h: 0, rank: 9, dim: false, html: "", cls: "" };
       this.tags.set(key, t);
     }
-    if (t.el.className.replace(" dim", "") !== `tag ${cls}`) { t.el.className = `tag ${cls}`; t.dim = false; t.w = 0; }
-    t.rank = TAG_RANK[cls.split(" ")[0]] ?? 9;
-    if (t.el.innerHTML !== html) { t.el.innerHTML = html; t.w = 0; }
+    // compare with what was last written (reading innerHTML back serializes the DOM, and escaped quotes never match)
+    if (t.cls !== cls) {
+      t.cls = cls;
+      t.el.className = `tag ${cls}`;
+      t.dim = false;
+      t.rank = TAG_RANK[cls.split(" ")[0]] ?? 9;
+      t.w = 0;
+    }
+    if (t.html !== html) { t.html = html; t.el.innerHTML = html; t.w = 0; }
   }
   placeTag(key: object, x: number, y: number, z: number): void {
     const t = this.tags.get(key);
@@ -625,7 +632,8 @@ export class Hud {
     tagOrder.length = 0;
     for (const t of this.tags.values()) {
       if (!t.shown || t.rank > 4) continue;
-      if (t.w === 0) { t.w = t.el.offsetWidth; t.h = t.el.offsetHeight; }
+      // size from the text, not from layout (a read here would force a reflow after this frame's transforms)
+      if (t.w === 0) { const n = (t.el.textContent ?? "").length; t.w = n * (t.rank === 1 ? 15 : 13) + 10; t.h = t.rank === 2 || t.rank === 3 ? 28 : 21; }
       tagOrder.push(t);
     }
     tagOrder.sort((a, b) => a.rank - b.rank);

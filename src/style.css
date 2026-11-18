@@ -236,10 +236,13 @@ kbd { font-family: var(--f-brush); font-weight: 700; }
 /* ---------- damage numbers ---------- */
 .dmg { position: absolute; left: 0; top: 0; font-family: var(--f-brush); font-weight: 700; font-size: 25px; color: var(--ink); text-shadow: var(--halo); white-space: nowrap; opacity: 0; }
 .dmg.go { animation: dmg-up 0.9s ease-out both; }
+.dmg.go2 { animation: dmg-up2 0.9s ease-out both; }
 .dmg.kill { font-size: 32px; text-shadow: 1px 0 0 var(--cinnabar), -1px 0 0 var(--cinnabar), 0 1px 0 var(--cinnabar), 0 -1px 0 var(--cinnabar), 0 0 8px var(--paper); }
 .dmg.hurt { color: var(--cinnabar); font-size: 21px; }
 .dmg.gain { font-family: var(--f-body); font-size: 14px; color: var(--ink-soft); }
 @keyframes dmg-up { 0% { opacity: 0; translate: -50% 0; scale: 0.5; } 14% { opacity: 1; scale: 1.18; } 28% { scale: 1; } 100% { opacity: 0; translate: -50% -48px; } }
+/* the same, under a second name: a reused number restarts by switching (hud.number) */
+@keyframes dmg-up2 { 0% { opacity: 0; translate: -50% 0; scale: 0.5; } 14% { opacity: 1; scale: 1.18; } 28% { scale: 1; } 100% { opacity: 0; translate: -50% -48px; } }
 
 /* ---------- boss: name and a long stroke ---------- */
 .bossbar { position: fixed; top: calc(14px + var(--safe-t)); left: 50%; transform: translateX(-50%); display: grid; justify-items: center; gap: 0; pointer-events: none; }
@@ -373,7 +376,7 @@ kbd { font-family: var(--f-brush); font-weight: 700; }
 .adplay b { display: block; font-family: var(--f-brush); font-weight: 700; font-size: 46px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .card, .levelup, .dmg.go, .toast, .scroll, .jokja .stamp, .zone-paint.go b, .zone-paint.go .seal { animation-duration: 0.01s !important; animation-delay: 0s !important; }
+  .card, .levelup, .dmg.go, .dmg.go2, .toast, .scroll, .jokja .stamp, .zone-paint.go b, .zone-paint.go .seal { animation-duration: 0.01s !important; animation-delay: 0s !important; }
   .fill { transition: none; }
 }
 
