@@ -468,13 +468,22 @@ export class AutoPlay {
       const fromAnchor = Math.hypot(v.x - this.anchorX, v.z - this.anchorZ);
       const d = Math.hypot(v.x - pl.x, v.z - pl.z);
       const engaged = attackingMe(v, pl.x, pl.z) || (v.mode !== "idle" && d < 7);
-      if (!engaged && (fromAnchor > RANGE || v.level >= p.level + 5)) continue;
+      // the quest's own monster is sought out wherever it stands in the field (그림자 무사 keeps its camp far
+      // from the middle); everything else only near the hunting spot
+      const wanted = !!questKind && questKind !== "any" && v.kind === questKind;
+      if (!engaged && ((!wanted && fromAnchor > RANGE) || v.level >= p.level + 5)) continue;
       let score = d;
       if (engaged) score -= 100;
-      else if (questKind && (v.kind === questKind || questKind === "any")) score -= 30;
+      else if (wanted) score -= 60;
+      else if (questKind === "any") score -= 30;
       if (score < bestScore) { bestScore = score; best = v; }
     }
     this.target = best;
+    // hunting where the quest monster is: the spot moves there, so after a kill it doesn't walk back to the middle
+    if (best && questKind && best.kind === questKind && Math.hypot(best.x - this.anchorX, best.z - this.anchorZ) > RANGE) {
+      this.anchorX = best.x;
+      this.anchorZ = best.z;
+    }
     if (!best) {
       if (Math.hypot(this.anchorX - pl.x, this.anchorZ - pl.z) > 1.5) this.setWp(this.anchorX, this.anchorZ);
       else this.hasWp = false;
