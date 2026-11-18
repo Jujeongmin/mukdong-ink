@@ -2002,3 +2002,18 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .menu-toggle:hover i { filter: brightness(1.25); }
 #ui .menu-dot { position: absolute; right: 2px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: #c0281c; box-shadow: 0 0 0 1.5px rgba(10, 9, 8, 0.6); }
 @media (prefers-reduced-motion: reduce) { #ui .menu-items, #ui .menu-toggle i { transition: none; } }
+/* the menu as a small hanging scroll: paper unrolls leftward from the right rod (the toggle), a left rod rides
+   its edge, and the buttons sit on the paper in ink. --ms (hud.ts fitMenu) shrinks them where room is short. */
+#ui { --ms: 1; }
+#ui .menu-items { background: #ece2cc linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(120, 100, 70, 0.08)); box-shadow: inset 0 0 0 1px rgba(43, 38, 34, 0.25), inset 0 0 14px rgba(120, 100, 70, 0.18), 0 3px 8px rgba(0, 0, 0, 0.45);
+  padding: calc(4px * var(--ms)) calc(10px * var(--ms)) calc(3px * var(--ms)); gap: calc(8px * var(--ms)); max-width: 460px; }
+#ui .menu-items .btn.btn.btn.brush-label > span { font-size: calc(13px * var(--ms)); color: #2b2622; text-shadow: none; }
+#ui .menu-items .btn.btn.btn.brush-label kbd { font-size: calc(10px * var(--ms)); color: #6b625a; text-shadow: none; }
+#ui .menu-items .brush-label .hud-ic { width: calc(46px * var(--ms)); height: calc(46px * var(--ms)); filter: none; }
+#ui .menu-rod-l { flex: none; align-self: center; width: 9px; height: calc(52px * var(--ms) + 10px); margin-right: -5px; z-index: 1; border-radius: 4px; position: relative;
+  background: linear-gradient(90deg, #4a3a2c, #1f1913 55%, #3d3025); box-shadow: 0 0 0 1px rgba(239, 229, 209, 0.18), 0 2px 4px rgba(0, 0, 0, 0.5); transition: opacity 0.2s ease; }
+#ui .menu-rod-l::before, #ui .menu-rod-l::after { content: ""; position: absolute; left: -2.5px; width: 14px; height: 6px; border-radius: 3px; background: linear-gradient(#5a4836, #2a2119); }
+#ui .menu-rod-l::before { top: -3px; }
+#ui .menu-rod-l::after { bottom: -3px; }
+#ui .menu:not(.open) .menu-rod-l { opacity: 0; }
+#ui .menu-toggle { align-self: center; height: calc(52px * var(--ms) + 18px); margin-top: 0; margin-left: -5px; z-index: 1; }

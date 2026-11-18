@@ -83,6 +83,7 @@ const MARKUP = `
   <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <i class="purse-break" aria-hidden="true"></i>
   <div class="menu open" data-menu>
+  <i class="menu-rod-l" aria-hidden="true"></i>
   <div class="menu-items" data-menu-items>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>장비</span><kbd>${KEYS.gear}</kbd></button>
@@ -220,7 +221,22 @@ export class Hud {
     const purse = root.querySelector<HTMLElement>(".purse");
     if (purse && typeof ResizeObserver !== "undefined") {
       const portrait = root.querySelector<HTMLElement>(".portrait");
+      const menu = root.querySelector<HTMLElement>("[data-menu-items]");
+      const toggle = root.querySelector<HTMLElement>("[data-menu-toggle]");
+      const vitals = root.querySelector<HTMLElement>(".portrait .vitals");
+      // the menu scroll never reaches under the portrait: if its natural width doesn't fit between them, its
+      // buttons shrink (down to 60%) — measured against the natural width, so it settles in one pass
+      const fitMenu = () => {
+        if (!menu || !toggle || !portrait) return;
+        const cur = Number(getComputedStyle(root).getPropertyValue("--ms")) || 1;
+        const natural = menu.scrollWidth / cur;
+        const left = Math.max(portrait.getBoundingClientRect().right, vitals?.getBoundingClientRect().right ?? 0) + 14;
+        const room = toggle.getBoundingClientRect().left - 14 - left; // 14: the left rod
+        const ms = Math.max(0.6, Math.min(1, room / Math.max(1, natural)));
+        if (Math.abs(ms - cur) > 0.01) root.style.setProperty("--ms", ms.toFixed(3));
+      };
       const place = () => {
+        fitMenu();
         root.style.setProperty("--purse-b", `${Math.ceil(purse.getBoundingClientRect().bottom)}px`);
         if (portrait) root.style.setProperty("--portrait-b", `${Math.ceil(portrait.getBoundingClientRect().bottom)}px`);
         // the top of the thumb arc (its highest visible button): the tracker stops above it
