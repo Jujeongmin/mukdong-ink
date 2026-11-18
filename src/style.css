@@ -1668,3 +1668,22 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .qfold::before { content: ""; position: absolute; left: 4px; right: 4px; top: 50%; height: 4px; margin-top: -2px; background: var(--ink); -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
 @media (max-width: 520px) { .qfold { display: block; } }
 @media (prefers-reduced-motion: reduce) { .jokja .qcard.going { animation: none; } }
+/* currencies: each in a soft rounded capsule of dark ink wash with a faint paper hairline */
+#ui .purse > span:not(.purse-break) { padding: 3px 11px 3px 7px; border-radius: 13px; background: rgba(16, 14, 12, 0.58); box-shadow: inset 0 0 0 1px rgba(239, 229, 209, 0.16); }
+/* 수련 / 장비 / 화첩: a painted icon with its name and key under it */
+#ui .btn.btn.btn.brush-label { display: inline-grid; grid-template-columns: auto auto; justify-content: center; align-items: baseline; column-gap: 3px; padding: 0 4px 2px; min-height: 0; line-height: 1.1; }
+#ui .btn.btn.btn.brush-label > span { font-size: 13px; }
+#ui .btn.btn.btn.brush-label kbd { position: static; margin-left: 0; font-size: 10px; }
+#ui .btn.btn.btn.brush-label > span::after { content: none; }
+#ui .brush-label .hud-ic { grid-column: 1 / -1; justify-self: center; display: block; width: 46px; height: 46px; margin-bottom: -2px; background: var(--sheet-hud) calc(var(--c) * 50%) 0 / 300% 100% no-repeat;
+  filter: drop-shadow(0 0 1.5px rgba(239, 229, 209, 0.95)) drop-shadow(0 0 5px rgba(239, 229, 209, 0.45)); transition: transform 0.12s ease; }
+#ui .brush-label:hover .hud-ic { transform: translateY(-2px) scale(1.05); }
+#ui .brush-label .pts { right: 0; top: -2px; }
+#ui .brush-label > span { display: inline-flex; align-items: baseline; }
+/* icon on top, '수련 K' centred under it */
+#ui .btn.btn.btn.brush-label { grid-template-columns: 1fr auto auto 1fr; min-width: 0; width: auto; justify-content: stretch; }
+#ui .btn.btn.btn.brush-label > span { grid-column: 2; }
+#ui .btn.btn.btn.brush-label > kbd { grid-column: 3; }
+#ui .brush-label .hud-ic { grid-column: 1 / -1; }
+#ui .jokja { top: calc(var(--purse-b, 60px) + 8px); }
+#ui .btn.btn.btn.brush-label > .pts { position: absolute; right: calc(50% - 30px); left: auto; top: -2px; grid-column: auto; z-index: 2; }
