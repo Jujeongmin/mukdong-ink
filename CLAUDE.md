@@ -18,7 +18,10 @@ Verse8 web multiplayer RPG. Vite + TypeScript + three.js (vanilla DOM UI, no Rea
   shared write, purchase dedupe by receipt row, gacha rolled on the server under a lock, pity per player.
 - `src/shared/` must stay pure: no DOM, no three, no module side effects, no inline IIFEs (server sandbox), randomness
   passed in.
-- No Verse8 project exists yet (no `.agent8.lock` / `.env`). Never push or deploy without the user's explicit OK.
+- Verse8 project: remote `gitlab` (gitlab.verse8.io/anjshdkdl99/game-pe7z), branch `develop`. Pushing `master` to
+  `gitlab develop` deploys the game (and its server). The user's standing OK: push after every finished, verified
+  task (`git push gitlab master:develop`). Never edit `.agent8.lock` / `.env` (the verse id). The token lives only in
+  `.git/config`. `npm run dev` now talks to the real server (the `.env` verse); `npm run dev:offline` stays local.
 - Before saying work is done: `npx tsc -b`, `npx vitest run`, `npm run server:test`, `npx vite build`.
 - three.js/WebAudio memory rules: `~/.claude/web-game-memory-checklist.md` (share geometry/materials, pool effects,
   no per-frame allocation, dispose what you create).
