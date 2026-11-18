@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { ITEM } from "../../shared/items";
 import { AWAKENINGS, pointsEarned, pointsSpent, skillCdMul } from "../../shared/growth";
+import { cdMulOf } from "../../shared/profile";
 import { CHANNEL_CAPACITY, DAILY_QUESTS, ZONES } from "../../shared/world";
 import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
@@ -300,7 +301,7 @@ export class Hud {
       const sk = SKILLS[i];
       const aw = lv >= 10 ? AWAKENINGS[i][10] : lv >= 5 ? AWAKENINGS[i][5] : null;
       b.dataset.tip = locked ? `Lv ${sk.unlock}에 열림 · 재사용 ${sk.cd}초`
-        : `Lv ${lv} · 재사용 ${+(sk.cd * skillCdMul(lv)).toFixed(1)}초 · 자동 사냥 중엔 저절로 쓴다${aw ? `
+        : `Lv ${lv} · 재사용 ${+(sk.cd * skillCdMul(lv) * cdMulOf(p)).toFixed(1)}초 · 자동 사냥 중엔 저절로 쓴다${aw ? `
 각성: ${aw.text}` : ""}`;
     }
     this.last = p;

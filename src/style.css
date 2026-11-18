@@ -1920,3 +1920,9 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .sw span small { display: block; font-size: 10px; opacity: 0.75; }
 #ui .dye-harmony { margin: 10px 0 0; font-size: 13px; color: var(--ink-soft); }
 #ui .dye-harmony.on { color: #a8261b; font-family: var(--f-brush); font-weight: 700; font-size: 14.5px; }
+/* windows with tabs keep one height whichever tab is open (the paper doesn't jump when you switch) */
+#ui .sheet:is([data-kind="growth"], [data-kind="dyer"], [data-kind="altar"], [data-kind="album"], [data-kind="elder"], [data-kind="settings"]) .sheet-card {
+  height: min(620px, calc(100vh - 64px)); height: min(620px, calc(100dvh - 64px)); }
+/* risen: once the ring has bloomed it goes, before the village's name comes up where it stood */
+.ink-death.risen .ink-death-rise { animation: rise-gone 0.3s 0.6s ease forwards; }
+@keyframes rise-gone { to { opacity: 0; } }

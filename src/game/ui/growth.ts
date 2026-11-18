@@ -8,6 +8,7 @@
 
 import { SKILLS } from "../../shared/combat";
 import { ITEM, ITEMS } from "../../shared/items";
+import { cdMulOf } from "../../shared/profile";
 import {
   AWAKENINGS, AWAKEN_AT, DESTROY_FROM, ENHANCE_MAX, ENHANCE_TABLE, MATERIALS, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE,
   enhancedAtk, pointsEarned, pointsSpent, skillCdMul, skillDmgMul, trainCost, type EnhanceOutcome,
@@ -88,7 +89,7 @@ function skillDetail(p: ProfileView, i: number, pts: number, busy: boolean, st: 
   const locked = p.level < s.unlock;
   const focus = st.focus === "awaken1" && i === 1;
   const dmg = Math.round((skillDmgMul(lv) - 1) * 100);
-  const now = `피해 ${dmg > 0 ? `+${dmg}%` : "기본"} · 재사용 ${sec(s.cd * skillCdMul(lv))}`;
+  const now = `피해 ${dmg > 0 ? `+${dmg}%` : "기본"} · 재사용 ${sec(s.cd * skillCdMul(lv) * cdMulOf(p))}`;
 
   let next = "";
   let act = "";
@@ -99,7 +100,7 @@ function skillDetail(p: ProfileView, i: number, pts: number, busy: boolean, st: 
   } else {
     const c = trainCost(lv);
     const dUp = Math.round((skillDmgMul(lv + 1) - skillDmgMul(lv)) * 100);
-    const cdDown = s.cd * (skillCdMul(lv) - skillCdMul(lv + 1));
+    const cdDown = s.cd * (skillCdMul(lv) - skillCdMul(lv + 1)) * cdMulOf(p);
     next = `<div class="gr2-next"><h4 class="sec">다음 단련</h4><p>피해 ${dUp}% 증가 · 재사용 ${sec(cdDown)} 단축${(AWAKEN_AT as readonly number[]).includes(lv + 1) ? ` · <b>${lv + 1}단계 각성</b>` : ""}</p></div>`;
     const can = pts >= c.points && p.pigment >= c.pigment && (p.shards ?? 0) >= c.shards && !busy;
     const chips = resChip("points", c.points, { need: true, short: pts < c.points }) + resChip("pigment", c.pigment, { need: true, short: p.pigment < c.pigment })
