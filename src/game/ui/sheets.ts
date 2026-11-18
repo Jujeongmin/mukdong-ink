@@ -285,7 +285,7 @@ export class Sheets {
         <span class="bk-count">${steps}<small>${next}</small></span>
         <span class="bk-gain${stage > 0 ? " on" : ""}">${stat} +${pct(stage * BOOK_STEP)}<small> / ${pct(2 * BOOK_STEP)}</small></span></li>`;
     }).join("");
-    return `${this.head("화첩")}<p class="say">벤 것들을 그려 둔다. 그릴수록 강해진다.</p>
+    return `${this.head("화첩")}<p class="say">몬스터를 잡을수록 그림이 채워지고, 공격이나 생명이 오른다.</p>
       <p class="cap album-count">완성 ${done} / ${BOOK.length}장 · 공격 +${pct(total.atk)} · 생명 +${pct(total.hp)}</p><ol class="bk-grid">${pages}</ol>`;
   }
 
