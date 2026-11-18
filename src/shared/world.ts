@@ -227,6 +227,30 @@ export const DAILY_QUESTS: QuestDef[] = [
   { id: "d3", title: "먹그림자 퇴치", text: "먹그림자 5마리를 물리쳐라.", goal: { type: "kill", kind: "shade", count: 5 }, giver: "elder", turnIn: "elder", reward: { exp: 120, pigment: 60, jade: 10, shards: 1 } },
 ];
 
+/**
+ * 서브 퀘스트 (지역 의뢰): three per hunting field, given by that field's keeper, repeatable without end. One is
+ * open at a time, from the field that suits your 경지; finishing it opens the next of that field (round and round).
+ * This is the way to grow when 본편 asks for a 경지 you don't have yet. Rewards: about a third of a level's
+ * experience at the field's middle level, with pigment and ink stones.
+ */
+export const SUB_QUESTS: (QuestDef & { zone: string })[] = [
+  { id: "s_bam1", zone: "bamboo", title: "대숲 청소", text: "죽림의 먹방울 12마리를 쓸어내자.", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 12 }, giver: "baram", turnIn: "baram", reward: { exp: 90, pigment: 30, stones: 1 } },
+  { id: "s_bam2", zone: "bamboo", title: "그림자 몰기", text: "대숲에 숨은 먹그림자 4마리를 몰아내자.", goal: { type: "kill", kind: "shade", zone: "bamboo", count: 4 }, giver: "baram", turnIn: "baram", reward: { exp: 100, pigment: 35, stones: 1 } },
+  { id: "s_bam3", zone: "bamboo", title: "대숲 순찰", text: "죽림을 돌며 먹귀신 15마리를 베자.", goal: { type: "kill", kind: "any", zone: "bamboo", count: 15 }, giver: "baram", turnIn: "baram", reward: { exp: 110, pigment: 40, stones: 2 } },
+  { id: "s_pond1", zone: "pond", title: "물가의 먹방울", text: "연못가의 먹방울 12마리를 걷어내자.", goal: { type: "kill", kind: "blob", zone: "pond", count: 12 }, giver: "noeul", turnIn: "noeul", reward: { exp: 400, pigment: 60, stones: 2 } },
+  { id: "s_pond2", zone: "pond", title: "두꺼비 쫓기", text: "먹물을 뱉는 먹두꺼비 8마리를 쫓아내자.", goal: { type: "kill", kind: "spitter", zone: "pond", count: 8 }, giver: "noeul", turnIn: "noeul", reward: { exp: 430, pigment: 65, stones: 2 } },
+  { id: "s_pond3", zone: "pond", title: "연못 순찰", text: "연못가를 돌며 먹귀신 18마리를 베자.", goal: { type: "kill", kind: "any", zone: "pond", count: 18 }, giver: "noeul", turnIn: "noeul", reward: { exp: 460, pigment: 70, stones: 3 } },
+  { id: "s_peak1", zone: "peak", title: "봉우리 그림자", text: "먹봉우리의 먹그림자 10마리를 베자.", goal: { type: "kill", kind: "shade", zone: "peak", count: 10 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 800, pigment: 90, stones: 3 } },
+  { id: "s_peak2", zone: "peak", title: "바위틈 두꺼비", text: "바위틈의 먹두꺼비 10마리를 몰아내자.", goal: { type: "kill", kind: "spitter", zone: "peak", count: 10 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 850, pigment: 95, stones: 3 } },
+  { id: "s_peak3", zone: "peak", title: "봉우리 순찰", text: "먹봉우리를 돌며 먹귀신 20마리를 베자.", goal: { type: "kill", kind: "any", zone: "peak", count: 20 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 900, pigment: 100, stones: 4 } },
+  { id: "s_kiln1", zone: "kiln", title: "깨진 옹기", text: "가마터를 뛰노는 옹기귀 12마리를 깨뜨리자.", goal: { type: "kill", kind: "jar", zone: "kiln", count: 12 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1300, pigment: 120, stones: 4 } },
+  { id: "s_kiln2", zone: "kiln", title: "잿빛 날개", text: "재를 뿌리는 잿까마귀 8마리를 떨어뜨리자.", goal: { type: "kill", kind: "crow", zone: "kiln", count: 8 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1350, pigment: 125, stones: 4 } },
+  { id: "s_kiln3", zone: "kiln", title: "가마터 순찰", text: "옛 가마터를 돌며 먹귀신 20마리를 베자.", goal: { type: "kill", kind: "any", zone: "kiln", count: 20 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1400, pigment: 130, stones: 5 } },
+  { id: "s_tem1", zone: "temple", title: "승병의 그림자", text: "절터를 지키던 그림자 승병 10명을 쉬게 하자.", goal: { type: "kill", kind: "shademonk", zone: "temple", count: 10 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2000, pigment: 150, stones: 5 } },
+  { id: "s_tem2", zone: "temple", title: "꺼진 석등", text: "길을 막는 석등지기 4기를 무너뜨리자.", goal: { type: "kill", kind: "lantern", zone: "temple", count: 4 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2100, pigment: 160, stones: 5 } },
+  { id: "s_tem3", zone: "temple", title: "절터 순찰", text: "불탄 절터를 돌며 먹귀신 22마리를 베자.", goal: { type: "kill", kind: "any", zone: "temple", count: 22 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2200, pigment: 170, stones: 6 } },
+];
+
 /* ---------- store (VXShop) and rewarded ads ---------- */
 export interface JadeProduct {
   productId: string; // must match the VXShop product id exactly

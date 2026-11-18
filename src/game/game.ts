@@ -32,7 +32,7 @@ import { Input, KEYS, type Act } from "./ui/input";
 import { Sheets } from "./ui/sheets";
 import { Dialogue } from "./ui/dialogue";
 import { Story } from "./story";
-import { npcMark } from "./quests";
+import { npcMark, subStatus } from "./quests";
 import { Title, mockAdPresenter } from "./ui/title";
 import { CharacterCreator } from "./ui/create";
 import { Loading } from "./ui/loading";
@@ -185,6 +185,8 @@ export class Game {
       auto: () => this.autoProgress(),
       travel: () => this.autoProgress(),
       travelDaily: (i) => this.autoDaily(i),
+      travelSub: () => this.autoSub(),
+      claimSub: () => void this.claimSub(),
       autoSettings: () => this.auto.settings,
       saveAutoSettings: () => this.auto.saveSettings(),
       settings: (tab) => this.openSettings(tab),
@@ -233,8 +235,9 @@ export class Game {
       travel: (to, from) => this.travel(to, from, true),
       talk: (npc) => this.story.talk(npc),
       think: (id, text) => { this.hints.think(id, text, { urgent: true, repeat: true }); },
-      changed: () => { this.hud.setAuto(this.auto.on || this.auto.progress, this.auto.traveling || this.auto.progress, this.auto.progress ? this.auto.daily : -2); },
+      changed: () => { this.hud.setAuto(this.auto.on || this.auto.progress, this.auto.traveling || this.auto.progress, !this.auto.progress ? -2 : this.auto.sub ? -3 : this.auto.daily); },
       claimDailies: () => this.claimDailyAll(),
+      claimSub: () => this.claimSub(),
     });
     // sounds: every actor's swings, rolls and casts (others by distance); monster spits and slams
     actorSound.fn = (code, a) => {
@@ -745,9 +748,28 @@ export class Game {
       if (!before.daily.claimed[i] && p.daily.claimed[i]) for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += q.reward[k] ?? 0;
     });
     this.applyProfile(p);
-    const names: Record<keyof typeof sum, string> = { exp: "경험", pigment: "안료", jade: "묵옥", stones: "먹돌", shards: "색 조각" };
-    toast(`오늘의 의뢰 보상 · ${(Object.keys(sum) as (keyof typeof sum)[]).filter((k) => sum[k]).map((k) => `${names[k]} ${sum[k]}`).join(" · ")}`);
+    this.hud.reward("오늘의 의뢰", sum);
     audio.play("quest-done");
+  }
+
+  /** The open 서브 퀘스트 handed in (from the tracker, anywhere): its reward shown, the next one opens. */
+  private async claimSub(): Promise<void> {
+    const before = subStatus(this.profile);
+    const p = await attempt(this.api.claimSub());
+    if (!p || !before) return;
+    this.applyProfile(p);
+    this.hud.reward(`서브 · ${before.q.title}`, before.q.reward);
+    audio.play("quest-done");
+  }
+
+  /** The 서브 퀘스트 tapped in the tracker: 자동 진행 on it (again: stop). */
+  private autoSub(): void {
+    if (this.auto.progress && this.auto.sub) { this.auto.stop(); toast("자동 진행 끔"); return; }
+    if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
+    const why = this.auto.startSub();
+    if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
+    const s = subStatus(this.profile);
+    toast(`자동 진행 · ${s?.q.title ?? "서브 의뢰"}`);
   }
 
   private openAlbum(): void {

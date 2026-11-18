@@ -14,6 +14,7 @@ flash of color across the monochrome field. The hero (an ink stick figure, calle
   색 조각 +1). Starter gear is never drawn. Duplicate gear becomes materials (weapons → 먹돌 4/8/16/30, hats and sashes
   → 색 조각 1/1/2/4 by rarity). Pity always gives 전설 gear. Dyes with free 안료,
   rewarded ads only. No interstitials ever. Color restoration / progress is never sold.
+- Quests: 본편 (story, one-time), 오늘의 의뢰 (daily, resets), 서브 퀘스트 = 지역 의뢰 (3 per field, repeatable, one open at a time from the field that suits your 경지). When 본편 needs a 경지 you lack, the tracker says so and 자동 진행 goes through dailies, then 서브, then back.
 - The hero has no fixed name: NPCs call the player by their nickname (`{이름}` in story lines); default name 나그네.
 - No hanja anywhere. Readable fonts (Gowun Batang headings, Gowun Dodum body).
 

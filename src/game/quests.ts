@@ -1,7 +1,7 @@
 // Quest state as the client shows it. The server decides completion (shared mainDone); the client reads the
 // profile and works out what each NPC has to say: offer, hand-in, still waiting, or nothing.
 
-import { DAILY_QUESTS, MAIN_QUESTS, ZONES, type QuestDef, type QuestGoal } from "../shared/world";
+import { DAILY_QUESTS, MAIN_QUESTS, SUB_QUESTS, ZONES, type QuestDef, type QuestGoal } from "../shared/world";
 import { NPC_INFO } from "../shared/story";
 import { MONSTERS } from "../shared/combat";
 import { mainDone } from "../shared/profile";
@@ -129,4 +129,13 @@ export function nextDaily(p: ProfileView, after = -1): number {
     if (!d.done && !d.claimed) return i;
   }
   return -1;
+}
+
+/** The open 서브 퀘스트 (already settled to the player's 경지 by the server's view). */
+export function subStatus(p: ProfileView): QuestStatus | null {
+  const q = SUB_QUESTS.find((s) => s.id === p.sub?.id);
+  if (!q) return null;
+  const target = goalTarget(q.goal);
+  const prog = Math.min(target, p.sub.prog);
+  return { q, prog, target, accepted: true, done: prog >= target };
 }

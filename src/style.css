@@ -1809,3 +1809,23 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .gourd.empty b { opacity: 0.7; }
 /* locked skills past the next one stay off the arc until they open */
 #ui .ring-btn.sk.later { display: none; }
+/* 서브 퀘스트 row: its own tag color (indigo), between 본편 and 오늘의 의뢰 */
+#ui .qd-tag.sub { color: #f3ecdf; background: #2a4f8a; }
+#ui .qpanel .qsub.qcard { padding-bottom: 0; }
+#ui .qpanel .qsub + .qdaily::before { content: none; }
+/* a reward, shown where you look with no panel: brush letters, then each gain as its picture and amount, rising */
+.reward-show { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); z-index: 28; display: grid; justify-items: center; gap: 8px; pointer-events: none; text-align: center; }
+.reward-show[hidden] { display: none; }
+.rw-title { margin: 0; font-family: var(--f-brush); font-weight: 700; font-size: 24px; letter-spacing: 0.08em; color: #f6eedf;
+  text-shadow: 0 0 4px rgba(10, 9, 8, 0.95), 0 0 12px rgba(10, 9, 8, 0.8), 0 2px 3px rgba(10, 9, 8, 0.9); }
+.rw-items { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; max-width: min(520px, 90vw); }
+.rw-item { display: grid; justify-items: center; gap: 1px; }
+.rw-item .spr { width: 52px; height: 52px; filter: drop-shadow(0 0 2px rgba(239, 229, 209, 0.95)) drop-shadow(0 0 8px rgba(239, 229, 209, 0.55)); }
+.rw-item b { font-family: var(--f-brush); font-size: 19px; color: #f3d27a; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.7); font-variant-numeric: tabular-nums; }
+.rw-item small { font-size: 11.5px; color: #e9e3d6; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95); }
+.reward-show.go .rw-title { animation: rw-title 2.8s ease-out both; }
+.reward-show.go .rw-item { animation: rw-item 2.8s ease-out both; animation-delay: calc(0.12s + var(--i) * 0.09s); }
+@keyframes rw-title { 0% { opacity: 0; transform: translateY(8px) scale(0.96); } 10% { opacity: 1; transform: none; } 78% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
+@keyframes rw-item { 0% { opacity: 0; transform: translateY(14px) scale(0.7); } 12% { opacity: 1; transform: translateY(0) scale(1.08); } 20% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-22px); } }
+@media (prefers-reduced-motion: reduce) { .reward-show.go .rw-title, .reward-show.go .rw-item { animation-duration: 2.8s; animation-name: fade-out; } }
+@media (max-height: 480px) { .reward-show { top: 22%; } .rw-item .spr { width: 40px; height: 40px; } .rw-title { font-size: 20px; } }

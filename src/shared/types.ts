@@ -70,6 +70,8 @@ export interface Profile {
   mainAccepted: boolean;
   mainProgress: number;
   daily: DailyState;
+  /** the open 서브 퀘스트 (SUB_QUESTS id; "" = pick by 경지) and its count */
+  sub: { id: string; prog: number };
   adsDay: string;
   adsLeft: number;
   zone: string;

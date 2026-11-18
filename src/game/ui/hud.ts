@@ -11,8 +11,8 @@ import { CHANNEL_CAPACITY, DAILY_QUESTS, ZONES } from "../../shared/world";
 import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
 import { fmt, hexCss } from "../util";
-import { chapterOf, dailyStatus, mainStatus, mainWall, npcName, npcZone, objective, progressText, rewardText } from "../quests";
-import { bindSliders, el, esc, skillIconPos } from "./dom";
+import { chapterOf, dailyStatus, mainStatus, mainWall, npcName, npcZone, objective, progressText, rewardText, subStatus } from "../quests";
+import { RES, bindSliders, el, esc, resIcon, skillIconPos, type ResKind } from "./dom";
 import { KEYS } from "./input";
 import { audio } from "../audio";
 import { roundDist, type QuestNav } from "../questnav";
@@ -36,6 +36,10 @@ export interface HudHandlers {
   travel(): void;
   /** 자동 진행 on one daily quest (tapped in the tracker) */
   travelDaily(i: number): void;
+  /** 자동 진행 on the 서브 퀘스트 */
+  travelSub(): void;
+  /** hand in the finished 서브 퀘스트 */
+  claimSub(): void;
   autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean };
   saveAutoSettings(): void;
   interact(): void;
@@ -98,6 +102,7 @@ const MARKUP = `
 <button class="prompt btn" type="button" data-prompt hidden></button>
 <div class="auto-pop" data-autopop hidden role="dialog" aria-label="자동 사냥 설정"></div>
 <div class="auto-pop channel-pop" data-chpop hidden role="dialog" aria-label="채널"></div>
+<div class="reward-show passive" data-reward hidden aria-live="polite"></div>
 <button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅" data-tip-title="채팅 (Enter)" data-tip="같은 채널 사람들과 말한다.">채팅</button>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
@@ -140,7 +145,7 @@ export class Hud {
   private travelling = false;
   /** re-measures the top-right row and the thumb arc (parts appear over time) */
   private relayout: () => void = () => {};
-  /** what 자동 진행 is on: -1 the main quest, a daily's index, -2 nothing */
+  /** what 자동 진행 is on: -1 the main quest, a daily's index, -3 the 서브 퀘스트, -2 nothing */
   private autoFocus = -2;
   /** 데미지 숫자 (settings) */
   showDmg = true;
@@ -380,7 +385,7 @@ export class Hud {
       } else tag = `<span class="qtag">진행 중</span>`;
       const state = s.done ? "done" : !s.accepted ? "fresh" : "";
       const going = this.travelling && this.autoFocus === -1;
-      const wallLine = wall ? `<p class="qwall"><b>막힘</b> 경지 ${wall}이 필요하다 · 아래 오늘의 의뢰로 강해지자</p>` : "";
+      const wallLine = wall ? `<p class="qwall"><b>막힘</b> 경지 ${wall}이 필요하다 · 아래 서브·오늘의 의뢰로 강해지자</p>` : "";
       main = `<div class="qcard qmain ${state}${going ? " going" : ""}${wall ? " walled" : ""}" data-go role="button" tabindex="0" aria-pressed="${going}" data-tip-title="${going ? "자동 진행 중 · 누르면 멈춘다" : "본편 · 누르면 자동 진행 (Z)"}" data-tip="${esc(s.q.text)}">
       <header><span class="qch">본편 ${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small><button type="button" class="qfold" data-qfold aria-label="접기/펴기"></button></header>
       <div class="qbody">
@@ -389,7 +394,7 @@ export class Hud {
         <footer><span class="qstate" data-qstate>${QSTATE[this.qState]}</span>${tag}</footer>
       </div></div>`;
     }
-    box.innerHTML = `<div class="qpanel${wall ? " walled" : ""}"><div class="qscroll">${main}${this.dailyCard(p, !!wall)}</div></div>`;
+    box.innerHTML = `<div class="qpanel${wall ? " walled" : ""}"><div class="qscroll">${main}${this.subRow(p, !!wall)}${this.dailyCard(p, !!wall)}</div></div>`;
     this.relayout();
     // more below than fits: the bottom fades (no scrollbar), until scrolled to the end
     const qs = box.querySelector<HTMLElement>(".qscroll"), qp = box.querySelector<HTMLElement>(".qpanel");
@@ -401,6 +406,11 @@ export class Hud {
     const card = box.querySelector<HTMLElement>("[data-go]");
     card?.addEventListener("click", () => this.h.travel());
     card?.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.h.travel(); } });
+    box.querySelectorAll<HTMLElement>("[data-sub]").forEach((li) => {
+      const go = () => (li.dataset.sub === "done" ? this.h.claimSub() : this.h.travelSub());
+      li.addEventListener("click", go);
+      li.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    });
     box.querySelectorAll<HTMLElement>("[data-daily]").forEach((li) => {
       const go = () => this.h.travelDaily(Number(li.dataset.daily));
       li.addEventListener("click", go);
@@ -437,6 +447,34 @@ export class Hud {
   }
 
   /** The day's quests that are still open, under the main card: title + progress, or who to report to. */
+  /** The 서브 퀘스트 (지역 의뢰) as one line: a 서브 tag, the title, the count (받기 once done). */
+  private subRow(p: ProfileView, walled: boolean): string {
+    const s = subStatus(p);
+    if (!s) return "";
+    const going = this.travelling && this.autoFocus === -3;
+    const tip = s.done ? `data-tip-title="보상 받기" data-tip="보상 · ${esc(rewardText(s.q))}"` : `data-tip-title="${going ? "자동 진행 중 · 누르면 멈춘다" : "서브 · 누르면 자동 진행"}" data-tip="${esc(s.q.text)}\n${esc(npcName(s.q.giver))}의 의뢰 · 끝내면 다음 의뢰가 이어진다."`;
+    return `<ul class="qcard daily qdaily qsub${walled ? " lit" : ""}"><li class="${s.done ? "done" : ""}${going ? " going" : ""}" data-sub="${s.done ? "done" : "go"}" role="button" tabindex="0" ${tip}><i class="qd-tag sub">서브</i><span>${esc(s.q.title)}</span>${s.done ? `<b class="qd-get">받기</b>` : `<b>${s.prog}/${s.target}</b>`}</li></ul>`;
+  }
+
+  /**
+   * A reward shown where you look, with no panel: what it was for in brush letters, then each thing gained as its
+   * picture and amount, rising and fading over a couple of seconds.
+   */
+  reward(title: string, r: { exp?: number; pigment?: number; jade?: number; stones?: number; shards?: number; potions?: number; protects?: number; points?: number }): void {
+    const map: [keyof typeof r, ResKind][] = [["exp", "exp"], ["pigment", "pigment"], ["jade", "jade"], ["stones", "stone"], ["shards", "shard"], ["potions", "potion"], ["protects", "protect"], ["points", "points"]];
+    const items = map.filter(([k]) => (r[k] ?? 0) > 0).map(([k, kind], i) => `<span class="rw-item" style="--i:${i}">${resIcon(kind, "l")}<b>+${(r[k] ?? 0).toLocaleString("ko-KR")}</b><small>${esc(RES[kind].name)}</small></span>`).join("");
+    if (!items) return;
+    const box = el("[data-reward]", this.root);
+    box.innerHTML = `<p class="rw-title">${esc(title)}</p><div class="rw-items">${items}</div>`;
+    box.hidden = false;
+    box.classList.remove("go");
+    void box.offsetWidth;
+    box.classList.add("go");
+    window.clearTimeout(this.rewardTimer);
+    this.rewardTimer = window.setTimeout(() => { box.hidden = true; }, 2800);
+  }
+  private rewardTimer = 0;
+
   /**
    * Today's quests as compact one-line rows under 본편 (like most mobile MMOs' trackers): a small 일일 tag, the
    * title, the count. A finished one turns into 받기 and is paid on a tap; an unfinished one starts 자동 진행 on it.

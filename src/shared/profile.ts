@@ -7,7 +7,7 @@ import { MAX_LEVEL, MONSTERS, SKILLS, attackFor, expToNext, isObstacle, maxHpFor
 import { ENHANCE_MAX, SKILL_MAX, enhancedAtk, pointsEarned, pointsSpent } from "./growth";
 import { ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED } from "./items";
 import { type Look, type Profile, type SlotId, today } from "./types";
-import { AD_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, ZONES, type QuestDef } from "./world";
+import { AD_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, SUB_QUESTS, ZONES, type QuestDef } from "./world";
 
 export const STARTER_POTIONS = 3;
 /**
@@ -24,7 +24,7 @@ export function starterProfile(name: string, now: number): Profile {
     name, level: 1, exp: 0, hp: maxHpFor(1), potions: STARTER_POTIONS, pigment: 0, jade: 0,
     owned: [...STARTER_OWNED], equip: { ...STARTER_EQUIP }, dye: { ...STARTER_DYE }, pity: 0,
     created: false, skills: SKILLS.map(() => 1), bonusPoints: 0, stones: 0, shards: 0, protects: 0, enh: {},
-    main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), adsDay: today(now), adsLeft: AD_DAILY,
+    main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), sub: { id: "", prog: 0 }, adsDay: today(now), adsLeft: AD_DAILY,
     zone: START_ZONE, channel: 1, createdAt: now,
   };
 }
@@ -106,6 +106,7 @@ export function readProfile(raw: unknown): Profile | null {
       progress: DAILY_QUESTS.map((_, i) => int(progress[i], 0)),
       claimed: DAILY_QUESTS.map((_, i) => claimed[i] === true),
     },
+    sub: readSub(r.sub),
     adsDay: typeof r.adsDay === "string" ? r.adsDay : "",
     adsLeft: int(r.adsLeft, AD_DAILY, 0, AD_DAILY),
     zone: typeof r.zone === "string" && ZONES[r.zone] ? r.zone : START_ZONE,
@@ -136,7 +137,7 @@ export function pointsLeft(p: Profile): number {
 
 export function profileView(account: string, p: Profile): ProfileView {
   return {
-    ...p, account, maxHp: maxHpFor(p.level), atk: attackFor(p.level, weaponAtk(p)), expToNext: expToNext(p.level), points: pointsLeft(p),
+    ...p, sub: settleSub(p).sub, account, maxHp: maxHpFor(p.level), atk: attackFor(p.level, weaponAtk(p)), expToNext: expToNext(p.level), points: pointsLeft(p),
   };
 }
 
@@ -199,7 +200,16 @@ export function countKills(p: Profile, felled: Felled[]): Profile {
     const n = felled.filter((f) => counts(f.kind, g.kind) && (!g.zone || f.zone === g.zone)).length;
     return Math.min(g.count, value + n);
   });
-  return { ...p, mainProgress, daily: { ...p.daily, progress } };
+  // the open 서브 퀘스트 (settled to one that suits your 경지 if it hasn't been started)
+  const sp = settleSub(p);
+  const sq = subDef(sp.sub.id);
+  let sub = sp.sub;
+  if (sq && sq.goal.type === "kill") {
+    const g = sq.goal;
+    const n = felled.filter((f) => counts(f.kind, g.kind) && (!g.zone || f.zone === g.zone)).length;
+    if (n > 0) sub = { id: sub.id, prog: Math.min(g.count, sub.prog + n) };
+  }
+  return { ...p, mainProgress, daily: { ...p.daily, progress }, sub };
 }
 
 /** One brush technique used, for the daily quest that counts them. */
@@ -243,4 +253,49 @@ export function dailyDone(p: Profile, index: number): boolean {
   const q = DAILY_QUESTS[index];
   if (!q || q.goal.type !== "kill") return false;
   return p.daily.progress[index] >= q.goal.count;
+}
+
+/* ---------- 서브 퀘스트 (지역 의뢰) ---------- */
+function readSub(raw: unknown): Profile["sub"] {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const id = typeof r.id === "string" && SUB_QUESTS.some((q) => q.id === r.id) ? r.id : "";
+  return { id, prog: id ? int(r.prog, 0) : 0 };
+}
+
+export function subDef(id: string): (QuestDef & { zone: string }) | undefined {
+  return SUB_QUESTS.find((q) => q.id === id);
+}
+
+/** The field whose 서브 퀘스트 suits this 경지: the highest one you have reached the floor of. */
+export function subZoneFor(level: number): string {
+  let best = SUB_QUESTS[0].zone;
+  for (const q of SUB_QUESTS) if (level >= ZONES[q.zone].levels[0] && ZONES[q.zone].levels[0] >= ZONES[best].levels[0]) best = q.zone;
+  return best;
+}
+
+/**
+ * The open 서브 퀘스트, settled: one already under way stays; one not yet started moves to the field that now
+ * suits your 경지 (its first quest). Pure: answers the same profile when nothing changes.
+ */
+export function settleSub(p: Profile): Profile {
+  const cur = subDef(p.sub.id);
+  const zone = subZoneFor(p.level);
+  if (cur && (p.sub.prog > 0 || cur.zone === zone)) return p;
+  const first = SUB_QUESTS.find((q) => q.zone === zone)!;
+  return { ...p, sub: { id: first.id, prog: 0 } };
+}
+
+export function subDone(p: Profile): boolean {
+  const q = subDef(p.sub.id);
+  return !!q && q.goal.type === "kill" && p.sub.prog >= q.goal.count;
+}
+
+/** After one is handed in: the next of that field (round and round), or the first of a field that now suits better. */
+export function nextSub(p: Profile): Profile {
+  const cur = subDef(p.sub.id);
+  const zone = subZoneFor(p.level);
+  if (!cur || cur.zone !== zone) return settleSub({ ...p, sub: { id: "", prog: 0 } });
+  const list = SUB_QUESTS.filter((q) => q.zone === zone);
+  const next = list[(list.indexOf(cur) + 1) % list.length];
+  return { ...p, sub: { id: next.id, prog: 0 } };
 }

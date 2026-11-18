@@ -141,6 +141,8 @@ export interface GameApi {
   /** Hand the current main quest in to its turn-in NPC (stand within NPC_REACH). */
   claimMain(npcId?: string): Promise<ProfileView>;
   claimDaily(index: number): Promise<ProfileView>;
+  /** Hand in the open 서브 퀘스트 (anywhere); the next one opens. Errors: quest_not_done. */
+  claimSub(): Promise<ProfileView>;
   /** Every finished daily quest at once. Errors: quest_not_done (none ready). */
   claimDailyAll(): Promise<ProfileView>;
   /** Say a line in your room (zone + channel). Errors: bad_args (empty/too long), on_cooldown (pace), rate_limited (same line again), not_ready. */

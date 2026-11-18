@@ -272,6 +272,9 @@ export abstract class BaseGameApi implements GameApi {
   async claimDaily(index: number): Promise<ProfileView> {
     return this.viewed(await this.call<ProfileView>("claimDaily", [index]));
   }
+  async claimSub(): Promise<ProfileView> {
+    return this.viewed(await this.call<ProfileView>("claimSub", []));
+  }
   async claimDailyAll(): Promise<ProfileView> {
     return this.viewed(await this.call<ProfileView>("claimDailyAll", []));
   }

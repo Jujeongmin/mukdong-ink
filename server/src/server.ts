@@ -13,7 +13,7 @@ import { chatName } from "../../src/shared/filter";
 import { forwardX, forwardZ } from "../../src/shared/hit";
 import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
 import {
-  MAX_POTIONS, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, pointsLeft, profileView, weaponAtk,
+  MAX_POTIONS, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, nextSub, pointsLeft, profileView, settleSub, subDef, subDone, weaponAtk,
   type Felled,
 } from "../../src/shared/profile";
 import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
@@ -956,6 +956,22 @@ export class Server {
       levelUp = paid.levelUp;
       const claimed = q.daily.claimed.map((c, i) => c || i === index);
       return { ...paid.profile, daily: { ...paid.profile.daily, claimed } };
+    });
+    if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpFor(p.level), hp: maxHpFor(p.level) });
+    return profileView(account, p);
+  }
+
+  /** The open 서브 퀘스트, finished: paid, and the next one opens. quest_not_done until its count is met. */
+  async claimSub(): Promise<ProfileView> {
+    const account = $sender.account;
+    let levelUp = false;
+    const p = await updateProfile(account, (raw) => {
+      const q = settleSub(raw);
+      const def = subDef(q.sub.id);
+      if (!def || !subDone(q)) throw new RuleViolation("quest_not_done");
+      const paid = giveReward(q, def.reward);
+      levelUp = paid.levelUp;
+      return nextSub(paid.profile);
     });
     if (levelUp) await showInRoom({ level: p.level, maxHp: maxHpFor(p.level), hp: maxHpFor(p.level) });
     return profileView(account, p);
