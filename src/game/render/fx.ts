@@ -316,6 +316,9 @@ class Particles {
   private readonly life: Float32Array; private readonly size: Float32Array; private readonly drag: Float32Array;
   private next = 0;
   private live = 0;
+  /** the slots whose color changed since the last upload (only that span is sent) */
+  private cLo = Infinity;
+  private cHi = -1;
   constructor(private readonly n: number, mat: THREE.Material, parent: THREE.Object3D, private readonly colored: boolean) {
     this.mesh = new THREE.InstancedMesh(G.ico, mat, n);
     this.mesh.frustumCulled = false;
@@ -339,18 +342,22 @@ class Particles {
     this.live = 2;
     if (this.colored && col && this.mesh.instanceColor) {
       this.mesh.setColorAt(i, cTmp.setRGB(col[0], col[1], col[2]));
-      this.mesh.instanceColor.needsUpdate = true;
+      if (i < this.cLo) this.cLo = i;
+      if (i > this.cHi) this.cHi = i;
     }
   }
   update(dt: number, grav: number, onGround: ((x: number, z: number, s: number) => void) | null): void {
     if (this.live <= 0) return; // nothing alive and matrices already cleared
     let any = false;
+    let lo = this.n, hi = -1; // the span of matrices written this frame: only it is uploaded
     for (let i = 0; i < this.n; i++) {
       if (this.life[i] <= 0) {
-        if (this.size[i] > 0) { this.size[i] = 0; this.mesh.setMatrixAt(i, ZERO); }
+        if (this.size[i] > 0) { this.size[i] = 0; this.mesh.setMatrixAt(i, ZERO); if (i < lo) lo = i; if (i > hi) hi = i; }
         continue;
       }
       any = true;
+      if (i < lo) lo = i;
+      if (i > hi) hi = i;
       this.life[i] -= dt;
       const k = 1 - Math.min(1, this.drag[i] * dt);
       this.vx[i] *= k; this.vz[i] *= k;
@@ -368,12 +375,26 @@ class Particles {
       this.mesh.setMatrixAt(i, dummy.matrix);
     }
     if (!any) this.live--;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    if (hi >= 0) {
+      const im = this.mesh.instanceMatrix;
+      im.clearUpdateRanges();
+      im.addUpdateRange(lo * 16, (hi - lo + 1) * 16);
+      im.needsUpdate = true;
+    }
+    const ic = this.mesh.instanceColor;
+    if (ic && this.cHi >= 0) {
+      ic.clearUpdateRanges();
+      ic.addUpdateRange(this.cLo * 3, (this.cHi - this.cLo + 1) * 3);
+      ic.needsUpdate = true;
+      this.cLo = Infinity;
+      this.cHi = -1;
+    }
   }
   clear(): void {
     this.life.fill(0);
     this.size.fill(0);
     for (let i = 0; i < this.n; i++) this.mesh.setMatrixAt(i, ZERO);
+    this.mesh.instanceMatrix.clearUpdateRanges(); // the whole buffer this time
     this.mesh.instanceMatrix.needsUpdate = true;
     this.live = 0;
   }
@@ -573,7 +594,7 @@ for (let k = 0; k < 12; k++) {
   const mat = new THREE.MeshBasicMaterial({ color: 0x2a2826, transparent: true, opacity: 0, depthWrite: false });
   const rig = new Rig(mat, true);
   rig.group.visible = false;
-  scene.add(rig.group);
+  // added to the scene only while showing (an idle rig in the graph is ~35 nodes walked every frame)
   ghosts.push({ rig, mat, life: 0, max: 0.3, peak: 0.5 });
 }
 let ghostNext = 0;
@@ -586,6 +607,7 @@ export function spawnGhost(src: Rig, hex: number, life = 0.3, peak = 0.5): void 
   g.max = life;
   g.peak = peak;
   g.rig.group.visible = true;
+  if (!g.rig.group.parent) scene.add(g.rig.group);
 }
 /**
  * An ink afterimage of the figure that bleeds away (바람질주): it holds dark, thins out and runs, with a few
@@ -606,6 +628,7 @@ function updateGhosts(dt: number): void {
     const k = Math.min(1, u / 0.55); // holds, then thins out
     g.mat.opacity = k * k * g.peak;
     g.rig.group.visible = g.life > 0;
+    if (g.life <= 0) scene.remove(g.rig.group);
   }
 }
 
@@ -721,7 +744,7 @@ export function clearFx(): void {
   for (const c of crescents) c.mesh.visible = false;
   for (const b of blots) b.on = false;
   for (const e of echoes) e.on = false;
-  for (const g of ghosts) { g.life = 0; g.rig.group.visible = false; }
+  for (const g of ghosts) { g.life = 0; g.rig.group.visible = false; scene.remove(g.rig.group); }
   sparks.clear();
   inkDrops.clear();
   for (let i = 0; i < DN; i++) decals.setMatrixAt(i, ZERO);

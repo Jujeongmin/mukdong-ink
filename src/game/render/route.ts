@@ -199,7 +199,13 @@ export class RoutePreview {
       n++;
     }
     this.dots.count = n;
-    this.dots.instanceMatrix.needsUpdate = true;
+    // upload only the dabs drawn this frame, not the whole MAX_DOTS buffer
+    const im = this.dots.instanceMatrix;
+    im.clearUpdateRanges();
+    im.addUpdateRange(0, n * 16);
+    im.needsUpdate = true;
+    this.dabAttr.clearUpdateRanges();
+    this.dabAttr.addUpdateRange(0, n * 2);
     this.dabAttr.needsUpdate = true;
     this.dots.visible = n > 0;
     this.time.value = time;

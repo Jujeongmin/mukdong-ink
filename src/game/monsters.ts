@@ -434,7 +434,7 @@ export class Monsters {
   private acquire(s: MonsterState): MView {
     const list = this.pool.get(s.kind);
     const v = list?.pop();
-    if (v) { v.id = s.id; v.shown = false; v.hitAt = s.hitAt; v.mode = s.mode; return v; }
+    if (v) { v.id = s.id; v.shown = false; v.hitAt = s.hitAt; v.mode = s.mode; scene.add(v.look.group, v.shadow); return v; }
     const def = MONSTERS[s.kind] ?? MONSTERS.blob;
     const look = buildLook(s.kind);
     const shadow = new THREE.Mesh(G.shadow, M_shadow);
@@ -451,6 +451,8 @@ export class Monsters {
     if (v.windTele) { v.windTele.mesh.visible = false; v.windTele = null; }
     v.look.group.visible = false;
     v.shadow.visible = false;
+    // pooled looks wait out of the scene, so the per-frame matrix walk doesn't visit them (SHARED parts: nothing to free)
+    scene.remove(v.look.group, v.shadow);
     let list = this.pool.get(v.kind);
     if (!list) { list = []; this.pool.set(v.kind, list); }
     list.push(v);

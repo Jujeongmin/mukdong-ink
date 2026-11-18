@@ -439,7 +439,6 @@ export class Actor {
     const hasIn = Math.hypot(inp.mx, inp.mz) > 0.15;
     const fx = this.fx, fz = this.fz;
     let grav = 36;
-    const damp = (r: number) => { const k = 1 - Math.min(1, dt * r); this.vx *= k; this.vz *= k; };
     switch (this.state) {
       case "move": {
         const k = Math.min(1, dt * (this.onGround ? 16 : 7));
@@ -466,7 +465,7 @@ export class Actor {
       case "atk1": case "atk2": case "atk3": {
         const A = ATK[this.state];
         // the lunge carries into the blow; after the impact the feet are planted, so nothing slides
-        damp(this.st < A.clip.impact ? 8 : 18);
+        this.damp(dt, this.st < A.clip.impact ? 8 : 18);
         if (inp.atk > 0 && A.next) this.queued = true;
         if (this.st > A.act[1] && this.atkGap <= 0) {
           if ((inp.atk > 0 || this.queued) && A.next) { inp.atk = 0; this.aim(-1); this.start(A.next); break; }
@@ -491,7 +490,7 @@ export class Actor {
         if (this.st >= DASH_DUR) { this.vx = fx * 7; this.vz = fz * 7; this.state = "move"; }
         break;
       case "sk0":
-        damp(6);
+        this.damp(dt, 6);
         if (!this.fired && this.st >= 0.1) { this.fired = true; this.fireWave(); }
         if (this.st >= 0.42) this.state = "move";
         break;
@@ -512,18 +511,18 @@ export class Actor {
         if (this.st >= this.windDur()) { this.vx = fx * 6; this.vz = fz * 6; this.windEnd(); }
         break;
       case "sk4":
-        damp(10);
+        this.damp(dt, 10);
         if (!this.fired && this.st >= 0.15) { this.fired = true; this.castBlot(); }
         if (this.st >= 0.45) this.state = "move";
         break;
-      case "land": damp(12); if (this.st > 0.3) this.state = "move"; break;
-      case "hurt": damp(3); if (this.tryRoll(hasIn)) break; if (this.st > 0.25) this.state = "move"; break;
+      case "land": this.damp(dt, 12); if (this.st > 0.3) this.state = "move"; break;
+      case "hurt": this.damp(dt, 3); if (this.tryRoll(hasIn)) break; if (this.st > 0.25) this.state = "move"; break;
       case "roll":
         grav = 0; this.vy = 0;
         this.rollSmear(dt);
         if (this.st >= ROLL_DUR) { this.vx = fx * 2; this.vz = fz * 2; this.state = "move"; }
         break;
-      case "dead": damp(4); break;
+      case "dead": this.damp(dt, 4); break;
     }
     this.vy -= grav * dt;
     this.moveBody(this.vx * dt, this.vz * dt, 0.45);
@@ -751,9 +750,15 @@ export class Actor {
   }
 
   /* ---------- drawing ---------- */
+  /** Slows horizontal speed by rate `r` per second. */
+  private damp(dt: number, r: number): void {
+    const k = 1 - Math.min(1, dt * r);
+    this.vx *= k;
+    this.vz *= k;
+  }
+
   render(dt: number): void {
     const pose = this.rig.pose;
-    const ease = (r: number) => 1 - Math.exp(-dt * r);
     switch (this.state) {
       case "move":
         if (this.onGround) {
@@ -786,7 +791,7 @@ export class Actor {
             this.recT = Math.min(this.recClip.dur, this.recT + dt);
             const tw = sampleMotion(recPose, this.recClip, this.recT, this.rig.dirs3);
             const w = this.recW * this.recW * (3 - 2 * this.recW);
-            const kl = ease(this.recDur > RECOVER ? 22 : 40);
+            const kl = easeK(dt, this.recDur > RECOVER ? 22 : 40);
             for (let k = 0; k < 12; k++) {
               // joint angles ease back the short way round (the spin leaves some a full turn past the hold)
               if (IS_UPPER[k]) pose[k] = tmpPose[k] + (k === 11 ? recPose[k] - tmpPose[k] : wrapPi(recPose[k] - tmpPose[k])) * w;
@@ -795,8 +800,8 @@ export class Actor {
             this.rig.twist = (tw - this.recTurns) * w;
             this.rig.arm3 = w;
             this.recW = Math.max(0, this.recW - dt / this.recDur);
-          } else blend(pose, tmpPose, ease(18));
-        } else { this.recW = 0; blend(pose, this.vy > 0 ? POSE.airUp : POSE.airDown, ease(12)); }
+          } else blend(pose, tmpPose, easeK(dt, 18));
+        } else { this.recW = 0; blend(pose, this.vy > 0 ? POSE.airUp : POSE.airDown, easeK(dt, 12)); }
         break;
       case "atk1": case "atk2": case "atk3": {
         const clip: MotionClip = ATK[this.state].clip;
@@ -812,14 +817,14 @@ export class Actor {
         break;
       }
       case "sk0": sampleKeys(pose, KEYS.atk1, this.st / 0.42); break;
-      case "airspin": case "sk1": blend(pose, POSE.spin, ease(30)); break;
-      case "sk2": blend(pose, POSE.plunge, ease(25)); break;
-      case "land": blend(pose, POSE.land, ease(30)); break;
-      case "dash": case "sk3": blend(pose, POSE.dash, ease(35)); break;
-      case "roll": blend(pose, ROLL_POSE, ease(40)); break;
-      case "sk4": blend(pose, POSE.cast, ease(30)); break;
-      case "hurt": blend(pose, POSE.hurt, ease(25)); break;
-      case "dead": blend(pose, POSE.dead, ease(10)); break;
+      case "airspin": case "sk1": blend(pose, POSE.spin, easeK(dt, 30)); break;
+      case "sk2": blend(pose, POSE.plunge, easeK(dt, 25)); break;
+      case "land": blend(pose, POSE.land, easeK(dt, 30)); break;
+      case "dash": case "sk3": blend(pose, POSE.dash, easeK(dt, 35)); break;
+      case "roll": blend(pose, ROLL_POSE, easeK(dt, 40)); break;
+      case "sk4": blend(pose, POSE.cast, easeK(dt, 30)); break;
+      case "hurt": blend(pose, POSE.hurt, easeK(dt, 25)); break;
+      case "dead": blend(pose, POSE.dead, easeK(dt, 10)); break;
     }
     if (!this.onGround) this.printAir = true;
     if (this.state === "roll" && !this.printRoll) {
@@ -835,13 +840,13 @@ export class Actor {
     const striking = s0 === "atk1" || s0 === "atk2" || s0 === "atk3";
     // strikes keep the IK hold underneath the mocap arms, so blending out of a clip goes straight to the hold
     const held = s0 === "move" || s0 === "roll" || s0 === "land" || s0 === "hurt" || striking;
-    rig.stance += ((held ? 1 : 0) - rig.stance) * ease(held ? 10 : 30);
+    rig.stance += ((held ? 1 : 0) - rig.stance) * easeK(dt, held ? 10 : 30);
     // the low guard is a standing pose only: moving always runs with the normal shoulder carry
     const still = s0 === "move" && this.onGround && Math.hypot(this.vx, this.vz) < 0.8;
     const guardOn = (this.threat || this.combatT > 0) && (still || striking);
     rig.guard = Math.max(0, Math.min(1, rig.guard + (guardOn ? dt / GUARD_IN : -dt / GUARD_OUT)));
     if (!striking && this.recW <= 0) {
-      rig.twist += (0 - rig.twist) * ease(16);
+      rig.twist += (0 - rig.twist) * easeK(dt, 16);
       rig.arm3 = Math.max(0, rig.arm3 - dt / MOCAP_BLEND);
     }
     rig.spin = this.spin + (this.state === "dead" ? Math.min(1, this.st * 2) * 1.45 : 0)
@@ -911,3 +916,7 @@ export class Actor {
   }
 }
 
+/** Frame-rate independent blend factor toward a target at rate `r`. */
+function easeK(dt: number, r: number): number {
+  return 1 - Math.exp(-dt * r);
+}

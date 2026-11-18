@@ -1055,13 +1055,8 @@ export class Game {
     // monsters face whoever is closest
     const tg = this.monsters.targets;
     let n = 0;
-    const pushT = (x: number, z: number) => {
-      if (!this.targetPool[n]) this.targetPool[n] = { x: 0, z: 0 };
-      const o = this.targetPool[n++];
-      o.x = x; o.z = z;
-    };
-    if (!this.dead) pushT(p.x, p.z);
-    for (const r of this.remotes.values()) if (!r.dead) pushT(r.actor.x, r.actor.z);
+    if (!this.dead) n = this.pushTarget(n, p.x, p.z);
+    for (const r of this.remotes.values()) if (!r.dead) n = this.pushTarget(n, r.actor.x, r.actor.z);
     tg.length = 0;
     for (let i = 0; i < n; i++) tg.push(this.targetPool[i]);
     this.monsters.update(dt, feel.time, p.x, p.z);
@@ -1138,6 +1133,12 @@ export class Game {
   /** ~4 Hz: the quest card's distance line and state tag (no allocation on the hot path). */
   /** when this session's play began (first-time feature thoughts wait a little) */
   private begunAt = 0;
+  /** Writes the n-th pooled monster target (no per-frame closure or object); returns n + 1. */
+  private pushTarget(n: number, x: number, z: number): number {
+    const o = this.targetPool[n] ?? (this.targetPool[n] = { x: 0, z: 0 });
+    o.x = x; o.z = z;
+    return n + 1;
+  }
 
   /**
    * Once per account, at the moment they matter, a thought about the newer controls: the quest tracker drives

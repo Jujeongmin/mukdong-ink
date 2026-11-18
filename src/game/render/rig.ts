@@ -591,11 +591,7 @@ export class Rig {
       this.collar.rotation.set(0, 0, -p[0] - 0.12);
     }
     const J = this.joints;
-    const jt = (i: number, x: number, y: number, z: number, r: number) => {
-      J[i].position.set(x, y, z);
-      J[i].scale.setScalar(r);
-    };
-    jt(12, tx, ty, 0, 0.082 * w);
+    jt(J, 12, tx, ty, 0, 0.082 * w);
     const sdx = -Math.sin(p[0]) * 0.07, sdy = -Math.cos(p[0]) * 0.07;
     const sx0 = tx + sdx, sy0 = ty + sdy;
     // stance (IK): where the brush sits and where each hand goes, carried on the shoulder (guard 0) or held
@@ -642,10 +638,10 @@ export class Rig {
       }
       seg3(this.segs[2 + side * 2], sx0, sy0, zs, exx, eyy, ezz, 0.066 * w);
       seg3(this.segs[3 + side * 2], exx, eyy, ezz, hx2, hy2, hz, 0.062 * w);
-      jt(side * 6, sx0, sy0, zs, 0.064 * w);
-      jt(side * 6 + 1, exx, eyy, ezz, 0.05 * w);
+      jt(J, side * 6, sx0, sy0, zs, 0.064 * w);
+      jt(J, side * 6 + 1, exx, eyy, ezz, 0.05 * w);
       // the hands close round the shaft: a slightly larger fist dab the shaft runs through
-      jt(side * 6 + 2, hx2, hy2, hz, (st > 0.5 && (side === 1 || this.guard > 0.5) ? 0.068 : 0.056) * w);
+      jt(J, side * 6 + 2, hx2, hy2, hz, (st > 0.5 && (side === 1 || this.guard > 0.5) ? 0.068 : 0.056) * w);
       if (side === 1) {
         const sa = fa + p[10];
         this.hand.set(hx2, hy2);
@@ -673,9 +669,9 @@ export class Rig {
       seg3(this.segs[7 + side * 2], kx, ky, z1, fx, fy, z2, 0.075 * w);
       // the foot: a short stroke off the ankle, forward and a touch down
       seg3(this.segs[10 + side], fx, fy, z2, fx + Math.sin(a + 1.5) * 0.2, fy - Math.cos(a + 1.5) * 0.2 - 0.02, z2, 0.058 * w);
-      jt(side * 6 + 3, 0, 0, z0, 0.078 * w);
-      jt(side * 6 + 4, kx, ky, z1, 0.062 * w);
-      jt(side * 6 + 5, fx, fy, z2, 0.058 * w);
+      jt(J, side * 6 + 3, 0, 0, z0, 0.078 * w);
+      jt(J, side * 6 + 4, kx, ky, z1, 0.062 * w);
+      jt(J, side * 6 + 5, fx, fy, z2, 0.058 * w);
     }
     // the weapon is gripped `grip` up from its end (a third of the way up for the brush)
     const sx = this.hand.x, sy = this.hand.y, dx = this.dir.x, dy = this.dir.y, gr = this.grip;
@@ -791,4 +787,10 @@ export function runPose(out: Float32Array, ph: number): void {
   out[0] = 0.32; out[1] = -0.1; out[2] = -0.9 * s + 0.1; out[3] = 0.9; out[4] = -1.1 + 0.25 * s; out[5] = 0.35;
   out[6] = 0.25 + 0.85 * s; out[7] = -0.25 - (0.5 + 0.5 * c); out[8] = 0.25 - 0.85 * s; out[9] = -0.25 - (0.5 - 0.5 * c);
   out[10] = -0.35; out[11] = -0.08 - 0.06 * Math.abs(c);
+}
+
+/** Places joint `i` and sizes it. */
+function jt(J: readonly THREE.Mesh[], i: number, x: number, y: number, z: number, r: number): void {
+  J[i].position.set(x, y, z);
+  J[i].scale.setScalar(r);
 }
