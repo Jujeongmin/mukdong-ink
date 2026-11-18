@@ -595,6 +595,8 @@ void main(){
       float m = (1.0 - smoothstep(rr * 0.7, rr, sd)) * S.w;
       if (m > stainM) { stainM = m; stainCol = uStainCol[i]; }
     }
+    // only the ground takes the color (the world is flat at y 0): figures, trunks and walls standing in it stay ink
+    stainM *= 1.0 - smoothstep(0.08, 0.35, wp.y);
     if (stainM > reveal) { reveal = stainM; tint = stainCol; }
     float Lc = luma(src);
     vec3 chroma = src / max(Lc, 0.02);

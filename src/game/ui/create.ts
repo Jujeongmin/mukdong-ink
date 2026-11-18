@@ -121,10 +121,13 @@ export class CharacterCreator {
     this.preview.start();
     const input = el<HTMLInputElement>("[data-name]", this.box);
     input.focus();
+    // an error goes away as soon as you start fixing the name
+    input.addEventListener("input", () => this.error(""));
     return new Promise((resolve) => {
       const form = el<HTMLFormElement>("[data-form]", this.box);
       const go = (e: Event) => {
         e.preventDefault();
+        if (!input.value.trim()) { this.error("이름부터 적어 주자."); input.focus(); return; }
         form.removeEventListener("submit", go);
         resolve({ name: input.value.trim(), scarf: this.scarf, sash: this.sash });
       };

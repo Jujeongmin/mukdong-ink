@@ -105,7 +105,7 @@ function skillDetail(p: ProfileView, i: number, pts: number, busy: boolean, st: 
     const chips = resChip("points", c.points, { need: true, short: pts < c.points }) + resChip("pigment", c.pigment, { need: true, short: p.pigment < c.pigment })
       + (c.shards ? resChip("shard", c.shards, { need: true, short: (p.shards ?? 0) < c.shards }) : "");
     act = `<div class="gr2-cost"><span class="cap">드는 것</span>${chips}</div>
-      <button class="btn btn-lg gr2-go" type="button" data-do="train" data-i="${i}" ${can ? "" : "disabled"}><span>단련</span><small>Lv ${lv + 1}로</small></button>`;
+      <button class="btn btn-lg gr2-go" type="button" data-do="train" data-i="${i}" ${can ? "" : "disabled"}><span>단련</span><small>Lv ${lv + 1}${ro(lv + 1)}</small></button>`;
   }
   const tl = AWAKEN_AT.map((at) => {
     const reached = !locked && lv >= at;
@@ -229,4 +229,11 @@ export async function growthAction(
     return true;
   }
   return false;
+}
+
+/** 로 / 으로 after a number read aloud (1·2·4·5·7·8·9·10 take 로 only when the last sound is a vowel or ㄹ). */
+function ro(n: number): string {
+  // last digit read: 0 영 1 일 2 이 3 삼 4 사 5 오 6 육 7 칠 8 팔 9 구; 10 십
+  const d = n % 10 === 0 ? (n % 100 === 0 ? "백" : "십") : "영일이삼사오육칠팔구"[n % 10];
+  return "삼육십백".includes(d) ? "으로" : "로";
 }

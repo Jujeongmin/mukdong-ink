@@ -537,6 +537,11 @@ export class Rig {
     if (right) { this.segs[5].material = right; this.joints[8].material = right; }
   }
 
+  /** Lift for a name plate / speech bubble over the usual head height: a hat's crown, plus a little air. */
+  tagLift(): number {
+    return (this.hat?.visible ? 0.42 : 0.12) * this.group.scale.y;
+  }
+
   /** Height of the top of the head above the feet in world units (for name plates and quest marks). */
   topY(): number {
     const L = this.len;

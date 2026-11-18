@@ -89,7 +89,10 @@ export class TitleScene {
     const portrait = window.innerWidth / Math.max(1, window.innerHeight) < 0.9;
     // slow drift; on phones the camera backs off so hero and moon both fit
     const back = portrait ? 16 : 12;
-    const cx = (portrait ? PILLAR_X + 1.3 : 1.5) + Math.sin(this.t * 0.11) * 0.4;
+    // landscape: the hero stands well inside the left edge however narrow the window (a 4:3 window cut him in half)
+    const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+    const halfW = Math.tan((camera.fov * Math.PI) / 360) * back * aspect;
+    const cx = (portrait ? PILLAR_X + 1.3 : Math.min(1.5, PILLAR_X + halfW * 0.62)) + Math.sin(this.t * 0.11) * 0.4;
     const cy = PILLAR_TOP + 1.1 + Math.sin(this.t * 0.07) * 0.2;
     camera.position.set(cx, cy, back);
     camera.lookAt(cx, PILLAR_TOP + (portrait ? 0.2 : 1.6), 0);

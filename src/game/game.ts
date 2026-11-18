@@ -1066,9 +1066,9 @@ export class Game {
     for (const r of this.remotes.values()) r.actor.render(dt);
 
     // tags every frame (they follow the camera); text changes only when needed
-    this.hud.placeTag(this, p.x, p.y + 2.55, p.z);
-    for (const r of this.remotes.values()) this.hud.placeTag(r, r.actor.x, r.actor.y + 2.55, r.actor.z);
-    this.hud.placeSay(this, p.x, p.y + 3.15, p.z);
+    this.hud.placeTag(this, p.x, p.y + 2.55 + p.rig.tagLift(), p.z);
+    for (const r of this.remotes.values()) this.hud.placeTag(r, r.actor.x, r.actor.y + 2.55 + r.actor.rig.tagLift(), r.actor.z);
+    this.hud.placeSay(this, p.x, p.y + 3.15 + p.rig.tagLift(), p.z);
     this.hints.place(p.x, p.y + 3.3, p.z);
     const at = this.aimTarget;
     if (at && targetable(at) && !this.dead) {
@@ -1079,7 +1079,7 @@ export class Game {
       this.route ??= new RoutePreview();
       this.route.update(p.x, p.z, this.nav.stepX, this.nav.stepZ, this.nav.stepIsPortal, feel.time);
     } else this.route?.hide();
-    for (const r of this.remotes.values()) this.hud.placeSay(r, r.actor.x, r.actor.y + 3.15, r.actor.z);
+    for (const r of this.remotes.values()) this.hud.placeSay(r, r.actor.x, r.actor.y + 3.15 + r.actor.rig.tagLift(), r.actor.z);
     for (const a of this.zone.anchors) this.hud.placeTag(a, a.x, a.y, a.z);
     // elites carry a name plate (arrays reused; no per-frame allocation)
     const el = this.monsters.elites;
@@ -1132,6 +1132,9 @@ export class Game {
   private featureHints(): void {
     if (this.dead || this.transitioning || this.memory || this.dialogue.isOpen() || this.sheets.isOpen()) return;
     const h = this.hints;
+    // a first-timer's controls, once each: walking in the village, the brush once out among monsters
+    if (!h.has("f-move") && this.zone.def.safe && performance.now() - this.begunAt > 2500) { h.think("f-move", "몸이 가볍다… 좀 걸어 볼까.", { key: KEYS.move }); return; }
+    if (!h.has("f-atk") && !this.zone.def.safe && performance.now() - this.begunAt > 1500) { h.think("f-atk", "다가오면 붓으로 벤다.", { key: KEYS.attack, urgent: true }); return; }
     if (!h.has("f-sub") && mainWall(this.profile)) { h.think("f-sub", "본편은 아직 무리다… 서브 의뢰부터 해 볼까."); return; }
     if (!h.has("f-quest") && !this.auto.progress && performance.now() - this.begunAt > 12000 && this.hints.has("ui:auto")) {
       h.think("f-quest", "퀘스트를 누르면 알아서 찾아가겠지.", { key: KEYS.auto });

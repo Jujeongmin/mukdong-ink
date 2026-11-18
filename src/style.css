@@ -178,7 +178,7 @@ kbd { font-family: var(--f-brush); font-weight: 700; }
 @keyframes fade-out { to { opacity: 0; } }
 
 /* ---------- thumb arc: ensō rings around the big 베기 ring ---------- */
-.arc { position: fixed; right: calc(var(--px) + var(--safe-r)); bottom: calc(var(--px) + var(--safe-b)); width: 0; height: 0; --px: 78px; --r1: 152px; --r2: 226px; --rg: 94px; --s: 58px; --big: 104px; --sm: 46px; }
+.arc { position: fixed; right: calc(var(--px) + var(--safe-r)); bottom: calc(var(--px) + var(--safe-b)); width: 0; height: 0; --px: 78px; --r1: 152px; --r2: 226px; --rg: 104px; --s: 58px; --big: 104px; --sm: 46px; }
 .ring-btn, .gourd { position: absolute; border: 0; background: none; padding: 0; cursor: pointer; touch-action: none; border-radius: 50%; }
 .ring-btn { width: var(--s); height: var(--s); left: calc(cos(var(--a, 0deg)) * var(--r1) - var(--s) / 2); top: calc(sin(var(--a, 0deg)) * var(--r1) * -1 - var(--s) / 2); }
 .ring-btn.atk { width: var(--big); height: var(--big); left: calc(var(--big) / -2); top: calc(var(--big) / -2); }
@@ -272,7 +272,7 @@ kbd { font-family: var(--f-brush); font-weight: 700; }
 @media (pointer: coarse) {
   .stick, .touch { display: block; }
   .keyhelp, .ring-btn kbd, .gourd kbd, .brush-label kbd { display: none; }
-  .arc { --px: 60px; --r1: 132px; --r2: 196px; --rg: 74px; --s: 48px; --big: 84px; --sm: 44px; }
+  .arc { --px: 60px; --r1: 132px; --r2: 196px; --rg: 84px; --s: 48px; --big: 84px; --sm: 44px; }
   .prompt { bottom: auto; top: 44%; }
 }
 
@@ -1444,7 +1444,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   .jokja .qcard .qobj, .jokja .qcard .qbar, .jokja .qcard .qdist { display: none; }
   .jokja .qcard { padding: 7px 11px 8px; }
   .jokja .qcard.daily { display: none; }
-  .arc.arc { --px: 54px; --r1: 116px; --r2: 168px; --rg: 64px; --s: 44px; --big: 74px; --sm: 40px; }
+  .arc.arc { --px: 54px; --r1: 116px; --r2: 168px; --rg: 72px; --s: 44px; --big: 74px; --sm: 40px; }
 }
 
 /* ---------- level: plain brush text after the name ("Lv 32"), no badge ---------- */
@@ -1617,6 +1617,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .sheet .gr2-row.on { background: radial-gradient(ellipse at 30% 50%, rgba(43, 38, 34, 0.1), rgba(43, 38, 34, 0) 70%); }
 #ui .sheet .gr2-row:hover { background: radial-gradient(ellipse at 30% 50%, rgba(43, 38, 34, 0.07), rgba(43, 38, 34, 0) 70%); }
 #ui .sheet .lvb, #ui .sheet .enh-plus { position: relative; isolation: isolate; background: none; box-shadow: none; color: #f3ecdf; }
+#ui .sheet .enh-plus { position: absolute; }
 #ui .sheet .lvb::before, #ui .sheet .enh-plus::before { content: ""; position: absolute; inset: -3px -5px; z-index: -1; background: rgba(24, 21, 18, 0.85); -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
 #ui .sheet .lvb.lock { color: var(--ink-soft); }
 #ui .sheet .lvb.lock::before { content: none; }
@@ -1735,7 +1736,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
    right in the middle above it (scrolling inside, today's quests included), 구르기 tucked under-left of 베기.
    ========================================================================================== */
 @media (max-height: 480px) {
-  .arc.arc { --px: 44px; --r1: 98px; --r2: 148px; --rg: 50px; --s: 40px; --big: 62px; --sm: 34px; }
+  .arc.arc { --px: 44px; --r1: 108px; --r2: 148px; --rg: 64px; --s: 40px; --big: 62px; --sm: 34px; }
   #ui .ring-btn b { font-size: 10.5px; }
   #ui .ring-btn.sk .cds { font-size: 15px; }
   #ui .ring-btn.roll { --rs: calc(var(--sm) * 1.15); left: calc(cos(202deg) * 66px - var(--rs) / 2); top: calc(sin(202deg) * 66px * -1 - var(--rs) / 2); }
@@ -1855,3 +1856,26 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* name tags (players, NPCs, gates) belong to the field: they pass under the HUD panels, never over them */
 #ui .tags { z-index: 0; }
 #ui .portrait, #ui .purse, #ui .jokja, #ui .arc { z-index: 3; }
+/* a window open in the middle: the quest list steps back instead of peeking out from under its edge */
+#ui:has(.sheet:not([hidden])) .jokja { opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+/* worn gear: the word, not a red dot (a red dot reads as "something new here") */
+#ui .sheet .tile.eq::after { content: "착용"; top: 3px; right: 4px; width: auto; height: auto; background: none; -webkit-mask: none; mask: none; color: var(--cinnabar); font-family: var(--f-brush); font-size: 11px; font-weight: 700; line-height: 1; }
+/* the potion count sits on the gourd's outer side, away from 베기 */
+#ui .gourd b { right: auto; left: -8px; }
+/* touch screens: no key labels on the thumb buttons (ui-sheets.css gives them display:grid after the hide above) */
+@media (pointer: coarse) { #ui .ring-btn kbd, #ui .gourd kbd { display: none; } }
+/* character creation: "이대로 시작" is a word with a brush line under it, like the main conversation choice; no box */
+.create .start.start.start { position: relative; background: none; box-shadow: none; border: 0; outline: 0; color: #a8261b; padding: 6px 12px 12px; font-size: 21px; }
+.create .start.start.start::before { content: none; }
+.create .start.start.start::after { content: ""; position: absolute; left: 4%; right: 4%; bottom: 0; top: auto; height: 6px; border: 0; border-radius: 0; box-shadow: none; background: currentColor; opacity: 0.85;
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+.create .start.start.start:hover, .create .start.start.start:focus-visible { background: none; color: #7d1c14; }
+/* not on 자동 진행: if a finished line sits unread for a while, a faint word says how to go on (no arrow) */
+.dlg-box > .dlg-next.dlg-next { display: block; right: 18px; bottom: 10px; width: auto; height: auto; border: 0; transform: none; animation: next-hint 0.6s ease 2.4s both; font-family: var(--f-brush); font-size: 12px; color: var(--ink-soft); pointer-events: none; }
+.dlg-box > .dlg-next.dlg-next::after { content: "눌러서 넘기기"; }
+.dlg.narration .dlg-box > .dlg-next { color: rgba(239, 229, 209, 0.7); }
+.dlg.typing .dlg-box > .dlg-next, .dlg.auto-next .dlg-box > .dlg-next, .dlg-box:has(.dlg-choices:not(:empty)) > .dlg-next { display: none; }
+@keyframes next-hint { from { opacity: 0; } to { opacity: 0.7; } }
+@media (prefers-reduced-motion: reduce) { .dlg-box > .dlg-next.dlg-next { animation: none; opacity: 0.7; } }
+/* NPC and own names read over a dark night village: a tighter, denser paper halo round the ink */
+.tag.npc, .tag.me { color: #1d1916; text-shadow: 0 0 1px #f3ecdf, 0 0 2px #f3ecdf, 0 0 3px #f3ecdf, 0 0 6px rgba(243, 236, 223, 0.9); }
