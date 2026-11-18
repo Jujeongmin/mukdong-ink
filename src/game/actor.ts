@@ -43,6 +43,11 @@ const MOCAP_BLEND = 0.08;
 const MOVE_CANCEL = 0.08;
 /** after a strike (cancelled or finished) the upper body and brush ease from the clip back to the hold this fast */
 const RECOVER = 0.15;
+/** the third strike (a full spin) eases out longer */
+const RECOVER3 = 0.3;
+const TAU = Math.PI * 2;
+/** the same angle, the nearest way round to 0 (a joint or the body turned a full circle looks the same) */
+const wrapPi = (a: number): number => a - TAU * Math.round(a / TAU);
 /** the low guard (standing only) comes up this slowly when you stop, and drops this fast when you move */
 const GUARD_IN = 0.25, GUARD_OUT = 0.15;
 /** pose channels of the upper body (lean, head, both arms, brush angle); the rest are legs and hip height */
@@ -154,6 +159,9 @@ export class Actor {
   private recClip: MotionClip | null = null;
   private recT = 0;
   private recW = 0;
+  private recDur = RECOVER;
+  /** whole turns taken off the clip's body twist while easing out (so it unwinds the short way) */
+  private recTurns = 0;
   /** footprints: in the air since the last print (the next one is darker); a roll's smear already laid */
   private printAir = false;
   private printRoll = false;
@@ -713,6 +721,8 @@ export class Actor {
     this.recClip = ATK[this.state as "atk1" | "atk2" | "atk3"].clip;
     this.recT = this.st;
     this.recW = 1;
+    this.recDur = this.state === "atk3" ? RECOVER3 : RECOVER;
+    this.recTurns = TAU * Math.round(this.rig.twist / TAU);
     this.state = "move";
   }
 
@@ -752,14 +762,15 @@ export class Actor {
             this.recT = Math.min(this.recClip.dur, this.recT + dt);
             const tw = sampleMotion(recPose, this.recClip, this.recT, this.rig.dirs3);
             const w = this.recW * this.recW * (3 - 2 * this.recW);
-            const kl = ease(40);
+            const kl = ease(this.recDur > RECOVER ? 22 : 40);
             for (let k = 0; k < 12; k++) {
-              if (IS_UPPER[k]) pose[k] = tmpPose[k] + (recPose[k] - tmpPose[k]) * w;
+              // joint angles ease back the short way round (the spin leaves some a full turn past the hold)
+              if (IS_UPPER[k]) pose[k] = tmpPose[k] + (k === 11 ? recPose[k] - tmpPose[k] : wrapPi(recPose[k] - tmpPose[k])) * w;
               else pose[k] += (tmpPose[k] - pose[k]) * kl;
             }
-            this.rig.twist = tw * w;
+            this.rig.twist = (tw - this.recTurns) * w;
             this.rig.arm3 = w;
-            this.recW = Math.max(0, this.recW - dt / RECOVER);
+            this.recW = Math.max(0, this.recW - dt / this.recDur);
           } else blend(pose, tmpPose, ease(18));
         } else { this.recW = 0; blend(pose, this.vy > 0 ? POSE.airUp : POSE.airDown, ease(12)); }
         break;
