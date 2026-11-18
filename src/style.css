@@ -1807,3 +1807,5 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .gourd.empty .body { filter: grayscale(1) opacity(0.45); }
 #ui .gourd.empty::before { content: none; }
 #ui .gourd.empty b { opacity: 0.7; }
+/* locked skills past the next one stay off the arc until they open */
+#ui .ring-btn.sk.later { display: none; }

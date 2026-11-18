@@ -277,8 +277,12 @@ export class Hud {
     el("[data-potion]", this.root).classList.toggle("empty", p.potions <= 0);
     el("[data-pig]", this.root).textContent = fmt(p.pigment);
     el("[data-jade]", this.root).textContent = fmt(p.jade);
+    // of the skills still locked, only the next to open shows (dimmed, with its level); the rest appear as they open
+    let next = Infinity;
+    for (const sk of SKILLS) if (p.level < sk.unlock) next = Math.min(next, sk.unlock);
     for (let i = 0; i < SKILLS.length; i++) {
       const locked = p.level < SKILLS[i].unlock;
+      this.skillBtns[i].classList.toggle("later", locked && SKILLS[i].unlock > next);
       const lv = p.skills?.[i] ?? 1;
       const b = this.skillBtns[i];
       this.lockEls[i].hidden = !locked;
