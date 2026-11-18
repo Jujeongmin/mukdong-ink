@@ -3,6 +3,7 @@
 // running in the page, for offline play and the demo build). See docs/API.md.
 
 import type { ChatMessage } from "../shared/chat";
+import type { RankBoard, RankView } from "../shared/rank";
 import type { MonsterState, Pose, Profile, RoomPlayer } from "../shared/types";
 
 export type { ChatMessage } from "../shared/chat";
@@ -126,6 +127,8 @@ export interface GameApi {
   respawn(): Promise<ZoneEntry>;
   /** Players in each channel of the zone you are in, and yours. */
   channelList(): Promise<{ current: number; players: number[] }>;
+  /** 랭킹: the top of a board and your own line */
+  rankings(board: RankBoard): Promise<RankView>;
   /** To another channel of this zone, where you stand. Errors: room_full, on_cooldown (10 s between), dead. */
   changeChannel(channel: number): Promise<ZoneEntry>;
   equip(itemId: string): Promise<ProfileView>;

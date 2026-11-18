@@ -1,17 +1,20 @@
 import { isBannedName } from "../../src/shared/filter";
 import { freshDay, readProfile, starterProfile } from "../../src/shared/profile";
 import { RuleViolation, type Profile } from "../../src/shared/types";
+import { bookSteps, rankKey } from "../../src/shared/rank";
 import { CHANNELS, CHANNEL_CAPACITY, parseRoomId, roomIdFor } from "../../src/shared/world";
 
 // Where things are kept:
 // - global user state `profile`: the whole Profile (one small object, rewritten as a whole);
 // - global user state `assigned`: the room the server last sent you to (arrive checks it);
 // - collection `nicknames`: one row per taken name; `purchases`: one row per VXShop receipt;
-//   `adGrants`: one row per rewarded-ad requestId paid out.
+//   `adGrants`: one row per rewarded-ad requestId paid out; `ranks`: one row per account on the boards
+//   (id = account; name, level, book steps and their sort keys), written only when one of those changes.
 
 export const NICKNAMES = "nicknames";
 export const PURCHASES = "purchases";
 export const AD_GRANTS = "adGrants";
+export const RANKS = "ranks";
 
 /** Where the server sent an account last (enterZone / respawn), for arrive to check against. */
 export interface Assigned {
@@ -61,6 +64,7 @@ export async function updateProfile(account: string, change: (p: Profile) => Pro
     if (!before) throw new RuleViolation("no_profile");
     const after = await change(before);
     await saveProfile(account, after);
+    await syncRank(account, before, after);
     return after;
   });
 }
@@ -169,4 +173,35 @@ export function readAssigned(raw: unknown): Assigned | null {
 
 export async function loadAssigned(account: string): Promise<Assigned | null> {
   return readAssigned((await $global.getUserState(account)).assigned);
+}
+
+// ---------- 랭킹 ----------
+
+/**
+ * Keeps the account's board row in step with its profile: written only when the name, level or 도감 steps
+ * changed (so not on every kill), and only once there is something to show (past level 1 or a first 밑그림).
+ */
+export async function syncRank(account: string, before: Profile | null, after: Profile): Promise<void> {
+  const steps = bookSteps(after.book);
+  const was = before ? { level: before.level, steps: bookSteps(before.book), name: before.name } : null;
+  if (was && was.level === after.level && was.steps === steps && was.name === after.name) return;
+  if (after.level < 2 && steps === 0) return;
+  const now = Date.now();
+  const row: Record<string, unknown> = { name: after.name, level: after.level, steps };
+  if (!was || was.level !== after.level) row.levelKey = rankKey(after.level, now);
+  if (!was || was.steps !== steps) row.bookKey = rankKey(steps, now);
+  try {
+    await $global.updateCollectionItem(RANKS, { __id: account, ...row });
+  } catch {
+    await $global.addCollectionItem(RANKS, { levelKey: rankKey(after.level, now), bookKey: rankKey(steps, now), ...row }, { id: account });
+  }
+}
+
+/** On entering the game: a player from before the boards existed gets their row now (one read when it's there). */
+export async function ensureRank(account: string, p: Profile): Promise<void> {
+  try {
+    await $global.getCollectionItem(RANKS, account);
+  } catch {
+    await syncRank(account, null, p);
+  }
 }

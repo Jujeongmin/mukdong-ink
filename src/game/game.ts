@@ -5,6 +5,7 @@ import { createGameApi } from "../net";
 import type { GameApi, HitResult, ProfileView, RoomView, ZoneEntry } from "../net/api";
 import type { Look, Pose, RoomPlayer } from "../shared/types";
 import { MONSTERS, SKILLS } from "../shared/combat";
+import { forwardX, forwardZ } from "../shared/hit";
 import { NPC_REACH, START_ZONE, ZONES, type Npc, type Portal } from "../shared/world";
 import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
@@ -23,7 +24,7 @@ import { Monsters, monsterFigure } from "./monsters";
 import { BOOK, BOOK_STEP, bookStage } from "../shared/book";
 import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
-import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
+import { camFocus, camFwd, camera, colorStain, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
 import type { RGB } from "./util";
 import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
@@ -89,6 +90,8 @@ interface Remote {
   name: string;
   level: number;
   dead: boolean;
+  /** last skill counter seen (a change = they used a technique: its color bleeds where it lands) */
+  skillSeq: number;
 }
 /**
  * How a blow lands on screen: a skill's pigment (null: ink only), whether it is a brush strike (which bleeds the
@@ -177,6 +180,7 @@ export class Game {
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
+      rank: () => { if (!this.transitioning && !this.memory) { this.input.clear(); this.sheets.openRank(); } },
       claimDaily: () => void this.claimDailyAll(),
       channels: () => attempt(this.api.channelList(), ["not_ready"]),
       changeChannel: (ch) => void this.changeChannel(ch),
@@ -222,6 +226,7 @@ export class Game {
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
+      rank: () => { if (!this.transitioning && !this.memory) { this.input.clear(); this.sheets.openRank(); } },
       help: () => this.hud.help(),
       escape: () => this.onEscape(),
       chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
@@ -580,7 +585,7 @@ export class Game {
       }
       let r = this.remotes.get(id);
       if (!r) {
-        r = { actor: new Actor(false, null, this.zone.field), name: rp.name, level: rp.level, dead: rp.dead };
+        r = { actor: new Actor(false, null, this.zone.field), name: rp.name, level: rp.level, dead: rp.dead, skillSeq: rp.pose.skillSeq };
         this.remotes.set(id, r);
       }
       r.name = rp.name;
@@ -592,6 +597,18 @@ export class Game {
         addLight(a.x, a.z, 9, 1.4, GOLD_RGB, a);
       }
       r.level = rp.level;
+      // their technique leaves its color on the ground here too (nothing extra on the wire: the skill counter
+      // already comes with their pose)
+      if (rp.pose.skillSeq !== r.skillSeq) {
+        r.skillSeq = rp.pose.skillSeq;
+        const sk = SKILLS[rp.pose.skill];
+        if (sk && !rp.dead) {
+          const h = sk.hits.hit;
+          const ahead = h.shape === "line" ? h.length * 0.45 : sk.offset;
+          const r0 = h.shape === "ring" ? h.r * 0.75 : 2.4;
+          colorStain(rp.pose.x + forwardX(rp.pose.yaw) * ahead, rp.pose.z + forwardZ(rp.pose.yaw) * ahead, r0, sk.color);
+        }
+      }
       r.dead = rp.dead;
       r.actor.setNet(rp.pose, rp.look, rp.dead);
       this.hud.tag(r, `${esc(rp.name || "나그네")}<small>Lv ${rp.level}</small>`, rp.dead ? "pc dead" : "pc");

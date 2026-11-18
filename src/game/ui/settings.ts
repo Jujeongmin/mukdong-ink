@@ -113,6 +113,8 @@ const KEY_ROWS: [string, string][] = [
   [KEYS.talk, "말 걸기"],
   [KEYS.gear, "장비"],
   [KEYS.growth, "수련"],
+  [KEYS.album, "화첩"],
+  [KEYS.rank, "랭킹"],
   [KEYS.help, "조작 안내"],
   [KEYS.mute, "소리 끄기·켜기"],
   ["Enter", "채팅"],

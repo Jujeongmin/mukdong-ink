@@ -11,6 +11,7 @@ import {
 } from "../../src/shared/chat";
 import { chatName } from "../../src/shared/filter";
 import { forwardX, forwardZ } from "../../src/shared/hit";
+import { RANK_BOARDS, RANK_TOP, type RankBoard, type RankRow, type RankView } from "../../src/shared/rank";
 import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, HARMONY_BONUS, ITEM, harmonySkill, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
 import {
   MAX_POTIONS, atkOf, cdMulOf, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, maxHpOf, nextSub, pointsLeft, profileView, settleSub, subDef, subDone,
@@ -26,8 +27,8 @@ import {
   MONSTER_SYNC_MS, hasMonsters, readEffects, readMonsters, stepMonsters, strikeAreas, tidy, type Bite, type Felling, type Prey, type Swept,
 } from "./hunt";
 import {
-  AD_GRANTS, PURCHASES, claimName, createProfile, currentRoom, loadAssigned, loadStored, oncePer, parseName, pickChannel, releaseName,
-  saveProfile, updateProfile, withNameLock, withProfileLock, withRoomLock, type Assigned,
+  AD_GRANTS, PURCHASES, RANKS, claimName, createProfile, currentRoom, loadAssigned, loadStored, oncePer, parseName, pickChannel, releaseName,
+  ensureRank, saveProfile, syncRank, updateProfile, withNameLock, withProfileLock, withRoomLock, type Assigned,
 } from "./store";
 
 // Clients send an attack as soon as their own clock allows; this much of a cooldown is enough (jitter).
@@ -222,6 +223,7 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
     if (skillUse) next = countSkillUse(next);
     const gained = gainExp(next, pay.exp);
     await saveProfile(account, gained.profile);
+    await syncRank(account, p, gained.profile);
     return { ...gained, grew: maxHpOf(gained.profile) !== maxHpOf(p) };
   });
   const levelUp = done?.levelUp ?? false;
@@ -470,6 +472,7 @@ export class Server {
       const stored = await loadStored(account);
       if (stored) {
         await saveProfile(account, stored);
+        await ensureRank(account, stored);
         return stored;
       }
       const made = await createProfile(account, Math.random);
@@ -981,6 +984,32 @@ export class Server {
   }
 
   /** The open 서브 퀘스트, finished: paid, and the next one opens. quest_not_done until its count is met. */
+  /** 랭킹: the top of a board (names only, never accounts) and the caller's own line. */
+  async rankings(rawBoard: unknown): Promise<RankView> {
+    if (typeof rawBoard !== "string" || !(RANK_BOARDS as readonly string[]).includes(rawBoard)) throw new RuleViolation("bad_args");
+    const board = rawBoard as RankBoard;
+    const account = $sender.account;
+    const key = board === "level" ? "levelKey" : "bookKey";
+    const valueOf = (r: Record<string, unknown>) => Number(board === "level" ? r.level : r.steps) || 0;
+    const rows = await $global.getCollectionItems(RANKS, { orderBy: [{ field: key, direction: "desc" }], limit: RANK_TOP });
+    const top: RankRow[] = rows
+      .filter((r: Record<string, unknown>) => valueOf(r) > 0)
+      .map((r: Record<string, unknown>, i: number) => ({ rank: i + 1, name: String(r.name ?? ""), value: valueOf(r), me: r.__id === account }));
+    let mine: RankRow | null = top.find((r) => r.me) ?? null;
+    if (!mine) {
+      try {
+        const row = await $global.getCollectionItem(RANKS, account);
+        if (valueOf(row) > 0) {
+          const ahead = await $global.countCollectionItems(RANKS, { filters: [{ field: key, operator: ">", value: row[key] }] });
+          mine = { rank: ahead + 1, name: String(row.name ?? ""), value: valueOf(row), me: true };
+        }
+      } catch {
+        mine = null; // not on the board yet
+      }
+    }
+    return { board, top, mine };
+  }
+
   async claimSub(): Promise<ProfileView> {
     const account = $sender.account;
     let levelUp = false;

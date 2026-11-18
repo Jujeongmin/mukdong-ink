@@ -1667,7 +1667,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .btn.btn.btn.brush-label > span { font-size: 13px; }
 #ui .btn.btn.btn.brush-label kbd { position: static; margin-left: 0; font-size: 10px; }
 #ui .btn.btn.btn.brush-label > span::after { content: none; }
-#ui .brush-label .hud-ic { grid-column: 1 / -1; justify-self: center; display: block; width: 46px; height: 46px; margin-bottom: -2px; background: var(--sheet-hud) calc(var(--c) * 50%) 0 / 300% 100% no-repeat;
+#ui .brush-label .hud-ic { grid-column: 1 / -1; justify-self: center; display: block; width: 46px; height: 46px; margin-bottom: -2px; background: var(--sheet-hud) calc(var(--c) * 33.333%) 0 / 400% 100% no-repeat;
   filter: drop-shadow(0 0 1.5px rgba(239, 229, 209, 0.95)) drop-shadow(0 0 5px rgba(239, 229, 209, 0.45)); transition: transform 0.12s ease; }
 #ui .brush-label:hover .hud-ic { transform: translateY(-2px) scale(1.05); }
 #ui .brush-label .pts { right: 0; top: -2px; }
@@ -1924,7 +1924,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .dye-harmony { margin: 10px 0 0; font-size: 13px; color: var(--ink-soft); }
 #ui .dye-harmony.on { color: #a8261b; font-family: var(--f-brush); font-weight: 700; font-size: 14.5px; }
 /* windows with tabs keep one height whichever tab is open (the paper doesn't jump when you switch) */
-#ui .sheet:is([data-kind="growth"], [data-kind="dyer"], [data-kind="altar"], [data-kind="album"], [data-kind="elder"], [data-kind="settings"]) .sheet-card {
+#ui .sheet:is([data-kind="growth"], [data-kind="dyer"], [data-kind="altar"], [data-kind="album"], [data-kind="elder"], [data-kind="settings"], [data-kind="rank"]) .sheet-card {
   height: min(620px, calc(100vh - 64px)); height: min(620px, calc(100dvh - 64px)); }
 /* risen: once the ring has bloomed it goes, before the village's name comes up where it stood */
 .ink-death.risen .ink-death-rise { animation: rise-gone 0.3s 0.6s ease forwards; }
@@ -1932,3 +1932,13 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* two names on top of each other: the less important one goes faint (hud.fadeOverlaps) */
 .tag { transition: opacity 0.2s ease; }
 .tag.dim { opacity: 0.28; }
+/* 랭킹: plain lines on the paper; the first three numbered in cinnabar, your own name in cinnabar */
+#ui .rk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+#ui .rk-row { display: grid; grid-template-columns: 44px 1fr auto; align-items: baseline; gap: 10px; padding: 6px 6px; border-bottom: 1px solid rgba(43, 38, 34, 0.12); }
+#ui .rk-n { font-family: var(--f-brush); font-size: 17px; text-align: center; color: var(--ink-soft); }
+#ui .rk-row.top1 .rk-n, #ui .rk-row.top2 .rk-n, #ui .rk-row.top3 .rk-n { color: #a8261b; font-size: 20px; }
+#ui .rk-name { font-family: var(--f-brush); font-size: 15px; }
+#ui .rk-v { font-variant-numeric: tabular-nums; color: var(--ink-soft); font-size: 13.5px; }
+#ui .rk-row.me .rk-name { color: #a8261b; font-weight: 700; }
+#ui .rk-mine { margin-top: 10px; border-top: 2px dotted rgba(43, 38, 34, 0.25); padding-top: 4px; }
+#ui .rk-note { padding: 24px 0; text-align: center; }

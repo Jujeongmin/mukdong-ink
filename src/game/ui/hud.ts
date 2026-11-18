@@ -25,6 +25,7 @@ export interface HudHandlers {
   gear(): void;
   growth(): void;
   album(): void;
+  rank(): void;
   /** pay every finished daily quest */
   claimDaily(): void;
   /** players per channel of this zone, and yours */
@@ -80,6 +81,7 @@ const MARKUP = `
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>장비</span><kbd>${KEYS.gear}</kbd></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="화첩 (${KEYS.album})" data-tip="벤 몬스터와 보스를 벤 순간 돌아온 색을 그림으로 모아 둔다."><i class="hud-ic" style="--c:2" aria-hidden="true"></i><span>화첩</span><kbd>${KEYS.album}</kbd></button>
+  <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="랭킹 (${KEYS.rank})" data-tip="경지와 먹그림 도감 순위."><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>랭킹</span><kbd>${KEYS.rank}</kbd></button>
 </div>
 <aside class="jokja" data-quest hidden></aside>
 <div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>돌아가기<kbd>Esc</kbd></button></div>
@@ -225,6 +227,7 @@ export class Hud {
     el("[data-gear]", root).addEventListener("click", () => this.h.gear());
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
     el("[data-album]", root).addEventListener("click", () => this.h.album());
+    el("[data-rank]", root).addEventListener("click", () => this.h.rank());
     el("[data-memory-exit]", root).addEventListener("click", () => this.h.exitMemory());
     // the daily card is rebuilt often; one delegated listener on its box
     el("[data-quest]", root).addEventListener("click", (e) => {

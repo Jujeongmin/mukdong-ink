@@ -5,6 +5,7 @@
 import type { Pose, RoomPlayer } from "../shared/types";
 import type { AttackReq, EnhanceResult, GachaResult, GameApi, HitResult, ProfileView, RoomView, SkillReq, ZoneEntry } from "./api";
 import { readChatLine, type ChatMessage } from "../shared/chat";
+import type { RankBoard, RankView } from "../shared/rank";
 import { sleep } from "./errors";
 import { membersOf, playersOf, profileOf, roomViewOf } from "./feed";
 import { PoseThrottle } from "./poseThrottle";
@@ -114,6 +115,9 @@ export abstract class BaseGameApi implements GameApi {
     return this.moveTo(await this.call<ZoneEntry>("respawn"));
   }
 
+  rankings(board: RankBoard): Promise<RankView> {
+    return this.call("rankings", [board]);
+  }
   channelList(): Promise<{ current: number; players: number[] }> {
     return this.call("channelList");
   }

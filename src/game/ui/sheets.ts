@@ -12,6 +12,7 @@ import {
 import { enhancedAtk } from "../../shared/growth";
 import { MONSTERS, POTION_COST, SKILLS } from "../../shared/combat";
 import { BOOK, BOOK_STEP, bookBonus, bookStage } from "../../shared/book";
+import type { RankBoard, RankRow, RankView } from "../../shared/rank";
 import type { SlotId } from "../../shared/types";
 import type { GachaPull, GameApi, ProfileView } from "../../net/api";
 import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../quests";
@@ -45,7 +46,7 @@ const GROWTH_FIRST: Record<string, string> = {
   enhance: "먹돌로 붓을 다듬는다. 너무 욕심내면 붓이 부서질 수도.",
 };
 
-type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings" | "album";
+type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings" | "album" | "rank";
 const SLOT_NAME: Record<SlotId, string> = { weapon: "무기", hat: "머리", sash: "띠" };
 /** what an item is called in a line of text: 검 / 붓 for weapons, else its slot */
 const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ? "검" : "붓") : SLOT_NAME[it.slot]);
@@ -88,6 +89,7 @@ const TABS: Partial<Record<SheetId, [string, string][]>> = {
   altar: [["pull", "뽑기"], ["odds", "확률표"], ["jade", "묵옥 얻기"]],
   growth: [["skills", "검법 단련"], ["enhance", "붓 강화"]],
   album: [["pages", "되찾은 색"], ["book", "먹그림 도감"]],
+  rank: [["level", "경지"], ["book", "먹그림 도감"]],
   settings: SETTINGS_TABS,
 };
 
@@ -155,6 +157,36 @@ export class Sheets {
     this.show("gear");
   }
 
+  /** 랭킹: fetched fresh each time it opens (and per tab), shown when it arrives. */
+  openRank(): void {
+    if (this.current === "rank") { this.close(); return; }
+    this.ranks = {};
+    this.show("rank");
+  }
+  private ranks: Partial<Record<RankBoard, RankView | "loading" | "error">> = {};
+  private loadRank(board: RankBoard): void {
+    if (this.ranks[board]) return;
+    this.ranks[board] = "loading";
+    this.ctx.api.rankings(board).then(
+      (v) => { this.ranks[board] = v; if (this.current === "rank") this.render(); },
+      () => { this.ranks[board] = "error"; if (this.current === "rank") this.render(); },
+    );
+  }
+  private rank(): string {
+    const board: RankBoard = this.tab === "book" ? "book" : "level";
+    this.loadRank(board);
+    const v = this.ranks[board];
+    const unit = board === "level" ? (n: number) => `Lv ${n}` : (n: number) => `${n}단계`;
+    const line = (r: RankRow) => `<li class="rk-row${r.me ? " me" : ""}${r.rank <= 3 ? ` top${r.rank}` : ""}"><b class="rk-n">${r.rank}</b><span class="rk-name">${esc(r.name)}</span><span class="rk-v">${unit(r.value)}</span></li>`;
+    let body: string;
+    if (!v || v === "loading") body = `<p class="cap rk-note">불러오는 중…</p>`;
+    else if (v === "error") body = `<p class="cap rk-note">지금은 순위를 볼 수 없다.</p>`;
+    else if (!v.top.length) body = `<p class="cap rk-note">아직 아무도 없다.</p>`;
+    else body = `<ol class="rk-list">${v.top.map(line).join("")}</ol>${v.mine && !v.top.some((r) => r.me) ? `<ol class="rk-list rk-mine">${line(v.mine)}</ol>` : ""}`;
+    const say = board === "level" ? "경지가 높은 순. 같으면 먼저 오른 사람이 앞." : "먹그림 도감 단계 순 (밑그림 1, 완성 2). 같으면 먼저 그린 사람이 앞.";
+    return `${this.head("랭킹")}<p class="cap">${say}</p>${body}`;
+  }
+
   /** 화첩: the pictures of each recovered color. */
   openAlbum(page = ""): void {
     if (this.current === "album" && !page) { this.close(); return; }
@@ -195,6 +227,7 @@ export class Sheets {
     else if (this.current === "altar") html = this.altar(p);
     else if (this.current === "gear") html = this.gear(p);
     else if (this.current === "album") html = this.album(p);
+    else if (this.current === "rank") html = this.rank();
     else if (this.current === "settings" && this.ctx.settings) html = this.head("설정") + settingsHtml(this.tab, this.ctx.settings);
     else if (this.current === "growth") {
       const first = `growth-${this.tab}`;

@@ -31,6 +31,7 @@ type AnyFunction = (...args: unknown[]) => unknown;
 
 interface CollectionQuery {
   filters?: { field: string; operator: string; value: unknown }[];
+  orderBy?: { field: string; direction: "asc" | "desc" }[];
   limit?: number;
 }
 
@@ -49,6 +50,10 @@ function query(items: Json[], options: CollectionQuery = {}): Json[] {
     const test = COMPARE[filter.operator];
     if (!test) throw new Error(`LocalWorld: unsupported filter operator ${filter.operator}`);
     found = found.filter((item) => test(item[filter.field], filter.value));
+  }
+  for (const o of [...(options.orderBy ?? [])].reverse()) {
+    const dir = o.direction === "desc" ? -1 : 1;
+    found = [...found].sort((a, b) => (a[o.field] < b[o.field] ? -dir : a[o.field] > b[o.field] ? dir : 0));
   }
   return options.limit ? found.slice(0, options.limit) : found;
 }
@@ -272,8 +277,8 @@ export class LocalWorld {
         this.dirtyAccounts.add(user);
         return copy(patch);
       },
-      addCollectionItem: async (collectionId: string, item: Json) => {
-        const stored = { ...copy(item), __id: `item-${++this.seq}` };
+      addCollectionItem: async (collectionId: string, item: Json, options?: { id?: string }) => {
+        const stored = { ...copy(item), __id: options?.id ?? `item-${++this.seq}` };
         this.collection(collectionId).set(stored.__id, stored);
         return copy(stored);
       },

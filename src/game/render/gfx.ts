@@ -266,29 +266,56 @@ export function screenSplash(x: number, y: number, z: number, size: number): voi
 // Like the boss bloom, small: from the struck spot the world's own color comes through, tinted by the blow's
 // pigment, with a ragged, fibrous front that seeps outward (in real time, so it spreads while the hit holds the
 // world still), holds a moment, then the ink takes it back. A pool of 6, no allocation.
-const SN = 6;
+const SN = 12;
 const stainU = Array.from({ length: SN }, () => new THREE.Vector4(0, 0, 0, 0)); // x, z, radius now, strength
 const stainC = Array.from({ length: SN }, () => new THREE.Vector3(1, 1, 1));
 const stainT = new Float32Array(SN).fill(-100);
 const stainR = new Float32Array(SN);
 let stainNext = 0;
 const STAIN_LIFE = 2.6;
-/** A blow's color seeps into the ground at (x, z) out to about `r`. */
+/** after the bloom a faint trace of the color stays on the ground this long, then the ink takes it back */
+const RESIDUE = 10;
+const RESIDUE_K = 0.3;
+/**
+ * A blow's color seeps into the ground at (x, z) out to about `r`. A fresh blow on a spot already stained the
+ * same color blooms that stain again instead of taking a slot, so a long fight leaves traces where it moved.
+ */
 export function colorStain(x: number, z: number, r: number, col: readonly number[]): void {
-  const i = stainNext;
-  stainNext = (stainNext + 1) % SN;
-  stainU[i].set(x, z, 0, 0);
+  let i = -1;
+  for (let k = 0; k < SN; k++) {
+    if (feel.time - stainT[k] > STAIN_LIFE + RESIDUE) continue;
+    const c = stainC[k];
+    if (c.x === col[0] && c.y === col[1] && c.z === col[2] && Math.hypot(stainU[k].x - x, stainU[k].y - z) < Math.max(r, stainR[k]) * 0.6) { i = k; break; }
+  }
+  if (i < 0) {
+    // a free slot, else the oldest trace
+    i = stainNext;
+    let oldest = Infinity;
+    for (let k = 0; k < SN; k++) if (stainT[k] < oldest) { oldest = stainT[k]; i = k; }
+    stainNext = (i + 1) % SN;
+    stainU[i].set(x, z, 0, 0);
+    stainR[i] = r;
+  } else {
+    stainR[i] = Math.min(r * 1.6, Math.max(stainR[i], r) * 1.08); // the spot grows a little with each blow
+  }
   stainC[i].set(col[0], col[1], col[2]);
   stainT[i] = feel.time;
-  stainR[i] = r;
 }
 function updateStains(): void {
   for (let i = 0; i < SN; i++) {
     const age = feel.time - stainT[i];
-    if (age < 0 || age > STAIN_LIFE) { stainU[i].w = 0; continue; }
+    if (age < 0 || age > STAIN_LIFE + RESIDUE) { stainU[i].w = 0; continue; }
     stainU[i].z = stainR[i] * (0.3 + 0.7 * (1 - Math.exp(-age * 3.5)));
-    const fade = (age - 1.0) / (STAIN_LIFE - 1.0);
-    stainU[i].w = fade <= 0 ? 1 : 1 - fade * fade * (3 - 2 * fade);
+    if (age <= STAIN_LIFE) {
+      // the bloom: full, then down to the trace
+      const fade = Math.max(0, (age - 1.0) / (STAIN_LIFE - 1.0));
+      stainU[i].w = 1 - (1 - RESIDUE_K) * fade * fade * (3 - 2 * fade);
+    } else {
+      // the trace: holds a while, then goes slowly
+      const u = (age - STAIN_LIFE) / RESIDUE;
+      const g = Math.max(0, (u - 0.3) / 0.7);
+      stainU[i].w = RESIDUE_K * (1 - g * g * (3 - 2 * g));
+    }
   }
 }
 export function clearStains(): void {
@@ -358,8 +385,8 @@ uniform mat4 uInvProj, uCamWorld;
 uniform vec4 uLight[${LN}];
 uniform vec3 uLightCol[${LN}];
 uniform vec4 uSplash[6];
-uniform vec4 uStain[6];
-uniform vec3 uStainCol[6];
+uniform vec4 uStain[12];
+uniform vec3 uStainCol[12];
 uniform vec3 uPaper, uInk, uSkyTop, uSkyLow, uMist;
 uniform vec4 uMoon;
 uniform float uFogLow, uHazeNear, uHazeFar, uFlash, uHorizon, uCamX, uEdgeR, uPillars, uPillarH;
@@ -583,7 +610,7 @@ void main(){
     }
     // a blow's color seeping into the ground: a fibrous, lobed front, darker where it is still wet
     float stainM = 0.0; vec3 stainCol = vec3(1.0);
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 12; i++) {
       vec4 S = uStain[i];
       if (S.w <= 0.0) continue;
       vec2 q = wp.xz - S.xy;
