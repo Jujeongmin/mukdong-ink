@@ -1106,6 +1106,7 @@ export class Game {
       const v = this.eliteTagged[i];
       if (!el.includes(v)) { this.hud.dropTag(v); this.eliteTagged.splice(i, 1); }
     }
+    this.hud.fadeOverlaps();
 
     this.uiTick -= realDt;
     if (this.uiTick <= 0) {

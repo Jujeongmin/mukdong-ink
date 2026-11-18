@@ -1926,3 +1926,6 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* risen: once the ring has bloomed it goes, before the village's name comes up where it stood */
 .ink-death.risen .ink-death-rise { animation: rise-gone 0.3s 0.6s ease forwards; }
 @keyframes rise-gone { to { opacity: 0; } }
+/* two names on top of each other: the less important one goes faint (hud.fadeOverlaps) */
+.tag { transition: opacity 0.2s ease; }
+.tag.dim { opacity: 0.28; }

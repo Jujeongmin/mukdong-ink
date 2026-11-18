@@ -122,7 +122,10 @@ const MARKUP = `
 <div class="fade" data-fade><span data-fadetext></span></div>
 `;
 
-interface TagSlot { el: HTMLElement; lx: number; ly: number; shown: boolean }
+interface TagSlot { el: HTMLElement; lx: number; ly: number; shown: boolean; w: number; h: number; rank: number; dim: boolean }
+/** which name wins when two overlap (lower = kept clear); speech bubbles never dim */
+const TAG_RANK: Record<string, number> = { me: 0, npc: 1, elite: 2, portal: 3, pc: 4 };
+const tagOrder: TagSlot[] = [];
 const vProj = new THREE.Vector3();
 
 export class Hud {
@@ -595,11 +598,12 @@ export class Hud {
     if (!t) {
       const e = document.createElement("div");
       this.tagBox.appendChild(e);
-      t = { el: e, lx: -1e9, ly: -1e9, shown: true };
+      t = { el: e, lx: -1e9, ly: -1e9, shown: true, w: 0, h: 0, rank: 9, dim: false };
       this.tags.set(key, t);
     }
-    if (t.el.className !== `tag ${cls}`) t.el.className = `tag ${cls}`;
-    if (t.el.innerHTML !== html) t.el.innerHTML = html;
+    if (t.el.className.replace(" dim", "") !== `tag ${cls}`) { t.el.className = `tag ${cls}`; t.dim = false; t.w = 0; }
+    t.rank = TAG_RANK[cls.split(" ")[0]] ?? 9;
+    if (t.el.innerHTML !== html) { t.el.innerHTML = html; t.w = 0; }
   }
   placeTag(key: object, x: number, y: number, z: number): void {
     const t = this.tags.get(key);
@@ -613,6 +617,30 @@ export class Hud {
     t.lx = sx; t.ly = sy;
     t.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -100%)`;
   }
+  /**
+   * After every tag is placed this frame: where two names overlap on screen, the less important one goes faint
+   * (it stays where it is; moving it would make names hop as people walk). Sizes are measured once per text.
+   */
+  fadeOverlaps(): void {
+    tagOrder.length = 0;
+    for (const t of this.tags.values()) {
+      if (!t.shown || t.rank > 4) continue;
+      if (t.w === 0) { t.w = t.el.offsetWidth; t.h = t.el.offsetHeight; }
+      tagOrder.push(t);
+    }
+    tagOrder.sort((a, b) => a.rank - b.rank);
+    for (let i = 0; i < tagOrder.length; i++) {
+      const t = tagOrder[i];
+      let hidden = false;
+      for (let j = 0; j < i && !hidden; j++) {
+        const o = tagOrder[j];
+        if (o.dim) continue;
+        hidden = Math.abs(t.lx - o.lx) * 2 < (t.w + o.w) * 0.9 && t.ly > o.ly - o.h * 0.9 && o.ly > t.ly - t.h * 0.9;
+      }
+      if (hidden !== t.dim) { t.dim = hidden; t.el.classList.toggle("dim", hidden); }
+    }
+  }
+
   /** A speech bubble over `owner`'s head for 4 s (placed by placeSay each frame). */
   say(owner: object, text: string): void {
     let s = this.says.get(owner);
