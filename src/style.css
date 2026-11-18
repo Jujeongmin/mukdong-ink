@@ -1832,3 +1832,5 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .rw-quote { margin: 2px 0 0; font-size: 14px; color: #f3ecdf; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.7); }
 .rw-quote b { font-family: var(--f-brush); margin-right: 6px; color: #f3d27a; }
 .reward-show.go .rw-quote { animation: rw-title 3.4s ease-out both; animation-delay: 0.35s; }
+/* phones sideways: a long thought folds onto two lines instead of reaching the tracker */
+@media (max-height: 480px) { #ui .thought { max-width: min(250px, 40vw); } #ui .thought p { font-size: 13.5px; } }
