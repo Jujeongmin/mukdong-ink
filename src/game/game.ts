@@ -177,6 +177,8 @@ export class Game {
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
       claimDaily: () => void this.claimDailyAll(),
+      channels: () => attempt(this.api.channelList(), ["not_ready"]),
+      changeChannel: (ch) => void this.changeChannel(ch),
       exitMemory: () => void this.exitMemory(),
       photo: () => this.togglePhoto(),
       interact: () => this.interact(),
@@ -821,6 +823,29 @@ export class Game {
       this.transitioning = false;
     }
     return ok;
+  }
+
+  /** To another channel of this zone, where you stand (the HUD's channel picker). */
+  private async changeChannel(channel: number): Promise<void> {
+    if (this.transitioning || this.memory || this.dead || !this.player) return;
+    this.transitioning = true;
+    this.auto.stop();
+    this.sheets.close();
+    this.input.clear();
+    this.loading.show(this.zone.def.id, `${channel}채널로 건너가는 중…`);
+    try {
+      const entry = await this.api.changeChannel(channel);
+      this.chat.clear();
+      this.loading.progress(0.7);
+      this.rebuild(entry);
+      toast(`${channel}채널`);
+    } catch (e) {
+      const code = errorCode(e);
+      toast(code === "room_full" ? "그 채널은 가득 찼다" : code === "on_cooldown" ? "채널은 10초에 한 번 바꿀 수 있다" : code === "dead" ? "쓰러진 채로는 옮길 수 없다" : errorText(e), true);
+    } finally {
+      await this.loading.hide();
+      this.transitioning = false;
+    }
   }
 
   private rebuild(entry: ZoneEntry): void {

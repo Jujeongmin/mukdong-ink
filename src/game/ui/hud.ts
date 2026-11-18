@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { ITEM } from "../../shared/items";
 import { AWAKENINGS, pointsEarned, pointsSpent, skillCdMul } from "../../shared/growth";
-import { DAILY_QUESTS, ZONES } from "../../shared/world";
+import { CHANNEL_CAPACITY, DAILY_QUESTS, ZONES } from "../../shared/world";
 import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
 import { fmt, hexCss } from "../util";
@@ -26,6 +26,10 @@ export interface HudHandlers {
   album(): void;
   /** pay every finished daily quest */
   claimDaily(): void;
+  /** players per channel of this zone, and yours */
+  channels(): Promise<{ current: number; players: number[] } | null>;
+  /** move to another channel of this zone */
+  changeChannel(channel: number): void;
   /** leave 추억 속 풍경 */
   exitMemory(): void;
   /** 사진 모드 on/off */
@@ -60,7 +64,7 @@ const MARKUP = `
     <span class="who"><span data-name>나그네</span><b class="lv-seal" data-lv title="레벨">1</b></span>
     <div class="hp gauge" title="생명" data-hpbar><i class="track"></i><i class="chip" data-hpchip></i><i class="fill" data-hp></i><span data-hpt></span></div>
     <div class="exp gauge" title="경험" data-expbar><i class="track"></i><i class="fill" data-exp></i></div>
-    <span class="zone-mini" data-zone></span>
+    <button type="button" class="zone-mini" data-zone data-tip-title="채널" data-tip="눌러서 채널을 고른다. 서 있던 자리 그대로 옮긴다."></button>
     <span class="brush-name" data-brush></span>
   </div>
 </div>
@@ -96,6 +100,7 @@ const MARKUP = `
 </div>
 <button class="prompt btn" type="button" data-prompt hidden></button>
 <div class="auto-pop" data-autopop hidden role="dialog" aria-label="자동 사냥 설정"></div>
+<div class="auto-pop channel-pop" data-chpop hidden role="dialog" aria-label="채널"></div>
 <button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅" data-tip-title="채팅 (Enter)" data-tip="같은 채널 사람들과 말한다.">채팅</button>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
@@ -226,6 +231,12 @@ export class Hud {
     });
     el("[data-auto]", root).addEventListener("click", () => this.h.auto());
     el("[data-autoset]", root).addEventListener("click", () => this.toggleAutoPop());
+    el("[data-zone]", root).addEventListener("click", (e) => { e.stopPropagation(); void this.toggleChannels(); });
+    el("[data-chpop]", root).addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-ch]");
+      if (b && !b.disabled) { this.closeChannels(); this.h.changeChannel(Number(b.dataset.ch)); return; }
+      if ((e.target as HTMLElement).closest("[data-chclose]")) this.closeChannels();
+    });
     el("[data-sound]", root).addEventListener("click", () => this.h.settings("sound"));
     el("[data-settings]", root).addEventListener("click", () => this.h.settings());
     el("[data-chatbtn]", root).addEventListener("click", () => this.h.chat());
@@ -679,6 +690,30 @@ export class Hud {
     el("[data-sound]", this.root).classList.toggle("muted", audio.settings.muted);
     const m = this.root.querySelector<HTMLInputElement>(".sheet-card [data-mute]");
     if (m) m.checked = audio.settings.muted;
+  }
+
+  /**
+   * The channel picker: each channel of this zone with how full it is (여유 / 보통 / 혼잡 / 가득), yours marked.
+   * A full one can't be picked. Counts are read when it opens.
+   */
+  private async toggleChannels(): Promise<void> {
+    const pop = el("[data-chpop]", this.root);
+    if (!pop.hidden) { this.closeChannels(); return; }
+    pop.hidden = false;
+    pop.innerHTML = `<h4>채널</h4><p class="ch-note">불러오는 중…</p>`;
+    const list = await this.h.channels();
+    if (pop.hidden) return;
+    if (!list) { pop.innerHTML = `<h4>채널</h4><p class="ch-note">지금은 채널을 볼 수 없다.</p><button type="button" class="btn btn-sm close" data-chclose>닫기</button>`; return; }
+    const cap = CHANNEL_CAPACITY;
+    const rows = list.players.map((n, i) => {
+      const ch = i + 1, mine = ch === list.current, full = n >= cap && !mine;
+      const f = n / cap, word = full ? "가득" : f >= 0.75 ? "혼잡" : f >= 0.4 ? "보통" : "여유";
+      return `<button type="button" class="ch-row${mine ? " mine" : ""}" data-ch="${ch}" data-load="${word}" ${mine || full ? "disabled" : ""}><b>${ch}채널</b><i class="ch-bar" style="--f:${Math.min(1, f).toFixed(2)}"></i><span>${mine ? "지금 여기" : word}</span></button>`;
+    }).join("");
+    pop.innerHTML = `<h4>채널 <small>${esc(ZONES[this.zoneId]?.name ?? "")}</small></h4><div class="ch-list">${rows}</div><small class="ch-note">서 있던 자리 그대로 옮긴다 · 10초에 한 번</small><button type="button" class="btn btn-sm close" data-chclose>닫기</button>`;
+  }
+  private closeChannels(): void {
+    el("[data-chpop]", this.root).hidden = true;
   }
 
   toggleAutoPop(): void {

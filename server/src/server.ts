@@ -18,7 +18,7 @@ import {
 } from "../../src/shared/profile";
 import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
 import {
-  AD_REWARD_JADE, DAILY_QUESTS, DASH_BURST, DASH_BURST_GAP_MS, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, WIND_BURST_GAP_MS, ROLL_IFRAME_MS, NPC_REACH, NPC_SAFE_R, PORTAL_REACH, START_POS, START_ZONE, ZONES,
+  AD_REWARD_JADE, CHANNELS, CHANNEL_CAPACITY, CHANNEL_HOP_MS, DAILY_QUESTS, DASH_BURST, DASH_BURST_GAP_MS, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, WIND_BURST_GAP_MS, ROLL_IFRAME_MS, NPC_REACH, NPC_SAFE_R, PORTAL_REACH, START_POS, START_ZONE, ZONES,
   parseRoomId, roomIdFor,
 } from "../../src/shared/world";
 import { verifyAd } from "./ads";
@@ -745,6 +745,42 @@ export class Server {
       return { ...q, pigment: q.pigment - cost, potions: q.potions + count };
     });
     return profileView(account, p);
+  }
+
+  /** How many are in each channel of the zone you stand in (the channel picker), and which one is yours. */
+  async channelList(): Promise<{ current: number; players: number[] }> {
+    const here = currentRoom();
+    if (!here) throw new RuleViolation("not_ready");
+    const players = await Promise.all(
+      Array.from({ length: CHANNELS }, (_, i) => $global.getRoomUserAccounts(roomIdFor(here.zone, i + 1)).then((a: string[]) => a.length)),
+    );
+    return { current: here.channel, players };
+  }
+
+  /**
+   * To another channel of the zone you are in, where you stand (same spot, same health). Not while fallen, not
+   * into a full one, and at most once per CHANNEL_HOP_MS. The client then joins the new room and arrives.
+   */
+  async changeChannel(rawTo: unknown): Promise<ZoneEntry> {
+    const account = $sender.account;
+    const here = currentRoom();
+    if (!here) throw new RuleViolation("not_ready");
+    if (typeof rawTo !== "number" || !Number.isInteger(rawTo) || rawTo < 1 || rawTo > CHANNELS || rawTo === here.channel) throw new RuleViolation("bad_args");
+    const assigned = await loadAssigned(account);
+    if (!assigned || assigned.roomId !== here.roomId) throw new RuleViolation("wrong_room");
+    const mine = readMine(await $room.getMyState());
+    if (!present(mine)) throw new RuleViolation("not_ready");
+    if (mine.dead) throw new RuleViolation("dead");
+    const now = Date.now();
+    const state = await $global.getUserState(account);
+    const last = typeof state.chHopAt === "number" ? state.chHopAt : 0;
+    if (now - last < CHANNEL_HOP_MS) throw new RuleViolation("on_cooldown");
+    const players = await $global.getRoomUserAccounts(roomIdFor(here.zone, rawTo));
+    if (!players.includes(account) && players.length >= CHANNEL_CAPACITY) throw new RuleViolation("room_full");
+    await $global.updateUserState(account, { chHopAt: now });
+    const entry = await assign(account, here.zone, rawTo, mine.pose.x, mine.pose.z, now, Math.round(mine.hp));
+    await stepOff();
+    return entry;
   }
 
   /** Fallen: back to the village, whole again. */

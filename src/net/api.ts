@@ -124,6 +124,10 @@ export interface GameApi {
   usePotion(): Promise<ProfileView>;
   buyPotions(count: number): Promise<ProfileView>;
   respawn(): Promise<ZoneEntry>;
+  /** Players in each channel of the zone you are in, and yours. */
+  channelList(): Promise<{ current: number; players: number[] }>;
+  /** To another channel of this zone, where you stand. Errors: room_full, on_cooldown (10 s between), dead. */
+  changeChannel(channel: number): Promise<ZoneEntry>;
   equip(itemId: string): Promise<ProfileView>;
   dye(target: "sash" | "scarf", hex: number | null): Promise<ProfileView>;
   pullGacha(n: 1 | 10): Promise<GachaResult & { profile: ProfileView }>;

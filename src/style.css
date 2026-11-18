@@ -1780,3 +1780,26 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .purse { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: none; column-gap: 8px; row-gap: 2px; }
 #ui .purse > .purse-break { display: block; flex-basis: 100%; height: 0; }
 #ui .purse > .brush-label { margin-top: 0; }
+/* 본편 is marked by its seal and title only (a red bar down its edge read as a broken frame) */
+#ui .qcard.qmain, #ui .qcard.qmain.going { box-shadow: none; }
+#ui .qcard.qmain.going h4 { animation: qgo-pulse 1.6s ease-in-out infinite; }
+/* the zone label is the channel picker's button */
+#ui .portrait .zone-mini { pointer-events: auto; cursor: pointer; border: 0; background: none; padding: 0; font: inherit; font-size: 12.5px; color: #e9e3d6; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 1px 2px rgba(10, 9, 8, 0.85); text-align: left; }
+#ui .portrait .zone-mini small { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+#ui .portrait .zone-mini:hover small { color: #f6c9b8; }
+/* channel picker: a paper slip under the portrait, one row per channel with a fill line */
+#ui .channel-pop { left: calc(14px + var(--safe-l)); right: auto; top: calc(var(--portrait-b, 92px) + 6px); bottom: auto; width: min(250px, 80vw); max-height: calc(100vh - var(--portrait-b, 92px) - 20px); overflow-y: auto; }
+#ui .channel-pop h4 small { font-family: var(--f-body, inherit); font-size: 12px; color: var(--ink-soft); margin-left: 4px; }
+#ui .ch-list { display: grid; gap: 2px; }
+#ui .ch-row { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; gap: 8px; border: 0; background: none; padding: 5px 4px; border-radius: 3px; cursor: pointer; font: inherit; color: var(--ink); text-align: left; }
+#ui .ch-row:hover:not(:disabled) { background: rgba(43, 38, 34, 0.08); }
+#ui .ch-row:disabled { cursor: default; }
+#ui .ch-row b { font-family: var(--f-brush); font-size: 14px; }
+#ui .ch-row span { font-size: 12px; text-align: right; color: var(--ink-soft); }
+#ui .ch-row.mine span { color: #a8261b; font-weight: 700; }
+#ui .ch-row[data-load="혼잡"] span, #ui .ch-row[data-load="가득"] span { color: #a8261b; }
+#ui .ch-row[data-load="가득"] { opacity: 0.5; }
+#ui .ch-bar { position: relative; height: 4px; border-radius: 2px; background: rgba(43, 38, 34, 0.14); overflow: hidden; }
+#ui .ch-bar::after { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--f, 0)); background: var(--ink); }
+#ui .ch-row[data-load="혼잡"] .ch-bar::after, #ui .ch-row[data-load="가득"] .ch-bar::after { background: #a8261b; }
+#ui .ch-note { margin: 0; font-size: 11.5px; color: var(--ink-soft); }
