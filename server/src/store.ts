@@ -2,14 +2,15 @@ import { isBannedName } from "../../src/shared/filter";
 import { freshDay, readProfile, starterProfile } from "../../src/shared/profile";
 import { RuleViolation, type Profile } from "../../src/shared/types";
 import { rankKey } from "../../src/shared/rank";
+import { powerOf } from "../../src/shared/profile";
 import { CHANNELS, CHANNEL_CAPACITY, parseRoomId, roomIdFor } from "../../src/shared/world";
 
 // Where things are kept:
 // - global user state `profile`: the whole Profile (one small object, rewritten as a whole);
 // - global user state `assigned`: the room the server last sent you to (arrive checks it);
 // - collection `nicknames`: one row per taken name; `purchases`: one row per VXShop receipt;
-//   `adGrants`: one row per rewarded-ad requestId paid out; `ranks`: one row per account on the 경지 board
-//   (id = account; name, level and its sort key), written only when the name or level changes.
+//   `adGrants`: one row per rewarded-ad requestId paid out; `ranks`: one row per account on the 전투력 board
+//   (id = account; name, level, power and its sort key), written only when the name or power changes.
 
 export const NICKNAMES = "nicknames";
 export const PURCHASES = "purchases";
@@ -178,25 +179,31 @@ export async function loadAssigned(account: string): Promise<Assigned | null> {
 // ---------- 랭킹 ----------
 
 /**
- * Keeps the account's board row in step with its profile: written only when the name or level changed (so not
- * on every kill), and only past level 1.
+ * Keeps the account's board row in step with its profile: written only when the name or 전투력 changed (gear,
+ * enhancement, training, a level, a 도감 step, a dye; not every kill), and only past level 1.
  */
 export async function syncRank(account: string, before: Profile | null, after: Profile): Promise<void> {
-  if (before && before.level === after.level && before.name === after.name) return;
+  const power = powerOf(after);
+  const was = before ? powerOf(before) : -1;
+  if (before && was === power && before.name === after.name && before.level === after.level) return;
   if (after.level < 2) return;
-  const row: Record<string, unknown> = { name: after.name, level: after.level };
-  if (!before || before.level !== after.level) row.levelKey = rankKey(after.level, Date.now());
+  const row: Record<string, unknown> = { name: after.name, level: after.level, power };
+  if (was !== power) row.powerKey = rankKey(power, Date.now());
   try {
     await $global.updateCollectionItem(RANKS, { __id: account, ...row });
   } catch {
-    await $global.addCollectionItem(RANKS, { levelKey: rankKey(after.level, Date.now()), ...row }, { id: account });
+    await $global.addCollectionItem(RANKS, { powerKey: rankKey(power, Date.now()), ...row }, { id: account });
   }
 }
 
-/** On entering the game: a player from before the boards existed gets their row now (one read when it's there). */
+/**
+ * On entering the game: a player from before the board (or before 전투력 was on it) gets their row now, and a
+ * row whose power is stale (the formula changed) is brought up to date. One read when nothing changed.
+ */
 export async function ensureRank(account: string, p: Profile): Promise<void> {
   try {
-    await $global.getCollectionItem(RANKS, account);
+    const row = await $global.getCollectionItem(RANKS, account);
+    if (row.power !== powerOf(p) || typeof row.powerKey !== "number") await syncRank(account, null, p);
   } catch {
     await syncRank(account, null, p);
   }

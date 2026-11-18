@@ -172,17 +172,17 @@ export class Sheets {
     );
   }
   private rank(): string {
-    const board: RankBoard = "level";
+    const board: RankBoard = "power";
     this.loadRank(board);
     const v = this.ranks[board];
-    const unit = (n: number) => `Lv ${n}`;
+    const unit = (n: number) => `전투력 ${fmt(n)}`;
     const line = (r: RankRow) => `<li class="rk-row${r.me ? " me" : ""}${r.rank <= 3 ? ` top${r.rank}` : ""}"><b class="rk-n">${r.rank}</b><span class="rk-name">${esc(r.name)}</span><span class="rk-v">${unit(r.value)}</span></li>`;
     let body: string;
     if (!v || v === "loading") body = `<p class="cap rk-note">불러오는 중…</p>`;
     else if (v === "error") body = `<p class="cap rk-note">지금은 순위를 볼 수 없다.</p>`;
     else if (!v.top.length) body = `<p class="cap rk-note">아직 아무도 없다.</p>`;
     else body = `<ol class="rk-list">${v.top.map(line).join("")}</ol>${v.mine && !v.top.some((r) => r.me) ? `<ol class="rk-list rk-mine">${line(v.mine)}</ol>` : ""}`;
-    const say = "경지가 높은 순. 같으면 먼저 오른 사람이 앞.";
+    const say = "전투력이 높은 순. 같으면 먼저 오른 사람이 앞.";
     return `${this.head("랭킹")}<p class="cap">${say}</p>${body}`;
   }
 
@@ -468,7 +468,7 @@ export class Sheets {
     return `${this.head("장비")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["stone", p.stones ?? 0]], "새 장비는 병기 제단에서, 띠와 목도리 염색은 염색 장인에게.\n붓은 수련 › 붓 강화에서 다듬는다.")}
       <div class="gear2">
         <div class="gear2-eq"><h4 class="sec">착용</h4><div class="eqslots">${slots}</div>
-          <p class="stats"><span${tipAttr("공격력", "붓과 경지로 오른다.")}><small>공격</small><b>${p.atk}</b></span><span${tipAttr("생명", "경지가 오를수록 늘어난다. 머리 장비가 더 올려 준다.")}><small>생명</small><b>${p.maxHp}</b></span></p>
+          <p class="stats"><span class="pow"${tipAttr("전투력", "공격, 생명, 검법, 도감, 염색 조화를 모두 합친 힘. 랭킹은 이 순서다.")}><small>전투력</small><b>${fmt(p.power ?? 0)}</b></span><span${tipAttr("공격력", "붓과 경지로 오른다.")}><small>공격</small><b>${p.atk}</b></span><span${tipAttr("생명", "경지가 오를수록 늘어난다. 머리 장비가 더 올려 준다.")}><small>생명</small><b>${p.maxHp}</b></span></p>
           ${nextSkill ? `<p class="cap">${esc(nextSkill.name)} · Lv ${nextSkill.unlock}에 열림</p>` : ""}</div>
         <div class="gear2-inv"><div class="inv-head"><h4 class="sec">가진 장비 <small>${owned.size} / ${ITEMS.length}</small></h4><div class="seg" role="radiogroup" aria-label="부위">${filters}</div></div>
           <div class="tiles">${tiles}</div>${detail}</div>

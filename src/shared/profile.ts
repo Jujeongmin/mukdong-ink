@@ -4,9 +4,9 @@
 
 import type { ProfileView } from "../net/api";
 import { MAX_LEVEL, MONSTERS, SKILLS, attackFor, expToNext, isObstacle, maxHpFor } from "./combat";
-import { ENHANCE_MAX, SKILL_MAX, enhancedAtk, pointsEarned, pointsSpent } from "./growth";
+import { ENHANCE_MAX, SKILL_MAX, enhancedAtk, pointsEarned, pointsSpent, skillCdMul, skillDmgMul } from "./growth";
 import { BOOK, bookAfter, bookBonus } from "./book";
-import { ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED, hatHpBonus, sashCdCut } from "./items";
+import { HARMONY_BONUS, ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED, harmonySkill, hatHpBonus, sashCdCut } from "./items";
 import { type Look, type Profile, type SlotId, today } from "./types";
 import { AD_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, SUB_QUESTS, ZONES, type QuestDef } from "./world";
 
@@ -151,6 +151,27 @@ export function cdMulOf(p: Pick<Profile, "equip">): number {
   return 1 - sashCdCut(p.equip.sash);
 }
 
+/**
+ * 전투력: everything that makes you stronger in one number. Attack (level, brush, enhancement, 도감) weighs most,
+ * then max health (level, hat, 도감), then each 검법 you can use: its damage (training, 염색 조화) over its
+ * cooldown (training, sash). ×10 so it reads like a power score.
+ */
+export function powerOf(p: Profile): number {
+  const harmony = harmonySkill(p.dye);
+  const cut = cdMulOf(p);
+  let skills = 0;
+  for (let i = 0; i < SKILLS.length; i++) {
+    if (p.level < SKILLS[i].unlock) continue;
+    const lv = p.skills[i] ?? 1;
+    skills += (60 * skillDmgMul(lv) * (harmony === i ? 1 + HARMONY_BONUS : 1)) / (skillCdMul(lv) * cut);
+  }
+  // attack before rounding (enhancedAtk × attackFor × 도감, unrounded), so every enhancement step shows: a +3
+  // brush and a +2 one can round to the same 공격
+  const base = ITEM[p.equip.weapon]?.atk ?? ITEM[STARTER_EQUIP.weapon].atk ?? 10;
+  const exact = base * (1 + 0.08 * (p.enh[p.equip.weapon] ?? 0)) * (1 + (p.level - 1) * 0.09) * (1 + bookBonus(p.book).atk);
+  return Math.round(10 * (exact * 12 + maxHpOf(p) * 2 + skills));
+}
+
 /** The equipped brush's attack, with its enhancement. */
 export function weaponAtk(p: Profile): number {
   const base = ITEM[p.equip.weapon]?.atk ?? ITEM[STARTER_EQUIP.weapon].atk ?? 10;
@@ -164,7 +185,7 @@ export function pointsLeft(p: Profile): number {
 
 export function profileView(account: string, p: Profile): ProfileView {
   return {
-    ...p, sub: settleSub(p).sub, account, maxHp: maxHpOf(p), atk: atkOf(p), expToNext: expToNext(p.level), points: pointsLeft(p),
+    ...p, sub: settleSub(p).sub, account, maxHp: maxHpOf(p), atk: atkOf(p), power: powerOf(p), expToNext: expToNext(p.level), points: pointsLeft(p),
   };
 }
 

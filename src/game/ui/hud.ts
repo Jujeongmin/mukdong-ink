@@ -70,7 +70,10 @@ const MARKUP = `
     <div class="exp gauge" title="경험" data-expbar><i class="track"></i><i class="fill" data-exp></i></div>
     <button type="button" class="zone-mini" data-zone data-tip-title="채널" data-tip="눌러서 채널을 고른다. 서 있던 자리 그대로 옮긴다."></button>
     <span class="brush-name" data-brush></span>
+    <span class="power" data-power><small>전투력</small><b data-powv>0</b><i class="power-up" data-powup aria-hidden="true"></i></span>
   </div>
+</div>
+<div class="power-pop passive" data-powpop aria-hidden="true"><small>전투력</small><b data-powpopv></b><i data-powpopd></i>
 </div>
 <div class="purse">
   <span class="ui-later" data-ui="gear" data-tip-title="안료" data-tip="사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다."><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
@@ -81,7 +84,7 @@ const MARKUP = `
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>장비</span><kbd>${KEYS.gear}</kbd></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="화첩 (${KEYS.album})" data-tip="벤 몬스터와 보스를 벤 순간 돌아온 색을 그림으로 모아 둔다."><i class="hud-ic" style="--c:2" aria-hidden="true"></i><span>화첩</span><kbd>${KEYS.album}</kbd></button>
-  <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="랭킹 (${KEYS.rank})" data-tip="경지 순위."><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>랭킹</span><kbd>${KEYS.rank}</kbd></button>
+  <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="랭킹 (${KEYS.rank})" data-tip="전투력 순위."><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>랭킹</span><kbd>${KEYS.rank}</kbd></button>
 </div>
 <aside class="jokja" data-quest hidden></aside>
 <div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>돌아가기<kbd>Esc</kbd></button></div>
@@ -274,8 +277,43 @@ export class Hud {
     el("[data-portrait]", this.root).classList.add("has-face");
   }
 
+  /** 전투력 on the HUD: a rise rolls the number up and a "+N" floats off it, gold; a drop just sets it. */
+  private powerShown = -1;
+  private powerRoll = 0;
+  private setPower(v: number): void {
+    const out = el("[data-powv]", this.root);
+    const from = this.powerShown;
+    this.powerShown = v;
+    cancelAnimationFrame(this.powerRoll);
+    if (from < 0 || v <= from) { out.textContent = fmt(v); return; }
+    const up = el("[data-powup]", this.root);
+    up.textContent = `+${fmt(v - from)}`;
+    up.classList.remove("go");
+    void up.offsetWidth; // once per rise, not per frame
+    up.classList.add("go");
+    const box = el("[data-power]", this.root);
+    box.classList.add("rising");
+    // and once, big, over everything (a window may be open over the HUD when it happens)
+    const pop = el("[data-powpop]", this.root);
+    el("[data-powpopv]", pop).textContent = fmt(v);
+    el("[data-powpopd]", pop).textContent = `+${fmt(v - from)}`;
+    pop.classList.remove("go");
+    void pop.offsetWidth;
+    pop.classList.add("go");
+    const t0 = performance.now(), dur = 900;
+    const step = (now: number) => {
+      const k = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - k, 3);
+      out.textContent = fmt(Math.round(from + (v - from) * e));
+      if (k < 1) this.powerRoll = requestAnimationFrame(step);
+      else box.classList.remove("rising");
+    };
+    this.powerRoll = requestAnimationFrame(step);
+  }
+
   setProfile(p: ProfileView): void {
     el("[data-name]", this.root).textContent = p.name || "나그네";
+    if (typeof p.power === "number" && p.power !== this.powerShown) this.setPower(p.power);
     el("[data-lv]", this.root).textContent = String(p.level);
     el("[data-scarf]", this.root).style.background = p.dye.scarf != null ? hexCss(p.dye.scarf) : "";
     this.setHp(p.hp, p.maxHp);

@@ -12,6 +12,8 @@ export interface ProfileView extends Profile {
   account: string;
   maxHp: number;
   atk: number;
+  /** 전투력 (shared/profile powerOf) */
+  power: number;
   expToNext: number;
   /** training points available to spend (earned − spent) */
   points: number;

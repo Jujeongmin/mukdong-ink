@@ -1942,3 +1942,23 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .rk-row.me .rk-name { color: #a8261b; font-weight: 700; }
 #ui .rk-mine { margin-top: 10px; border-top: 2px dotted rgba(43, 38, 34, 0.25); padding-top: 4px; }
 #ui .rk-note { padding: 24px 0; text-align: center; }
+/* 전투력 under the brush line: ink at rest; on a rise the number rolls up in gold and "+N" floats off */
+#ui .portrait .power { display: flex; align-items: baseline; gap: 5px; position: relative; font-size: 12px; color: #efe5d1; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); pointer-events: none; }
+#ui .portrait .power small { font-size: 11px; opacity: 0.8; }
+#ui .portrait .power b { font-family: var(--f-brush); font-size: 15px; font-variant-numeric: tabular-nums; transition: color 0.3s; }
+#ui .portrait .power.rising b { color: #f0c75a; text-shadow: 0 0 6px rgba(240, 199, 90, 0.8), 0 1px 2px rgba(0, 0, 0, 0.8); }
+#ui .portrait .power-up { position: absolute; left: 100%; bottom: 0; margin-left: 4px; z-index: 5; font-style: normal; font-family: var(--f-brush); font-weight: 700; font-size: 14px; color: #f0c75a; white-space: nowrap; opacity: 0; }
+#ui .portrait .power-up.go { animation: power-up 1.6s ease-out both; }
+@keyframes power-up { 0% { opacity: 0; transform: translateY(4px) scale(0.8); } 15% { opacity: 1; transform: translateY(0) scale(1.15); } 70% { opacity: 1; transform: translateY(-10px) scale(1); } 100% { opacity: 0; transform: translateY(-18px); } }
+@media (prefers-reduced-motion: reduce) { #ui .portrait .power-up.go { animation-duration: 0.01s; } }
+#ui .sheet .stats .pow b { color: #8a6418; }
+/* 전투력 rise, over everything for a moment: the new number in brush letters with the gain beside it, gold */
+#ui .power-pop { position: fixed; left: 50%; top: 14%; z-index: 40; display: flex; align-items: baseline; gap: 8px; padding: 10px 34px 12px; isolation: isolate; transform: translateX(-50%); opacity: 0; pointer-events: none; color: #f3ecdf; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9); }
+/* an ink stroke behind it, so it reads over the dark field and over a window's paper alike */
+#ui .power-pop::before { content: ""; position: absolute; inset: 0 -10px; z-index: -1; background: rgba(20, 17, 15, 0.92); -webkit-mask: var(--m-stroke) center / 100% 100% no-repeat; mask: var(--m-stroke) center / 100% 100% no-repeat; }
+#ui .power-pop small { font-family: var(--f-brush); font-size: 16px; opacity: 0.85; }
+#ui .power-pop b { font-family: var(--f-brush); font-weight: 700; font-size: 34px; font-variant-numeric: tabular-nums; }
+#ui .power-pop i { font-style: normal; font-family: var(--f-brush); font-weight: 700; font-size: 22px; color: #f0c75a; }
+#ui .power-pop.go { animation: power-pop 1.8s ease-out both; }
+@keyframes power-pop { 0% { opacity: 0; transform: translate(-50%, 8px) scale(0.85); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); } 22% { transform: translate(-50%, 0) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }
+@media (prefers-reduced-motion: reduce) { #ui .power-pop.go { animation-duration: 1.2s; } }
