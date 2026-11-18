@@ -1773,7 +1773,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .qcard.qmain, #ui .qcard.qmain.going { box-shadow: none; }
 #ui .qcard.qmain.going h4 { animation: qgo-pulse 1.6s ease-in-out infinite; }
 /* the zone label is the channel picker's button */
-#ui .portrait .zone-mini { pointer-events: auto; cursor: pointer; border: 0; background: none; padding: 0; font: inherit; font-size: 12.5px; color: #e9e3d6; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 1px 2px rgba(10, 9, 8, 0.85); text-align: left; }
+#ui .portrait .zone-mini { pointer-events: auto; cursor: pointer; border: 0; background: none; padding: 0 0 0 10px; font: inherit; font-size: 12.5px; color: #e9e3d6; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 1px 2px rgba(10, 9, 8, 0.85); text-align: left; }
 #ui .portrait .zone-mini small { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 #ui .portrait .zone-mini:hover small { color: #f6c9b8; }
 /* channel picker: a paper slip under the portrait, one row per channel with a fill line */
@@ -1792,3 +1792,18 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .ch-bar::after { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--f, 0)); background: var(--ink); }
 #ui .ch-row[data-load="혼잡"] .ch-bar::after, #ui .ch-row[data-load="가득"] .ch-bar::after { background: #a8261b; }
 #ui .ch-note { margin: 0; font-size: 11.5px; color: var(--ink-soft); }
+/* the last boxed buttons go the way of the rest: words with an ink halo over the field, words with a brush line on paper */
+#ui .auto-set, #ui .btn.btn.btn.chat-btn { background: none; box-shadow: none; border: 0; color: #f3ecdf; font-family: var(--f-brush); font-weight: 700;
+  text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.7); }
+#ui .auto-set { font-size: 11.5px; text-decoration: underline; text-underline-offset: 3px; }
+#ui .btn.btn.btn.chat-btn { font-size: 14px; padding: 4px 8px; }
+#ui .btn.btn.btn.chat-btn::before, #ui .btn.btn.btn.chat-btn::after { content: none; }
+#ui .auto-set:hover, #ui .btn.btn.btn.chat-btn:hover { color: #f6c9b8; background: none; }
+#ui .auto-pop .btn.btn.btn { position: relative; background: none; box-shadow: none; color: var(--ink); padding-bottom: 7px; }
+#ui .auto-pop .btn.btn.btn::before { content: none; }
+#ui .auto-pop .btn.btn.btn::after { content: ""; position: absolute; left: 6%; right: 6%; bottom: 0; top: auto; height: 5px; border: 0; border-radius: 0; box-shadow: none; background: currentColor; opacity: 0.7;
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .auto-pop .btn.btn.btn:hover { color: var(--cinnabar); background: none; }
+#ui .gourd.empty .body { filter: grayscale(1) opacity(0.45); }
+#ui .gourd.empty::before { content: none; }
+#ui .gourd.empty b { opacity: 0.7; }

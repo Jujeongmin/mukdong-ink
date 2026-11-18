@@ -273,6 +273,8 @@ export class Hud {
     this.lastExp = p.exp;
     this.lastLevel = p.level;
     el("[data-pot]", this.root).textContent = String(p.potions);
+    // no potions: the gourd greys out and its 자동 enso goes (nothing to drink)
+    el("[data-potion]", this.root).classList.toggle("empty", p.potions <= 0);
     el("[data-pig]", this.root).textContent = fmt(p.pigment);
     el("[data-jade]", this.root).textContent = fmt(p.jade);
     for (let i = 0; i < SKILLS.length; i++) {
