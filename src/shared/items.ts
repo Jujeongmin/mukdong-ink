@@ -88,14 +88,13 @@ export interface DyeDef {
   /** the 검법 (SKILLS index) this color belongs to: scarf and sash both in it = 염색 조화 */
   skill?: number;
 }
-/** One color per 검법 (decided 2026-11-18), plus 검정 to wash back to ink. */
+/** One color per 검법, nothing else (decided 2026-11-18). An undyed (null) piece from an old save stays ink. */
 export const DYES: DyeDef[] = [
   { name: "파랑", hex: 0x2a4f8a, skill: 0 },
   { name: "빨강", hex: 0xc0281c, skill: 1 },
   { name: "노랑", hex: 0xd9b13a, skill: 2 },
   { name: "옥색", hex: 0x8fc7cf, skill: 3 },
   { name: "보라", hex: 0x7a2f6a, skill: 4 },
-  { name: "검정", hex: null },
 ];
 export const DYE_COST = 30; // 안료 per dye
 export const STARTER_DYE = { sash: 0x2a4f8a, scarf: 0xc0281c };
