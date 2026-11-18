@@ -2017,3 +2017,15 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .menu-rod-l::after { bottom: -3px; }
 #ui .menu:not(.open) .menu-rod-l { opacity: 0; }
 #ui .menu-toggle { align-self: center; height: calc(52px * var(--ms) + 18px); margin-top: 0; margin-left: -5px; z-index: 1; }
+/* slower, like paper sliding off a rod: the width runs to the scroll's own size (--mw, hud.ts fitMenu), so the
+   whole duration is spent unrolling; the left rod is a button that rolls it back up */
+#ui .menu-items { max-width: var(--mw, 460px); transition: max-width 0.9s cubic-bezier(0.45, 0.05, 0.3, 1), opacity 0.6s ease, transform 0.9s cubic-bezier(0.45, 0.05, 0.3, 1); }
+#ui .menu:not(.open) .menu-items { transition: max-width 0.6s cubic-bezier(0.6, 0, 0.6, 1), opacity 0.45s ease 0.15s, transform 0.6s ease; }
+#ui .menu-rod-l { border: 0; padding: 0; cursor: pointer; pointer-events: auto; transition: opacity 0.4s ease; }
+#ui .menu-rod-l:hover { filter: brightness(1.25); }
+#ui .menu:not(.open) .menu-rod-l { pointer-events: none; }
+/* small screens: every HUD block at the same reduced size (--ui from hud.ts: 1 down to 0.7) */
+#ui :is(.portrait, .purse, .arc, .chat-btn, .stick, .chat-log) { zoom: var(--ui, 1); }
+/* the quest card is placed from measured screen positions (--purse-b, --arc-top), which zoom would rescale:
+   it shrinks in place from its top-right corner instead */
+#ui .jokja { transform: scale(var(--ui, 1)); transform-origin: top right; }

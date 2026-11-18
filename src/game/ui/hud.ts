@@ -83,7 +83,7 @@ const MARKUP = `
   <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <i class="purse-break" aria-hidden="true"></i>
   <div class="menu open" data-menu>
-  <i class="menu-rod-l" aria-hidden="true"></i>
+  <button class="menu-rod-l" type="button" data-menu-close aria-label="메뉴 접기" tabindex="-1"></button>
   <div class="menu-items" data-menu-items>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
   <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>장비</span><kbd>${KEYS.gear}</kbd></button>
@@ -229,13 +229,23 @@ export class Hud {
       const fitMenu = () => {
         if (!menu || !toggle || !portrait) return;
         const cur = Number(getComputedStyle(root).getPropertyValue("--ms")) || 1;
-        const natural = menu.scrollWidth / cur;
+        // the buttons' own widths (the folded paper reports none), at size 1
+        let sum = 0, n = 0;
+        menu.querySelectorAll<HTMLElement>(".brush-label").forEach((b) => { if (b.offsetWidth > 0) { sum += b.offsetWidth; n++; } });
+        const natural = (sum + Math.max(0, n - 1) * 8 * cur + 20 * cur) / cur;
         const left = Math.max(portrait.getBoundingClientRect().right, vitals?.getBoundingClientRect().right ?? 0) + 14;
         const room = toggle.getBoundingClientRect().left - 14 - left; // 14: the left rod
-        const ms = Math.max(0.6, Math.min(1, room / Math.max(1, natural)));
+        // room is in screen pixels, the buttons in the menu's own (the HUD may be zoomed by --ui)
+        const zoom = Number(getComputedStyle(root).getPropertyValue("--ui")) || 1;
+        const ms = Math.max(0.6, Math.min(1, room / Math.max(1, natural * zoom)));
         if (Math.abs(ms - cur) > 0.01) root.style.setProperty("--ms", ms.toFixed(3));
+        // the open width the paper unrolls to (its content at the chosen size)
+        root.style.setProperty("--mw", `${Math.ceil(natural * ms) + 2}px`);
       };
       const place = () => {
+        // small screens: the whole HUD shrinks together (down to 70%) rather than its parts running into each other
+        const ui = Math.max(0.7, Math.min(1, window.innerWidth / 740, window.innerHeight / 360));
+        root.style.setProperty("--ui", ui.toFixed(3));
         fitMenu();
         root.style.setProperty("--purse-b", `${Math.ceil(purse.getBoundingClientRect().bottom)}px`);
         if (portrait) root.style.setProperty("--portrait-b", `${Math.ceil(portrait.getBoundingClientRect().bottom)}px`);
@@ -321,6 +331,8 @@ export class Hud {
     };
     set(open, false);
     toggle.addEventListener("click", () => { audio.play("ui-click"); set(!open, true); });
+    // the left rod rolls it back up too (it only shows while open)
+    el("[data-menu-close]", root).addEventListener("click", () => { if (open) { audio.play("ui-click"); set(false, true); } });
   }
   private syncMenuDot(): void {
     const menu = this.root.querySelector<HTMLElement>("[data-menu]");
