@@ -43,6 +43,8 @@ const MOCAP_BLEND = 0.08;
 const MOVE_CANCEL = 0.08;
 /** after a strike (cancelled or finished) the upper body and brush ease from the clip back to the hold this fast */
 const RECOVER = 0.15;
+/** after a strike is cancelled into the run, a press within this long continues the combo */
+const COMBO_KEEP = 0.4;
 /** the third strike (a full spin) eases out longer */
 const RECOVER3 = 0.3;
 const TAU = Math.PI * 2;
@@ -159,6 +161,11 @@ export class Actor {
   private recClip: MotionClip | null = null;
   private recT = 0;
   private recW = 0;
+  /** a blow was asked for during this strike: the combo goes on at the chain point even if that press has gone stale */
+  private queued = false;
+  /** after a strike is let go for the run: the next blow it leads to, and how long a press still continues the combo */
+  private comboNext: ActState | null = null;
+  private comboT = 0;
   private recDur = RECOVER;
   /** whole turns taken off the clip's body twist while easing out (so it unwinds the short way) */
   private recTurns = 0;
@@ -266,6 +273,7 @@ export class Actor {
     this.state = s;
     this.st = 0;
     this.recW = 0;
+    this.queued = false;
     this.swept = false;
     if (s !== "move" && s !== "land" && s !== "hurt" && s !== "dead") this.combatT = GUARD_HOLD;
     this.fired = false;
@@ -402,6 +410,7 @@ export class Actor {
     this.rollCd = Math.max(0, this.rollCd - dt);
     if (this.ghosted && this.inv <= 0) this.setGhost(false);
     this.atkGap = Math.max(0, this.atkGap - dt);
+    this.comboT = Math.max(0, this.comboT - dt);
     for (let i = 0; i < 5; i++) this.cd[i] = Math.max(0, this.cd[i] - dt);
     if (this.local) this.updateLocal(dt);
     else this.updateRemote(dt);
@@ -441,7 +450,13 @@ export class Actor {
           this.onGround = false;
         }
         if (this.canSkill()) { const s = inp.sk; inp.sk = -1; this.startSkill(s); break; }
-        if (inp.atk > 0 && this.atkGap <= 0 && (this.onGround || this.airSwings < AIR_SWINGS)) { inp.atk = 0; this.aim(-1); this.start(this.onGround ? "atk1" : "airspin"); }
+        if (inp.atk > 0 && this.atkGap <= 0 && (this.onGround || this.airSwings < AIR_SWINGS)) {
+          inp.atk = 0;
+          this.aim(-1);
+          const next = this.onGround && this.comboT > 0 ? this.comboNext : null;
+          this.comboT = 0;
+          this.start(next ?? (this.onGround ? "atk1" : "airspin"));
+        }
         else this.tryRoll(hasIn);
         break;
       }
@@ -449,13 +464,16 @@ export class Actor {
         const A = ATK[this.state];
         // the lunge carries into the blow; after the impact the feet are planted, so nothing slides
         damp(this.st < A.clip.impact ? 8 : 18);
+        if (inp.atk > 0 && A.next) this.queued = true;
         if (this.st > A.act[1] && this.atkGap <= 0) {
-          if (inp.atk > 0 && A.next) { inp.atk = 0; this.aim(-1); this.start(A.next); break; }
+          if ((inp.atk > 0 || this.queued) && A.next) { inp.atk = 0; this.aim(-1); this.start(A.next); break; }
         }
         if (this.tryRoll(hasIn)) break;
         if (this.st > A.act[1] && this.canSkill()) { const s = inp.sk; inp.sk = -1; this.startSkill(s); break; }
-        // a move input after the impact cancels the recovery straight into the normal run
-        if ((hasIn && this.st > A.clip.impact + MOVE_CANCEL) || this.st >= A.dur) this.endStrike();
+        // a move input after the impact cancels the recovery straight into the normal run, unless another blow is
+        // asked for: then the strike waits for its chain point and the combo carries on (attacking on the move)
+        const chaining = (inp.atk > 0 || this.queued) && A.next !== null;
+        if ((hasIn && !chaining && this.st > A.clip.impact + MOVE_CANCEL) || this.st >= A.dur) this.endStrike();
         break;
       }
       case "airspin":
@@ -719,6 +737,9 @@ export class Actor {
   /** Leaves a strike for "move"; its clip keeps playing on the upper body while it eases out (render). */
   private endStrike(): void {
     this.recClip = ATK[this.state as "atk1" | "atk2" | "atk3"].clip;
+    // running on after a blow: a press soon after still carries the combo on (attacking on the move)
+    this.comboNext = ATK[this.state as "atk1" | "atk2" | "atk3"].next;
+    this.comboT = COMBO_KEEP;
     this.recT = this.st;
     this.recW = 1;
     this.recDur = this.state === "atk3" ? RECOVER3 : RECOVER;

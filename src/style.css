@@ -1852,3 +1852,6 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   #ui .jokja .qcard.qmain { padding: 6px 10px 4px; gap: 2px; }
   #ui .qdaily li { padding: 2px 4px; font-size: 12px; }
 }
+/* name tags (players, NPCs, gates) belong to the field: they pass under the HUD panels, never over them */
+#ui .tags { z-index: 0; }
+#ui .portrait, #ui .purse, #ui .jokja, #ui .arc { z-index: 3; }

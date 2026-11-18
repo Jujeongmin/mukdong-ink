@@ -18,6 +18,8 @@ let box: HTMLElement | null = null;
 let target: HTMLElement | null = null;
 let showT = 0;
 let hideT = 0;
+/** after a click on a tipped control, its tip stays away until the pointer moves on (the control usually redraws under it) */
+let mutedAt: { x: number; y: number } | null = null;
 let longT = 0;
 let pinned = false;
 let swallowClick = false;
@@ -90,8 +92,11 @@ export function installTooltips(): void {
   box.hidden = true;
   document.body.appendChild(box);
 
+  document.addEventListener("pointermove", (e) => {
+    if (mutedAt && Math.hypot(e.clientX - mutedAt.x, e.clientY - mutedAt.y) > 14) mutedAt = null;
+  }, true);
   document.addEventListener("pointerover", (e) => {
-    if (e.pointerType !== "mouse" || pinned) return;
+    if (e.pointerType !== "mouse" || pinned || mutedAt) return;
     const t = tipOf(e.target);
     if (!t) return;
     if (t === target && box && !box.hidden) { window.clearTimeout(hideT); return; }
@@ -124,8 +129,13 @@ export function installTooltips(): void {
   document.addEventListener("click", (e) => {
     if (swallowClick) { swallowClick = false; e.preventDefault(); e.stopPropagation(); return; }
     const t = (e.target instanceof Element ? e.target.closest<HTMLElement>("[data-tip-click]") : null);
-    // a click usually re-renders what the tip pointed at
-    if (!t) { if (!pinned && box && !box.hidden) hideTip(); return; }
+    // a click usually re-renders what the tip pointed at: hide it, and keep it away until the pointer moves on
+    if (!t) {
+      if (!pinned && box && !box.hidden) hideTip();
+      window.clearTimeout(showT);
+      if (e instanceof MouseEvent) mutedAt = { x: e.clientX, y: e.clientY };
+      return;
+    }
     e.preventDefault();
     if (pinned && target === t) { hideTip(); return; }
     show(t);
