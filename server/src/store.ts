@@ -1,15 +1,15 @@
 import { isBannedName } from "../../src/shared/filter";
 import { freshDay, readProfile, starterProfile } from "../../src/shared/profile";
 import { RuleViolation, type Profile } from "../../src/shared/types";
-import { bookSteps, rankKey } from "../../src/shared/rank";
+import { rankKey } from "../../src/shared/rank";
 import { CHANNELS, CHANNEL_CAPACITY, parseRoomId, roomIdFor } from "../../src/shared/world";
 
 // Where things are kept:
 // - global user state `profile`: the whole Profile (one small object, rewritten as a whole);
 // - global user state `assigned`: the room the server last sent you to (arrive checks it);
 // - collection `nicknames`: one row per taken name; `purchases`: one row per VXShop receipt;
-//   `adGrants`: one row per rewarded-ad requestId paid out; `ranks`: one row per account on the boards
-//   (id = account; name, level, book steps and their sort keys), written only when one of those changes.
+//   `adGrants`: one row per rewarded-ad requestId paid out; `ranks`: one row per account on the 경지 board
+//   (id = account; name, level and its sort key), written only when the name or level changes.
 
 export const NICKNAMES = "nicknames";
 export const PURCHASES = "purchases";
@@ -178,22 +178,18 @@ export async function loadAssigned(account: string): Promise<Assigned | null> {
 // ---------- 랭킹 ----------
 
 /**
- * Keeps the account's board row in step with its profile: written only when the name, level or 도감 steps
- * changed (so not on every kill), and only once there is something to show (past level 1 or a first 밑그림).
+ * Keeps the account's board row in step with its profile: written only when the name or level changed (so not
+ * on every kill), and only past level 1.
  */
 export async function syncRank(account: string, before: Profile | null, after: Profile): Promise<void> {
-  const steps = bookSteps(after.book);
-  const was = before ? { level: before.level, steps: bookSteps(before.book), name: before.name } : null;
-  if (was && was.level === after.level && was.steps === steps && was.name === after.name) return;
-  if (after.level < 2 && steps === 0) return;
-  const now = Date.now();
-  const row: Record<string, unknown> = { name: after.name, level: after.level, steps };
-  if (!was || was.level !== after.level) row.levelKey = rankKey(after.level, now);
-  if (!was || was.steps !== steps) row.bookKey = rankKey(steps, now);
+  if (before && before.level === after.level && before.name === after.name) return;
+  if (after.level < 2) return;
+  const row: Record<string, unknown> = { name: after.name, level: after.level };
+  if (!before || before.level !== after.level) row.levelKey = rankKey(after.level, Date.now());
   try {
     await $global.updateCollectionItem(RANKS, { __id: account, ...row });
   } catch {
-    await $global.addCollectionItem(RANKS, { levelKey: rankKey(after.level, now), bookKey: rankKey(steps, now), ...row }, { id: account });
+    await $global.addCollectionItem(RANKS, { levelKey: rankKey(after.level, Date.now()), ...row }, { id: account });
   }
 }
 

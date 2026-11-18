@@ -89,7 +89,6 @@ const TABS: Partial<Record<SheetId, [string, string][]>> = {
   altar: [["pull", "뽑기"], ["odds", "확률표"], ["jade", "묵옥 얻기"]],
   growth: [["skills", "검법 단련"], ["enhance", "붓 강화"]],
   album: [["pages", "되찾은 색"], ["book", "먹그림 도감"]],
-  rank: [["level", "경지"], ["book", "먹그림 도감"]],
   settings: SETTINGS_TABS,
 };
 
@@ -173,17 +172,17 @@ export class Sheets {
     );
   }
   private rank(): string {
-    const board: RankBoard = this.tab === "book" ? "book" : "level";
+    const board: RankBoard = "level";
     this.loadRank(board);
     const v = this.ranks[board];
-    const unit = board === "level" ? (n: number) => `Lv ${n}` : (n: number) => `${n}단계`;
+    const unit = (n: number) => `Lv ${n}`;
     const line = (r: RankRow) => `<li class="rk-row${r.me ? " me" : ""}${r.rank <= 3 ? ` top${r.rank}` : ""}"><b class="rk-n">${r.rank}</b><span class="rk-name">${esc(r.name)}</span><span class="rk-v">${unit(r.value)}</span></li>`;
     let body: string;
     if (!v || v === "loading") body = `<p class="cap rk-note">불러오는 중…</p>`;
     else if (v === "error") body = `<p class="cap rk-note">지금은 순위를 볼 수 없다.</p>`;
     else if (!v.top.length) body = `<p class="cap rk-note">아직 아무도 없다.</p>`;
     else body = `<ol class="rk-list">${v.top.map(line).join("")}</ol>${v.mine && !v.top.some((r) => r.me) ? `<ol class="rk-list rk-mine">${line(v.mine)}</ol>` : ""}`;
-    const say = board === "level" ? "경지가 높은 순. 같으면 먼저 오른 사람이 앞." : "먹그림 도감 단계 순 (밑그림 1, 완성 2). 같으면 먼저 그린 사람이 앞.";
+    const say = "경지가 높은 순. 같으면 먼저 오른 사람이 앞.";
     return `${this.head("랭킹")}<p class="cap">${say}</p>${body}`;
   }
 

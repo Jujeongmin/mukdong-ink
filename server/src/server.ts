@@ -984,13 +984,13 @@ export class Server {
   }
 
   /** The open 서브 퀘스트, finished: paid, and the next one opens. quest_not_done until its count is met. */
-  /** 랭킹: the top of a board (names only, never accounts) and the caller's own line. */
+  /** 랭킹: the top of the 경지 board (names only, never accounts) and the caller's own line. */
   async rankings(rawBoard: unknown): Promise<RankView> {
     if (typeof rawBoard !== "string" || !(RANK_BOARDS as readonly string[]).includes(rawBoard)) throw new RuleViolation("bad_args");
     const board = rawBoard as RankBoard;
     const account = $sender.account;
-    const key = board === "level" ? "levelKey" : "bookKey";
-    const valueOf = (r: Record<string, unknown>) => Number(board === "level" ? r.level : r.steps) || 0;
+    const key = "levelKey";
+    const valueOf = (r: Record<string, unknown>) => Number(r.level) || 0;
     const rows = await $global.getCollectionItems(RANKS, { orderBy: [{ field: key, direction: "desc" }], limit: RANK_TOP });
     const top: RankRow[] = rows
       .filter((r: Record<string, unknown>) => valueOf(r) > 0)
