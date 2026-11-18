@@ -184,6 +184,7 @@ export class Game {
       respawn: () => void this.respawn(),
       auto: () => this.autoProgress(),
       travel: () => this.autoProgress(),
+      travelDaily: (i) => this.autoDaily(i),
       autoSettings: () => this.auto.settings,
       saveAutoSettings: () => this.auto.saveSettings(),
       settings: (tab) => this.openSettings(tab),
@@ -233,7 +234,8 @@ export class Game {
       travel: (to, from) => this.travel(to, from, true),
       talk: (npc) => this.story.talk(npc),
       think: (id, text) => { this.hints.think(id, text, { urgent: true, repeat: true }); },
-      changed: () => this.hud.setAuto(this.auto.on || this.auto.progress, this.auto.traveling || this.auto.progress),
+      changed: () => { this.hud.setAuto(this.auto.on || this.auto.progress, this.auto.traveling || this.auto.progress, this.auto.progress ? this.auto.daily : -2); },
+      claimDailies: () => this.claimDailyAll(),
     });
     // sounds: every actor's swings, rolls and casts (others by distance); monster spits and slams
     actorSound.fn = (code, a) => {
@@ -354,6 +356,15 @@ export class Game {
     const why = this.auto.toggleProgress();
     if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
     toast("자동 진행");
+  }
+
+  /** A daily quest tapped in the tracker: 자동 진행 on that one (again on the same one: stop). */
+  private autoDaily(i: number): void {
+    if (this.auto.progress && this.auto.daily === i) { this.auto.stop(); toast("자동 진행 끔"); return; }
+    if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
+    const why = this.auto.startDaily(i);
+    if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
+    toast(`자동 진행 · ${DAILY_QUESTS[i].title}`);
   }
 
   /* ---------- start ---------- */

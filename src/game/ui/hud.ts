@@ -11,7 +11,7 @@ import { DAILY_QUESTS, ZONES } from "../../shared/world";
 import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
 import { fmt, hexCss } from "../util";
-import { chapterOf, dailyStatus, mainStatus, npcName, npcZone, objective, progressText } from "../quests";
+import { chapterOf, dailyStatus, mainStatus, mainWall, npcName, npcZone, objective, progressText, rewardText } from "../quests";
 import { bindSliders, el, esc, skillIconPos } from "./dom";
 import { KEYS } from "./input";
 import { audio } from "../audio";
@@ -32,6 +32,8 @@ export interface HudHandlers {
   photo(): void;
   auto(): void;
   travel(): void;
+  /** 자동 진행 on one daily quest (tapped in the tracker) */
+  travelDaily(i: number): void;
   autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean };
   saveAutoSettings(): void;
   interact(): void;
@@ -94,7 +96,7 @@ const MARKUP = `
 </div>
 <button class="prompt btn" type="button" data-prompt hidden></button>
 <div class="auto-pop" data-autopop hidden role="dialog" aria-label="자동 사냥 설정"></div>
-<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅" data-tip-title="채팅 (Enter)" data-tip="같은 채널 사람들과 말한다.">말</button>
+<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅" data-tip-title="채팅 (Enter)" data-tip="같은 채널 사람들과 말한다.">채팅</button>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
 <div class="levelup passive" data-lvup hidden><i class="spr-enso"></i><b>경지 상승</b><small data-lvtext></small></div>
@@ -134,6 +136,10 @@ export class Hud {
   private lastLevel = 0;
   private zoneKey = "";
   private travelling = false;
+  /** re-measures the top-right row and the thumb arc (parts appear over time) */
+  private relayout: () => void = () => {};
+  /** what 자동 진행 is on: -1 the main quest, a daily's index, -2 nothing */
+  private autoFocus = -2;
   /** 데미지 숫자 (settings) */
   showDmg = true;
   /** speech bubbles over heads: owner → its own tag entry and when it goes */
@@ -190,8 +196,19 @@ export class Hud {
     // the quest card hangs just under the top-right row (its height changes as menu icons appear, and by screen size)
     const purse = root.querySelector<HTMLElement>(".purse");
     if (purse && typeof ResizeObserver !== "undefined") {
-      const place = () => root.style.setProperty("--purse-b", `${Math.ceil(purse.getBoundingClientRect().bottom)}px`);
+      const portrait = root.querySelector<HTMLElement>(".portrait");
+      const place = () => {
+        root.style.setProperty("--purse-b", `${Math.ceil(purse.getBoundingClientRect().bottom)}px`);
+        if (portrait) root.style.setProperty("--portrait-b", `${Math.ceil(portrait.getBoundingClientRect().bottom)}px`);
+        // the top of the thumb arc (its highest visible button): the tracker stops above it
+        let top = window.innerHeight;
+        root.querySelectorAll<HTMLElement>("[data-arc] > *").forEach((b) => { const r = b.getBoundingClientRect(); if (r.height > 0 && r.right > window.innerWidth * 0.55) top = Math.min(top, r.top); });
+        root.style.setProperty("--arc-top", `${Math.floor(top)}px`);
+      };
+      window.setTimeout(place, 0);
+      this.relayout = place;
       new ResizeObserver(place).observe(purse);
+      if (portrait) new ResizeObserver(place).observe(portrait);
       window.addEventListener("resize", place);
     }
     el("[data-gear]", root).addEventListener("click", () => this.h.gear());
@@ -322,6 +339,11 @@ export class Hud {
    * objective line with its count and a slim gold progress line, a status tag and the 자동 진행 pill.
    * On phones it folds into a one-line chip (tap the header).
    */
+  /**
+   * The quest tracker: one panel, scrolled, the main quest on top in cinnabar (it is the story), today's quests
+   * under it. Tapping a quest starts 자동 진행 on it (again: stop). When the main quest is walled by 경지, it says so
+   * and points at today's quests, which light up: strengthen there first, then come back.
+   */
   private setQuest(p: ProfileView): void {
     this.last = p;
     const box = el("[data-quest]", this.root);
@@ -329,33 +351,48 @@ export class Hud {
     if (this.questFolded === null) this.questFolded = window.matchMedia("(max-width: 520px)").matches;
     box.classList.toggle("folded", this.questFolded);
     const s = mainStatus(p);
+    const wall = mainWall(p);
+    let main: string;
     if (!s) {
-      box.innerHTML = `<div class="qcard"><header data-qfold><span class="qch">1장</span><h4>1장을 마쳤다</h4></header><div class="qbody"><p class="qobj"><span>먹노인의 날마다 새 일</span></p></div></div>${this.dailyCard(p)}`;
-      box.querySelector("[data-qfold]")?.addEventListener("click", () => this.foldQuest());
-      return;
-    }
-    const o = objective(s);
-    const ratio = s.target > 0 ? s.prog / s.target : 0;
-    const bar = o.count ? `<i class="qbar" aria-hidden="true"><i class="qfill" style="--f:${ratio.toFixed(3)}"></i></i>` : "";
-    let tag: string;
-    if (!s.accepted) tag = `<span class="qtag new">새 의뢰</span>`;
-    else if (s.done || s.q.goal.type === "talk") {
-      const z = npcZone(s.q.turnIn);
-      tag = `<span class="qtag done">${s.done ? "완료" : "진행 중"} · ${esc(npcName(s.q.turnIn))}${z && z !== this.zoneId ? ` (${esc(ZONES[z].name)})` : ""}</span>`;
-    } else tag = `<span class="qtag">진행 중</span>`;
-    const state = s.done ? "done" : !s.accepted ? "fresh" : "";
-    // the whole card is the 자동 진행 button (no separate one); on phones a small mark folds it
-    box.innerHTML = `<div class="qcard ${state}${this.travelling ? " going" : ""}" data-go role="button" tabindex="0" aria-pressed="${this.travelling}" data-tip-title="${this.travelling ? "자동 진행 중 · 누르면 멈춘다" : "누르면 자동 진행 (Z)"}" data-tip="${esc(s.q.text)}
-의뢰를 받고, 사냥하고, 보고하러 저절로 간다.">
-      <header><button type="button" class="qfold" data-qfold aria-label="접기/펴기"></button><span class="qch">${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small></header>
+      main = `<div class="qcard qmain"><header><span class="qch">본편</span><h4>이야기를 다 따라왔다</h4><button type="button" class="qfold" data-qfold aria-label="접기/펴기"></button></header><div class="qbody"><p class="qobj"><span>다음 장을 기다리는 동안 오늘의 의뢰를</span></p></div></div>`;
+    } else {
+      const o = objective(s);
+      const ratio = s.target > 0 ? s.prog / s.target : 0;
+      const bar = o.count ? `<i class="qbar" aria-hidden="true"><i class="qfill" style="--f:${ratio.toFixed(3)}"></i></i>` : "";
+      let tag: string;
+      if (!s.accepted) tag = `<span class="qtag new">새 의뢰</span>`;
+      else if (s.done || s.q.goal.type === "talk") {
+        const z = npcZone(s.q.turnIn);
+        tag = `<span class="qtag done">${s.done ? "완료" : "진행 중"} · ${esc(npcName(s.q.turnIn))}${z && z !== this.zoneId ? ` (${esc(ZONES[z].name)})` : ""}</span>`;
+      } else tag = `<span class="qtag">진행 중</span>`;
+      const state = s.done ? "done" : !s.accepted ? "fresh" : "";
+      const going = this.travelling && this.autoFocus === -1;
+      const wallLine = wall ? `<p class="qwall"><b>막힘</b> 경지 ${wall}이 필요하다 · 아래 오늘의 의뢰로 강해지자</p>` : "";
+      main = `<div class="qcard qmain ${state}${going ? " going" : ""}${wall ? " walled" : ""}" data-go role="button" tabindex="0" aria-pressed="${going}" data-tip-title="${going ? "자동 진행 중 · 누르면 멈춘다" : "본편 · 누르면 자동 진행 (Z)"}" data-tip="${esc(s.q.text)}">
+      <header><span class="qch">본편 ${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small><button type="button" class="qfold" data-qfold aria-label="접기/펴기"></button></header>
       <div class="qbody">
         <p class="qobj" aria-label="${esc(progressText(s))}"><span>${esc(o.text)}</span>${o.count ? `<b>${o.count}</b>` : ""}</p>${bar}
-        <small class="qdist" data-qdist>${esc(this.qdist)}</small>
+        ${wallLine}<small class="qdist" data-qdist>${esc(this.qdist)}</small>
         <footer><span class="qstate" data-qstate>${QSTATE[this.qState]}</span>${tag}</footer>
-      </div></div>${this.dailyCard(p)}`;
+      </div></div>`;
+    }
+    box.innerHTML = `<div class="qpanel${wall ? " walled" : ""}"><div class="qscroll">${main}${this.dailyCard(p, !!wall)}</div></div>`;
+    this.relayout();
+    // more below than fits: the bottom fades (no scrollbar), until scrolled to the end
+    const qs = box.querySelector<HTMLElement>(".qscroll"), qp = box.querySelector<HTMLElement>(".qpanel");
+    if (qs && qp) {
+      const fade = () => qp.classList.toggle("long", qs.scrollHeight - qs.scrollTop - qs.clientHeight > 4);
+      requestAnimationFrame(fade);
+      qs.addEventListener("scroll", fade, { passive: true });
+    }
     const card = box.querySelector<HTMLElement>("[data-go]");
     card?.addEventListener("click", () => this.h.travel());
     card?.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.h.travel(); } });
+    box.querySelectorAll<HTMLElement>("[data-daily]").forEach((li) => {
+      const go = () => this.h.travelDaily(Number(li.dataset.daily));
+      li.addEventListener("click", go);
+      li.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    });
     box.querySelector("[data-qfold]")?.addEventListener("click", (e) => { e.stopPropagation(); this.foldQuest(); });
     box.dataset.state = this.qState;
   }
@@ -387,17 +424,21 @@ export class Hud {
   }
 
   /** The day's quests that are still open, under the main card: title + progress, or who to report to. */
-  private dailyCard(p: ProfileView): string {
-    let rows = "", ready = 0;
+  /**
+   * Today's quests as compact one-line rows under 본편 (like most mobile MMOs' trackers): a small 일일 tag, the
+   * title, the count. A finished one turns into 받기 and is paid on a tap; an unfinished one starts 자동 진행 on it.
+   */
+  private dailyCard(p: ProfileView, walled = false): string {
+    const rewardLine = (q: (typeof DAILY_QUESTS)[number]) => `보상 · ${rewardText(q)}`;
+    let rows = "";
     for (let i = 0; i < DAILY_QUESTS.length; i++) {
       const d = dailyStatus(p, i);
       if (d.claimed) continue;
-      if (d.done) ready++;
-      rows += `<li class="${d.done ? "done" : ""}"><span>${esc(d.q.title)}</span>${d.done ? `<b class="qtag done">완료</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
+      const going = this.travelling && this.autoFocus === i;
+      const tip = d.done ? `data-tip-title="보상 받기" data-tip="${esc(rewardLine(d.q))}"` : `data-tip-title="${going ? "자동 진행 중 · 누르면 멈춘다" : "누르면 자동 진행"}" data-tip="${esc(d.q.text)}"`;
+      rows += `<li class="${d.done ? "done" : ""}${going ? " going" : ""}" ${d.done ? "data-claim-daily" : `data-daily="${i}"`} role="button" tabindex="0" ${tip}><i class="qd-tag">일일</i><span>${esc(d.q.title)}</span>${d.done ? `<b class="qd-get">받기</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
     }
-    // finished ones are paid right here, all at once (no walk back to 먹노인)
-    const claim = ready ? `<button class="btn btn-sm daily-claim" type="button" data-claim-daily>보상 받기${ready > 1 ? ` ${ready}` : ""}</button>` : "";
-    return rows ? `<div class="qcard daily"><header><span class="qch">오늘</span><h4>오늘의 의뢰</h4>${claim}</header><ul class="qbody qdaily">${rows}</ul></div>` : "";
+    return rows ? `<ul class="qcard daily qdaily${walled ? " lit" : ""}">${rows}</ul>` : "";
   }
 
   /** Phones: the tracker folds to a one-line chip and back. */
@@ -592,12 +633,13 @@ export class Hud {
   }
 
   /** Auto button state; the quest strip shows when auto-travel is under way. */
-  setAuto(on: boolean, travelling: boolean): void {
+  setAuto(on: boolean, travelling: boolean, focus = -2): void {
     const b = el("[data-auto]", this.root);
     b.classList.toggle("on", on);
     b.setAttribute("aria-pressed", String(on));
-    if (travelling !== this.travelling) {
+    if (travelling !== this.travelling || focus !== this.autoFocus) {
       this.travelling = travelling;
+      this.autoFocus = focus;
       if (this.last) this.setQuest(this.last);
     }
   }

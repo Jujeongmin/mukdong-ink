@@ -110,3 +110,23 @@ export function npcMark(p: ProfileView, npc: string): Mark {
   if (npc === "elder" && DAILY_QUESTS.some((_, i) => { const d = dailyStatus(p, i); return d.done && !d.claimed; })) return "turnin";
   return null;
 }
+
+/**
+ * The main quest is waiting on the player's strength (a "reach 경지 N" step not yet met): the way forward is the
+ * daily quests (and hunting) until then. Returns the 경지 needed, or 0 when the main quest is not walled.
+ */
+export function mainWall(p: ProfileView): number {
+  const s = mainStatus(p);
+  if (!s || !s.accepted || s.done || s.q.goal.type !== "level") return 0;
+  return p.level < s.target ? s.target : 0;
+}
+
+/** The first daily quest still to finish (not done, not paid), or -1. */
+export function nextDaily(p: ProfileView, after = -1): number {
+  for (let k = 1; k <= DAILY_QUESTS.length; k++) {
+    const i = (after + k) % DAILY_QUESTS.length;
+    const d = dailyStatus(p, i);
+    if (!d.done && !d.claimed) return i;
+  }
+  return -1;
+}

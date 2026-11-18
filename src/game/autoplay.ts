@@ -4,12 +4,12 @@
 // allocations. Manual input pauses auto-battle for 2 s and cancels auto-travel.
 
 import * as THREE from "three";
-import { MAIN_QUESTS, NPC_REACH, PORTAL_REACH, ZONES, type Npc, type ZoneDef } from "../shared/world";
+import { DAILY_QUESTS, MAIN_QUESTS, NPC_REACH, PORTAL_REACH, ZONES, type Npc, type ZoneDef } from "../shared/world";
 import { SKILLS, isObstacle } from "../shared/combat";
 import type { ProfileView } from "../net/api";
 import type { Actor } from "./actor";
 import type { MView } from "./monsters";
-import { mainStatus, readyByTalk } from "./quests";
+import { dailyStatus, mainStatus, mainWall, nextDaily, readyByTalk } from "./quests";
 import { overlay } from "./render/gfx";
 import { gameSettings } from "./ui/settings";
 import { attackingMe, targetable } from "./targeting";
@@ -40,6 +40,8 @@ export interface AutoCtx {
   talk(npc: Npc): Promise<void>;
   think(id: string, text: string): void;
   changed(): void;
+  /** pay every finished daily quest */
+  claimDailies(): Promise<void>;
 }
 
 const RANGE = 16; // hunt radius around the anchor
@@ -63,7 +65,7 @@ function makeArrow(): THREE.Mesh {
 type Goal =
   | { kind: "npc"; zone: string; npc: Npc }
   | { kind: "zone"; zone: string }
-  | { kind: "hunt"; zone: string; monster: string };
+  | { kind: "hunt"; zone: string; monster: string; daily?: number };
 
 export class AutoPlay {
   /* ---------- auto-battle ---------- */
@@ -80,6 +82,8 @@ export class AutoPlay {
    * in - until switched off, moved by hand, or there is nowhere to go. Plain travel (the quest card) stops at one.
    */
   progress = false;
+  /** the daily quest 자동 진행 is working on (-1: the main quest) */
+  daily = -1;
   private goal: Goal | null = null;
   private wpX = 0;
   private wpZ = 0;
@@ -151,6 +155,7 @@ export class AutoPlay {
 
   stop(): void {
     this.progress = false;
+    this.daily = -1;
     if (!this.on && !this.traveling) return;
     this.on = false;
     this.traveling = false;
@@ -185,6 +190,9 @@ export class AutoPlay {
   /** Z: 자동 진행 on/off. Returns a reason when it can't start. */
   toggleProgress(): string | null {
     if (this.progress || this.on || this.traveling) { this.stop(); return null; }
+    // the main quest is walled (경지 too low): go strengthen on the daily quests first
+    if (mainWall(this.ctx.profile()) && nextDaily(this.ctx.profile()) >= 0) return this.startDaily(nextDaily(this.ctx.profile()), true);
+    this.daily = -1;
     const why = this.startTravel();
     if (why) {
       // nowhere to walk to (e.g. "level up first"): out in a field, hunt right here instead
@@ -199,9 +207,40 @@ export class AutoPlay {
     return null;
   }
 
+  /**
+   * 자동 진행 on one daily quest: hunt where its targets are (a field that suits the player's 경지), and when it is
+   * done, collect it and go on. Returns a reason when it can't.
+   */
+  startDaily(i: number, walled = false): string | null {
+    const p = this.ctx.profile();
+    const d = dailyStatus(p, i);
+    if (d.claimed) return "오늘은 이미 마친 의뢰다.";
+    this.stop();
+    this.progress = true;
+    this.daily = i;
+    if (d.done) { void this.ctx.claimDailies().then(() => this.carryOn()); this.ctx.changed(); return null; }
+    const zone = huntZone(DAILY_QUESTS[i].goal.type === "kill" ? DAILY_QUESTS[i].goal.kind : "any", p.level, this.ctx.zone());
+    if (!zone) { this.stop(); return "먹귀신이 있는 곳을 모르겠다."; }
+    this.goal = { kind: "hunt", zone, monster: DAILY_QUESTS[i].goal.type === "kill" ? DAILY_QUESTS[i].goal.kind : "any", daily: i };
+    this.traveling = true;
+    this.fails = 0;
+    this.stuckT = 0;
+    this.hasWp = false;
+    if (walled) this.ctx.think("auto-wall", `경지 ${mainWall(p)}이 모자라다… 오늘의 의뢰로 먼저 강해지자.`);
+    this.ctx.changed();
+    return null;
+  }
+
   /** After a conversation or an arrival: on to the next goal while 자동 진행 is on. */
   private carryOn(): void {
     if (!this.progress) return;
+    const p = this.ctx.profile();
+    // walled main quest (or a daily chosen by hand that's now done): the next daily, while there is one
+    if (mainWall(p) || this.daily >= 0) {
+      const next = nextDaily(p, this.daily);
+      if (mainWall(p) && next >= 0) { this.startDaily(next, true); return; }
+      this.daily = -1;
+    }
     const why = this.startTravel();
     if (!why) return;
     // nothing to walk to (e.g. "level up first"): keep hunting where we are, if this is a field
@@ -324,6 +363,22 @@ export class AutoPlay {
       this.ctx.changed();
       this.carryOn();
     } else {
+      // a daily quest's hunt: until its count is met, then collect it and go on
+      if (g.daily !== undefined) {
+        const d = dailyStatus(this.ctx.profile(), g.daily);
+        if (d.done || d.claimed) {
+          this.on = false;
+          this.traveling = false;
+          this.goal = null;
+          this.ctx.changed();
+          this.busy = true;
+          void this.ctx.claimDailies().finally(() => { this.busy = false; this.carryOn(); });
+          return;
+        }
+        if (!this.on) { this.on = true; this.anchorX = 0; this.anchorZ = 0; this.ctx.changed(); }
+        this.hasWp = false;
+        return;
+      }
       // hunt: once inside, auto-battle around the middle of the field with quest targets first
       const s = mainStatus(this.ctx.profile());
       if (!s || !s.accepted || s.done) {
@@ -357,7 +412,9 @@ export class AutoPlay {
   private decideBattle(pl: Actor): void {
     const p = this.ctx.profile();
     // potions: the game drinks them (물약 자동 사용, any hunting play), not the driver
-    const questKind = this.settings.questFirst ? questKill(p) : null;
+    // a daily hunt goes after its own targets (먹그림자 for 먹그림자 퇴치); else the main quest's
+    const dk = this.goal?.kind === "hunt" && this.goal.daily !== undefined ? this.goal.monster : null;
+    const questKind = dk && dk !== "skill" ? dk : this.settings.questFirst ? questKill(p) : null;
     let best: MView | null = null, bestScore = 1e9;
     for (const v of this.ctx.monsters().values()) {
       if (!targetable(v) || v.def.skillOnly) continue;
@@ -500,4 +557,21 @@ function questKill(p: ProfileView): string | null {
   const q = MAIN_QUESTS[p.main];
   if (!q || !p.mainAccepted || q.goal.type !== "kill") return null;
   return q.goal.kind;
+}
+
+/**
+ * Where to hunt `kind` ("any" / "skill": anything): the field you are in if it suits your 경지, else the field
+ * whose range fits best (the highest one you have reached the floor of).
+ */
+function huntZone(kind: string, level: number, here: ZoneDef): string | null {
+  const has = (z: ZoneDef) => kind === "any" || kind === "skill" ? z.spawns.length > 0 : z.spawns.some((sp) => sp.kind === kind);
+  const fits = (z: ZoneDef) => !z.safe && has(z) && level >= z.levels[0] && level <= z.levels[1] + 2;
+  if (fits(here)) return here.id;
+  let best: ZoneDef | null = null;
+  for (const z of Object.values(ZONES)) {
+    if (z.safe || !has(z)) continue;
+    if (level >= z.levels[0] && (!best || z.levels[0] > best.levels[0])) best = z;
+  }
+  if (!best) for (const z of Object.values(ZONES)) if (!z.safe && has(z) && (!best || z.levels[0] < best.levels[0])) best = z;
+  return best?.id ?? null;
 }
