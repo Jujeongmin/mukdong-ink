@@ -1530,13 +1530,11 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   text-shadow: 0 0 3px rgba(10, 9, 8, 0.9);
 }
 #ui .btn.btn.btn.brush-label::after { content: none; }
-/* no swipe panel: paper letters over the field, a dry brush line under them */
-#ui .btn.btn.btn.brush-label { padding-bottom: 9px; }
-#ui .btn.btn.btn.brush-label::before { content: ""; position: absolute; left: 8%; right: 8%; bottom: 1px; height: 5px; z-index: 0; pointer-events: none; background: #f3ecdf; opacity: 0.85;
-  filter: drop-shadow(0 0 2px rgba(10, 9, 8, 0.9));
-  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+/* no panel, no underline: paper letters with an ink halo, like the name and gauges beside them */
+#ui .btn.btn.btn.brush-label { padding: 6px 12px 7px; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.75), 0 1px 2px rgba(10, 9, 8, 0.9); }
+#ui .btn.btn.btn.brush-label::before { content: none; }
+#ui .btn.btn.btn.brush-label kbd { text-shadow: inherit; }
 #ui .btn.btn.btn.brush-label:hover { background: none; color: #f6c9b8; }
-#ui .btn.btn.btn.brush-label:hover::before { background: #e07a5f; }
 /* the purse row: currencies on a short ink swipe, the sound / photo / settings buttons as round ink dabs */
 #ui .purse > span { position: relative; background: none; box-shadow: none; padding: 2px 12px 2px 6px; color: #f3ecdf; }
 #ui .purse > span::before { content: ""; position: absolute; inset: -2px -6px -2px -4px; z-index: -1; pointer-events: none; background: rgba(18, 16, 14, 0.7);
@@ -1651,3 +1649,10 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .sheet .ink-toggle > i::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border: 0; border-radius: 0; background: var(--ink); opacity: 0.35; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
 #ui .sheet .ink-toggle > i::after { border: 0; box-shadow: none; background: var(--ink-soft); border-radius: 50%; -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
 #ui .sheet .ink-toggle input:checked + i::after { background: var(--cinnabar); }
+/* the purse row with no panels at all: icon and number with an ink halo; the sound / photo / settings icons the same */
+#ui .purse > span::before { content: none; }
+#ui .purse > span { padding: 2px 6px; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.7); }
+#ui .purse > span .spr { filter: drop-shadow(0 0 2px rgba(10, 9, 8, 0.9)); }
+#ui .btn.btn.btn.snd::before { content: none; }
+#ui .btn.btn.btn.snd { filter: drop-shadow(0 0 2px rgba(10, 9, 8, 0.95)) drop-shadow(0 0 5px rgba(10, 9, 8, 0.6)); }
+#ui .btn.btn.btn.snd:hover { color: #f6c9b8; }
