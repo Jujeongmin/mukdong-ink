@@ -2102,3 +2102,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   #ui .sheet[data-kind="growth"] .odds-legend b { font-size: 13px; }
   #ui .sheet[data-kind="growth"] .enh2-protect { padding: 2px 0; }
 }
+/* tabs: the open one in ink with a short cinnabar brush flick under its middle (the long black bar read as a
+   web tab, not a mark on paper) */
+#ui .sheet .tabs [aria-selected="true"]::after { left: 18%; right: 18%; bottom: 2px; height: 5px; background: #a8261b; opacity: 0.85; }
+#ui .sheet .tabs button { padding-bottom: 8px; }
