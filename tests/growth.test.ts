@@ -56,7 +56,7 @@ describe("rollEnhance", () => {
 
   test("an enhanced brush hits harder", () => {
     expect(enhancedAtk(10, 0)).toBe(10);
-    expect(enhancedAtk(24, 15)).toBe(Math.round(24 * 2.2));
+    expect(enhancedAtk(24, 15)).toBeCloseTo(24 * 2.2);
   });
 });
 

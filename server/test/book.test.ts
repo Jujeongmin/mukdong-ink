@@ -22,7 +22,7 @@ describe("먹그림 도감", () => {
     const p = { ...starterProfile("붓잡이", 0), level: 10 };
     const book = { shade: BOOK_PAGE.shade.need[1], blob: BOOK_PAGE.blob.need[0] };
     expect(bookBonus(book)).toEqual({ atk: 0.02, hp: 0.01 });
-    expect(atkOf({ ...p, book })).toBe(Math.round(atkOf(p) * 1.02));
+    expect(atkOf({ ...p, book })).toBeCloseTo(atkOf(p) * 1.02);
     expect(maxHpOf({ ...p, book })).toBe(Math.round(maxHpOf(p) * 1.01));
   });
 
@@ -37,7 +37,7 @@ describe("먹그림 도감", () => {
     await inVillage(server, "test-a");
     const before = (await server.loadProfile()).atk;
     await editProfile("test-a", (q) => ({ ...q, book: { shade: BOOK_PAGE.shade.need[1], crow: BOOK_PAGE.crow.need[1] } }));
-    expect((await server.loadProfile()).atk).toBe(Math.round(before * 1.04));
+    expect((await server.loadProfile()).atk).toBeCloseTo(before * 1.04);
     expect((await profileOf("test-a")).book.shade).toBe(BOOK_PAGE.shade.need[1]);
   });
 });

@@ -133,7 +133,7 @@ export function maxHpOf(p: Pick<Profile, "level" | "equip"> & { book?: Readonly<
 
 /** Attack: level and brush, raised by the 먹그림 도감. */
 export function atkOf(p: Profile): number {
-  return Math.round(attackFor(p.level, weaponAtk(p)) * (1 + bookBonus(p.book).atk));
+  return attackFor(p.level, weaponAtk(p)) * (1 + bookBonus(p.book).atk); // unrounded (shown with atkText)
 }
 
 function readBook(raw: unknown): Record<string, number> {
@@ -165,11 +165,7 @@ export function powerOf(p: Profile): number {
     const lv = p.skills[i] ?? 1;
     skills += (60 * skillDmgMul(lv) * (harmony === i ? 1 + HARMONY_BONUS : 1)) / (skillCdMul(lv) * cut);
   }
-  // attack before rounding (enhancedAtk × attackFor × 도감, unrounded), so every enhancement step shows: a +3
-  // brush and a +2 one can round to the same 공격
-  const base = ITEM[p.equip.weapon]?.atk ?? ITEM[STARTER_EQUIP.weapon].atk ?? 10;
-  const exact = base * (1 + 0.08 * (p.enh[p.equip.weapon] ?? 0)) * (1 + (p.level - 1) * 0.09) * (1 + bookBonus(p.book).atk);
-  return Math.round(10 * (exact * 12 + maxHpOf(p) * 2 + skills));
+  return Math.round(10 * (atkOf(p) * 12 + maxHpOf(p) * 2 + skills));
 }
 
 /** The equipped brush's attack, with its enhancement. */

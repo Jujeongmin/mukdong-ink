@@ -228,11 +228,12 @@ describe("technique levels", () => {
     await placed("bamboo", { blob0: { x: 1, z: 0 }, blob1: { x: -1, z: 0, hp: 1 } });
     await ready(server);
     const r = await server.castSkill(cast(1));
-    const first = Math.round(attackFor(4, 10) * SKILLS[1].hits.dmg * skillDmgMul(10));
+    const raw = attackFor(4, 10) * SKILLS[1].hits.dmg * skillDmgMul(10);
+    const first = Math.round(raw);
     const ids = r.hits.map((h: any) => h.id);
     // The felled one is not hit again; the standing one takes the echo.
     expect(ids.filter((id: string) => id === "blob1").length).toBe(1);
-    expect(r.hits.filter((h: any) => h.id === "blob0").map((h: any) => h.dmg)).toEqual([first, Math.round(first * 0.6)]);
+    expect(r.hits.filter((h: any) => h.id === "blob0").map((h: any) => h.dmg)).toEqual([first, Math.round(raw * 0.6)]);
   });
 });
 

@@ -113,7 +113,7 @@ describe("chapter 2 armor", () => {
     await editProfile("test-a", (q) => ({ ...q, skills: [10, 5, 1, 1, 1] }));
     await ready(server);
     const basic = await server.attack({ kind: 1, x: 0, z: 0, yaw: 0 });
-    expect(basic.hits).toEqual([{ id: "kilnlord0", dmg: attackFor(24, 10), kill: false }]);
+    expect(basic.hits).toEqual([{ id: "kilnlord0", dmg: Math.round(attackFor(24, 10)), kill: false }]);
   });
 
   test("잿불귀 holds off a brush below +6, and its fall is told to the room", async (server) => {
@@ -126,7 +126,7 @@ describe("chapter 2 armor", () => {
     await editProfile("test-a", (q) => ({ ...q, enh: { w_brush: 6 } }));
     await ready(server);
     const strong = await server.attack({ kind: 1, x: 0, z: 0, yaw: 0 });
-    expect([strong.hits[0].resisted, strong.hits[0].dmg]).toEqual([undefined, attackFor(33, Math.round(10 * 1.48))]);
+    expect([strong.hits[0].resisted, strong.hits[0].dmg]).toEqual([undefined, Math.round(attackFor(33, 10 * 1.48))]);
     await placed("censer", { boss: { x: 1.5, z: 0, hp: 1 } });
     await ready(server);
     // The room hears it as a broadcast (caught here; nothing is stored).

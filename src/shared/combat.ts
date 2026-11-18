@@ -54,7 +54,7 @@ export function maxHpFor(level: number): number {
 }
 /** Attack power from level and weapon. */
 export function attackFor(level: number, weaponAtk: number): number {
-  return Math.round(weaponAtk * (1 + (level - 1) * 0.09));
+  return weaponAtk * (1 + (level - 1) * 0.09); // unrounded: every level and enhancement step counts
 }
 export const POTION_HEAL = 0.45; // fraction of max HP
 export const POTION_COST = 15; // 안료

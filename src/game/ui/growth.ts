@@ -11,7 +11,7 @@ import { ITEM, ITEMS } from "../../shared/items";
 import { cdMulOf } from "../../shared/profile";
 import {
   AWAKENINGS, AWAKEN_AT, DESTROY_FROM, ENHANCE_MAX, ENHANCE_TABLE, MATERIALS, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE,
-  enhancedAtk, pointsEarned, pointsSpent, skillCdMul, skillDmgMul, trainCost, type EnhanceOutcome,
+  atkText, enhancedAtk, pointsEarned, pointsSpent, skillCdMul, skillDmgMul, trainCost, type EnhanceOutcome,
 } from "../../shared/growth";
 import type { GameApi, ProfileView } from "../../net/api";
 import { attempt, esc, itemIcon, resBar, resChip, skillIconPos, tipAttr, toast } from "./dom";
@@ -132,7 +132,7 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
   if (!owned.some((i) => i.id === st.brush)) st.brush = p.equip.weapon;
   const tiles = owned.map((it) => {
     const plus = p.enh?.[it.id] ?? 0;
-    return `<button type="button" class="tile${it.id === st.brush ? " on" : ""}${p.equip.weapon === it.id ? " eq" : ""}" data-do="pickBrush" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} ${it.kind === "sword" ? "검" : "붓"} · 공격 ${enhancedAtk(it.atk ?? 10, plus)}${p.equip.weapon === it.id ? " · 착용 중" : ""}`)}>
+    return `<button type="button" class="tile${it.id === st.brush ? " on" : ""}${p.equip.weapon === it.id ? " eq" : ""}" data-do="pickBrush" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} ${it.kind === "sword" ? "검" : "붓"} · 공격 ${atkText(enhancedAtk(it.atk ?? 10, plus))}${p.equip.weapon === it.id ? " · 착용 중" : ""}`)}>
       ${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}<span class="nm">${esc(it.name)}</span></button>`;
   }).join("");
   const it = ITEM[st.brush];
@@ -165,7 +165,7 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
       ? `<div class="enh2-protect"><label class="ink-toggle${canProtect ? "" : " off"}"><span>${MATERIALS.protect.name}<small>${(p.protects ?? 0)}장 · 한 번에 한 장</small></span><input type="checkbox" data-do="toggleProtect" ${st.protect ? "checked" : ""} ${canProtect ? "" : "disabled"}><i aria-hidden="true"></i></label>
         <button class="btn btn-secondary btn-sm" type="button" data-do="buyProtect" ${p.jade >= PROTECT_PRICE && !busy ? "" : "disabled"}>사기 · 묵옥 ${PROTECT_PRICE}</button></div>`
       : "";
-    detail = `<p class="enh2-atk">공격 <b>${enhancedAtk(base, plus)}</b> <i class="arrow" aria-hidden="true"></i> <b class="up">${enhancedAtk(base, plus + 1)}</b></p>
+    detail = `<p class="enh2-atk">공격 <b>${atkText(enhancedAtk(base, plus))}</b> <i class="arrow" aria-hidden="true"></i> <b class="up">${atkText(enhancedAtk(base, plus + 1))}</b></p>
       ${bar}${legend}
       ${sw}
       <div class="gr2-cost"><span class="cap">드는 것</span>${chips}</div>

@@ -123,8 +123,15 @@ export const ENHANCE_TABLE: EnhanceStep[] = RATES.map((success, i) => ({
 export const DESTROY_FROM = ENHANCE_TABLE.find((s) => s.destroyOnFail > 0)!.to;
 
 /** Weapon attack with its enhancement: +8% of the base per level. */
+/** A brush's attack at +`plus`, unrounded (rounding hid some steps: a +2 and a +3 먹붓 were both 12). */
 export function enhancedAtk(baseAtk: number, plus: number): number {
-  return Math.round(baseAtk * (1 + 0.08 * plus));
+  return baseAtk * (1 + 0.08 * plus);
+}
+
+/** Attack as shown: one decimal, without a trailing ".0" (12, 12.4). */
+export function atkText(v: number): string {
+  const r = Math.round(v * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
 export type EnhanceOutcome = "success" | "fail" | "destroyed" | "protected";
