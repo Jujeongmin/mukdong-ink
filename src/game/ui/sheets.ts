@@ -132,6 +132,13 @@ export class Sheets {
   }
 
   /** Opens an NPC's own sheet (the conversation itself happens in story.ts). */
+  /** 상점 (the HUD button / B): the 오방 병기전 sheet from anywhere; a second press closes it. */
+  openShop(): void {
+    if (this.current === "altar") { this.close(); return; }
+    this.pull = null;
+    this.show("altar");
+  }
+
   openNpc(n: Pick<Npc, "role">, tab?: string): void {
     this.pull = null;
     if (n.role !== "elder" && n.role !== "dyer" && n.role !== "altar") return;
