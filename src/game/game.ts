@@ -964,7 +964,7 @@ export class Game {
     for (const a of this.zone.anchors) {
       if (a.kind !== "npc" || !a.id) continue;
       const m = npcMark(this.profile, a.id);
-      const mark = m === "offer" ? `<i class="qmark offer">!</i>` : m === "turnin" ? `<i class="qmark turnin">?</i>` : m === "wait" ? `<i class="qmark wait">…</i>` : "";
+      const mark = m === "offer" ? `<i class="qmark offer">!</i>` : m === "turnin" ? `<i class="qmark turnin">?</i>` : m === "sub" ? `<i class="qmark sub" title="서브 의뢰 완료">?</i>` : m === "wait" ? `<i class="qmark wait">…</i>` : "";
       this.hud.tag(a, `${mark}${esc(a.text)}`, "npc");
     }
   }

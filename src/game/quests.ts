@@ -97,7 +97,7 @@ export function readyByTalk(s: QuestStatus): boolean {
   return s.accepted && s.q.goal.type === "talk" && s.q.goal.npc === s.q.turnIn;
 }
 
-export type Mark = "offer" | "turnin" | "wait" | null;
+export type Mark = "offer" | "turnin" | "sub" | "wait" | null;
 
 /** The painted mark over an NPC's head. */
 export function npcMark(p: ProfileView, npc: string): Mark {
@@ -105,8 +105,11 @@ export function npcMark(p: ProfileView, npc: string): Mark {
   if (s) {
     if (!s.accepted && s.q.giver === npc) return "offer";
     if (s.accepted && (s.done || readyByTalk(s)) && s.q.turnIn === npc) return "turnin";
-    if (s.accepted && !s.done && s.q.turnIn === npc) return "wait";
   }
+  // a finished 서브 퀘스트 waits with its keeper
+  const sub = subStatus(p);
+  if (sub?.done && sub.q.giver === npc) return "sub";
+  if (s && s.accepted && !s.done && s.q.turnIn === npc) return "wait";
   if (npc === "elder" && DAILY_QUESTS.some((_, i) => { const d = dailyStatus(p, i); return d.done && !d.claimed; })) return "turnin";
   return null;
 }

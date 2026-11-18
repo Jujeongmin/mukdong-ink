@@ -987,7 +987,10 @@ export class ZoneScene {
     scene.add(rig.group);
     this.npcRigs.push({ id: n.id, rig, base: look.pose, phase: n.x, idle });
     // name plate and quest mark sit above this figure's own height
-    this.anchors.push({ x: n.x, y: rig.topY() + 0.45, z: n.z, text: n.name, kind: "npc", id: n.id });
+    // the name and quest mark sit over the head, wherever the pose put it (the elder leans out over his cane)
+    rig.group.updateMatrixWorld(true);
+    const head = rig.headMesh().getWorldPosition(new THREE.Vector3());
+    this.anchors.push({ x: head.x, y: rig.topY() + 0.45, z: head.z, text: n.name, kind: "npc", id: n.id });
     this.colliders.push({ x: n.x, z: n.z, r: 0.45 });
     if (n.id === "dalrae") {
       // her wheel and a drying shelf of jars beside her

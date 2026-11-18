@@ -202,23 +202,23 @@ export function toast(msg: string, err = false): void {
 }
 
 const RULE_TEXT: Record<RuleCode, string> = {
-  bad_args: "요청이 올바르지 않습니다.",
-  not_ready: "아직 준비 중입니다. 잠시 뒤 다시 해 보세요.",
-  no_profile: "기록을 불러오지 못했습니다.",
-  too_far: "너무 멉니다. 조금 더 가까이 가세요.",
-  on_cooldown: "아직 다시 쓸 수 없습니다.",
-  locked: "아직 쓸 수 없습니다. 경지를 더 올려야 합니다.",
-  dead: "먹에 잠긴 동안에는 할 수 없습니다.",
-  not_owned: "가지고 있지 않은 장비입니다.",
-  no_currency: "재화가 부족합니다.",
-  no_ads_left: "오늘 볼 수 있는 광고를 모두 봤습니다.",
-  room_full: "이 채널이 가득 찼습니다.",
-  wrong_room: "다른 지역의 일입니다.",
-  quest_not_done: "아직 의뢰를 마치지 못했습니다.",
-  already_claimed: "이미 보상을 받았습니다.",
-  name_taken: "이미 쓰는 이름입니다.",
+  bad_args: "지금은 그렇게 할 수 없다.",
+  not_ready: "잠깐, 아직 준비가 덜 됐다. 조금 뒤에 다시.",
+  no_profile: "기록을 불러오지 못했다. 다시 들어와 보자.",
+  too_far: "너무 멀다. 조금 더 다가가자.",
+  on_cooldown: "아직이다. 조금 기다리자.",
+  locked: "아직 쓸 수 없다. 경지를 더 올리자.",
+  dead: "먹에 잠긴 채로는 할 수 없다.",
+  not_owned: "가지고 있지 않은 장비다.",
+  no_currency: "재화가 모자라다.",
+  no_ads_left: "오늘 볼 수 있는 광고는 다 봤다.",
+  room_full: "이 채널은 가득 찼다.",
+  wrong_room: "여기서 할 일이 아니다.",
+  quest_not_done: "아직 의뢰를 다 하지 못했다.",
+  already_claimed: "이미 받은 보상이다.",
+  name_taken: "이미 누가 쓰는 이름이다.",
   bad_name: "쓸 수 없는 이름이다. 한글·영문·숫자 2~8자, 거친 말은 안 된다.",
-  rate_limited: "조금 천천히 해 주세요.",
+  rate_limited: "조금 천천히 하자.",
 };
 
 export function errorCode(e: unknown): string | null {
@@ -230,7 +230,7 @@ export function errorCode(e: unknown): string | null {
 export function errorText(e: unknown): string {
   const code = errorCode(e);
   if (code && code in RULE_TEXT) return RULE_TEXT[code as RuleCode];
-  return "연결이 고르지 않습니다. 잠시 뒤 다시 해 보세요.";
+  return "연결이 고르지 않다. 잠시 뒤에 다시 해 보자.";
 }
 
 /** Run an api call; show a readable toast on failure and return null. */
