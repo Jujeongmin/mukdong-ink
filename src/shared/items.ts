@@ -85,19 +85,28 @@ export function gearBonusText(id: string): string {
 export interface DyeDef {
   name: string;
   hex: number | null; // null = remove dye (back to ink)
+  /** the 검법 (SKILLS index) this color belongs to: scarf and sash both in it = 염색 조화 */
+  skill?: number;
 }
+/** One color per 검법 (decided 2026-11-18), plus 검정 to wash back to ink. */
 export const DYES: DyeDef[] = [
-  { name: "분홍", hex: 0xe58aa5 },
-  { name: "빨강", hex: 0xc0281c },
-  { name: "파랑", hex: 0x2a4f8a },
-  { name: "노랑", hex: 0xd9b13a },
-  { name: "연두", hex: 0x7fae3e },
-  { name: "보라", hex: 0x7a2f6a },
-  { name: "청록", hex: 0x5fa8a0 },
+  { name: "파랑", hex: 0x2a4f8a, skill: 0 },
+  { name: "빨강", hex: 0xc0281c, skill: 1 },
+  { name: "노랑", hex: 0xd9b13a, skill: 2 },
+  { name: "옥색", hex: 0x8fc7cf, skill: 3 },
+  { name: "보라", hex: 0x7a2f6a, skill: 4 },
   { name: "검정", hex: null },
 ];
 export const DYE_COST = 30; // 안료 per dye
-export const STARTER_DYE = { sash: 0x2a4f8a, scarf: 0xe58aa5 };
+export const STARTER_DYE = { sash: 0x2a4f8a, scarf: 0xc0281c };
+
+/** 염색 조화: scarf and sash dyed the same 검법 color make that 검법 hit this much harder. */
+export const HARMONY_BONUS = 0.1;
+/** The 검법 in harmony (SKILLS index), or -1. A color no longer on the list (an old dye) gives none. */
+export function harmonySkill(dye: { sash: number | null; scarf: number | null }): number {
+  if (dye.sash === null || dye.sash !== dye.scarf) return -1;
+  return DYES.find((d) => d.hex === dye.sash)?.skill ?? -1;
+}
 
 /* ---------- gacha (오방 병기전) ---------- */
 // No rate-up banners and no cosmetic-only draws (decided by the user, 2026-11-17): one pool, published odds,

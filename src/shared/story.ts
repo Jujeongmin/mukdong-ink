@@ -57,7 +57,7 @@ export const PROLOGUE: Line[] = [
   { who: "", text: "아주 오래전, 세상은 첫 붓 오방붓이 다섯 빛으로 그린 그림이었다.", art: "intro-1" },
   { who: "", text: "서른 해 전, 먹 한 방울 '번짐'이 그 붓을 다섯 조각 냈다.", art: "intro-2" },
   { who: "", text: "세상엔 먹과 종이만 남았다. 색은 검법을 펼치는 순간에만 돌아온다.", art: "intro-3" },
-  { who: "", text: "오늘, 연못에서 한 아이가 깨어났다. 목도리에만 분홍빛을 지닌 채.", art: "intro-4" },
+  { who: "", text: "오늘, 연못에서 한 아이가 깨어났다. 목도리에만 붉은빛을 지닌 채.", art: "intro-4" },
 ];
 
 export interface QuestStory {

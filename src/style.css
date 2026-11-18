@@ -1916,3 +1916,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .bk-gain { font-size: 11.5px; color: var(--ink-soft); opacity: 0.6; }
 #ui .bk-gain.on { opacity: 1; color: #a8261b; font-weight: 700; }
 @media (max-height: 480px) { #ui .bk-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px 8px; } }
+/* 염색: each color names its 검법 under it; the 조화 line under the rows */
+#ui .sw span small { display: block; font-size: 10px; opacity: 0.75; }
+#ui .dye-harmony { margin: 10px 0 0; font-size: 13px; color: var(--ink-soft); }
+#ui .dye-harmony.on { color: #a8261b; font-family: var(--f-brush); font-weight: 700; font-size: 14.5px; }

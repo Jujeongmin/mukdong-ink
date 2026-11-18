@@ -7,7 +7,7 @@ import {
   AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, type Npc, type QuestDef,
 } from "../../shared/world";
 import {
-  COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, gearBonusText, itemOdds, type Grant, type ItemDef,
+  COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, gearBonusText, harmonySkill, HARMONY_BONUS, itemOdds, type Grant, type ItemDef,
 } from "../../shared/items";
 import { enhancedAtk } from "../../shared/growth";
 import { MONSTERS, POTION_COST, SKILLS } from "../../shared/combat";
@@ -336,16 +336,19 @@ export class Sheets {
       }).join("");
       return `${this.head("염색 장인")}${resBar([["potion", p.potions], ["pigment", p.pigment]], "물약은 생명을 크게 채운다.\nQ 키나 박 그림을 눌러 마신다.")}<div class="shop-tiles">${pot}</div>`;
     }
+    const harmony = harmonySkill(p.dye);
     const sw = (key: "sash" | "scarf") =>
       DYES.map((d, k) => {
         const on = p.dye[key] === d.hex;
         const poor = d.hex != null && p.pigment < DYE_COST;
-        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}"${tipAttr(d.name, on ? "지금 색" : d.hex == null ? "검정으로 되돌린다" : `안료 ${DYE_COST}`)} aria-label="${esc(d.name)}${on ? " (지금 색)" : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(d.name)}</span></button>`;
+        const sk = d.skill != null ? SKILLS[d.skill].label : "";
+        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}"${tipAttr(sk ? `${d.name} · ${SKILLS[d.skill!].name}` : d.name, on ? "지금 색" : d.hex == null ? "먹빛으로 되돌린다" : `안료 ${DYE_COST}`)} aria-label="${esc(d.name)}${on ? " (지금 색)" : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(d.name)}${sk ? `<small>${esc(sk)}</small>` : ""}</span></button>`;
       }).join("");
     return `${this.head("염색 장인")}${resBar([["pigment", p.pigment]], "색을 들이면 먹빛 세상에서도 네 색이 남는다.\n같이 싸우는 이들 눈에도 보인다.")}
       <div class="dye-cost"><span class="cap">한 번 물들이는 데</span>${resChip("pigment", DYE_COST, { need: true, short: p.pigment < DYE_COST })}</div>
       <div class="dye-row"><span class="sec">허리띠</span><div class="swatches">${sw("sash")}</div></div>
-      <div class="dye-row"><span class="sec">목도리</span><div class="swatches">${sw("scarf")}</div></div>`;
+      <div class="dye-row"><span class="sec">목도리</span><div class="swatches">${sw("scarf")}</div></div>
+      ${harmony >= 0 ? `<p class="dye-harmony on">염색 조화 · ${esc(SKILLS[harmony].name)} 피해 +${Math.round(HARMONY_BONUS * 100)}%</p>` : `<p class="dye-harmony">허리띠와 목도리가 같은 색이면 그 색 검법 피해 +${Math.round(HARMONY_BONUS * 100)}%</p>`}`;
   }
 
   /* ---------- 병기 제단 ---------- */

@@ -11,7 +11,7 @@ import {
 } from "../../src/shared/chat";
 import { chatName } from "../../src/shared/filter";
 import { forwardX, forwardZ } from "../../src/shared/hit";
-import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
+import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, HARMONY_BONUS, ITEM, harmonySkill, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
 import {
   MAX_POTIONS, atkOf, cdMulOf, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, maxHpOf, nextSub, pointsLeft, profileView, settleSub, subDef, subDone,
   type Felled,
@@ -702,7 +702,8 @@ export class Server {
       const cx = at.x + forwardX(req.yaw) * def.offset;
       const cz = at.z + forwardZ(req.yaw) * def.offset;
       const areas: Swept[] = fanYaws(req.yaw, awake?.extraWaves ?? 0).map((yaw) => ({ shape, x: cx, z: cz, yaw }));
-      return { areas, kb: def.hits.kb, mul: def.hits.dmg * skillDmgMul(lv), echo: awake?.echo ?? 0, skill: req.skill };
+      const harmony = harmonySkill(p.dye) === req.skill ? 1 + HARMONY_BONUS : 1;
+      return { areas, kb: def.hits.kb, mul: def.hits.dmg * skillDmgMul(lv) * harmony, echo: awake?.echo ?? 0, skill: req.skill };
     };
     return swing(req.x, req.z, blow, (mine, p, now) => {
       if (p.level < def.unlock) throw new RuleViolation("locked");

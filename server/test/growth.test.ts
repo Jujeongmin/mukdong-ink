@@ -5,7 +5,7 @@ import { spawnZone } from "../src/hunt";
 import { NO_ROOM, editProfile, errorOf, goTo, inVillage, newPlayer, profileOf, rolling, walkTo } from "./helpers";
 
 const red = DYES.find((d) => d.name === "빨강")!.hex;
-const pink = DYES.find((d) => d.name === "분홍")!.hex;
+const pink = DYES.find((d) => d.name === "보라")!.hex;
 const cast = (skill: number) => ({ skill, x: 0, z: 0, yaw: 0 });
 
 /** Exactly these monsters alive in the caller's room, at these spots (all others felled for good). */

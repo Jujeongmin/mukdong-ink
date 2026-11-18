@@ -23,8 +23,8 @@ describe("the local GameApi (server code in the page)", () => {
     api.onProfile((p) => profiles.push(p.jade));
     const first = await api.loadProfile();
     expect(first.name).toMatch(/^나그네\d{4}$/);
-    const made = await api.createCharacter("먹선이", 0xe58aa5, null);
-    expect([made.created, made.name, made.dye.scarf, made.points]).toEqual([true, "먹선이", 0xe58aa5, 0]);
+    const made = await api.createCharacter("먹선이", 0x7a2f6a, null);
+    expect([made.created, made.name, made.dye.scarf, made.points]).toEqual([true, "먹선이", 0x7a2f6a, 0]);
 
     const players: Record<string, RoomPlayer>[] = [];
     const rooms: RoomView[] = [];
