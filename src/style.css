@@ -1466,17 +1466,6 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui.in-memory .jokja, #ui.in-memory .purse, #ui.in-memory .arc, #ui.in-memory .gourd, #ui.in-memory .chat-log, #ui.in-memory .chat-btn, #ui.in-memory .prompt, #ui.in-memory .zone-mini { display: none; }
 @media (max-width: 640px) { .memory-bar { top: auto; bottom: calc(16px + var(--safe-b)); } }
 
-/* ---------- 사진 모드: everything else steps aside; a hint line and the shutter tablet stay ---------- */
-#ui.photo-mode > :not(.photo-ui) { visibility: hidden; }
-.photo-ui { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
-.photo-ui[hidden] { display: none; }
-.photo-hint { position: absolute; top: calc(14px + var(--safe-t)); left: 50%; transform: translateX(-50%); margin: 0; padding: 4px 12px 5px; border-radius: 3px;
-  font-size: 12.5px; color: #f3ebdc; background: rgba(27, 23, 20, 0.55); white-space: nowrap; }
-.photo-bar { position: absolute; bottom: calc(20px + var(--safe-b)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; pointer-events: auto; }
-.photo-flash { position: absolute; inset: 0; background: #fffaf0; opacity: 0; pointer-events: none; }
-.photo-flash.go { animation: photo-flash 0.42s ease-out; }
-@keyframes photo-flash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .photo-flash.go { animation: none; } }
 
 /* the conversation box keeps one size: short lines don't shrink it and choices don't grow it (they sit in the
    lower-right corner of the same box). Narration (no box) is untouched. */
@@ -1535,7 +1524,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .btn.btn.btn.brush-label::before { content: none; }
 #ui .btn.btn.btn.brush-label kbd { text-shadow: inherit; }
 #ui .btn.btn.btn.brush-label:hover { background: none; color: #f6c9b8; }
-/* the purse row: currencies on a short ink swipe, the sound / photo / settings buttons as round ink dabs */
+/* the purse row: currencies on a short ink swipe, the settings button as a round ink dab */
 #ui .purse > span { position: relative; background: none; box-shadow: none; padding: 2px 12px 2px 6px; color: #f3ecdf; }
 #ui .purse > span::before { content: ""; position: absolute; inset: -2px -6px -2px -4px; z-index: -1; pointer-events: none; background: rgba(18, 16, 14, 0.7);
   -webkit-mask: var(--m-stroke) center / 100% 100% no-repeat; mask: var(--m-stroke) center / 100% 100% no-repeat; }
@@ -1649,7 +1638,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .sheet .ink-toggle > i::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border: 0; border-radius: 0; background: var(--ink); opacity: 0.35; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
 #ui .sheet .ink-toggle > i::after { border: 0; box-shadow: none; background: var(--ink-soft); border-radius: 50%; -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
 #ui .sheet .ink-toggle input:checked + i::after { background: var(--cinnabar); }
-/* the purse row with no panels at all: icon and number with an ink halo; the sound / photo / settings icons the same */
+/* the purse row with no panels at all: icon and number with an ink halo; the settings icon the same */
 #ui .purse > span::before { content: none; }
 #ui .purse > span { padding: 2px 6px; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.7); }
 #ui .purse > span .spr { filter: drop-shadow(0 0 2px rgba(10, 9, 8, 0.9)); }
@@ -1774,7 +1763,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   #ui .ring-btn.auto { left: calc(-1 * (var(--r1) + var(--s) / 2 + 10px + var(--sm))); top: calc(var(--sm) / -2 + 8px); }
   #ui .auto-set { left: calc(-1 * (var(--r1) + var(--s) / 2 + 10px + var(--sm)) - 34px); top: calc(var(--sm) / -2 + 18px); }
 }
-/* top right: currencies, 사진 and 설정 on one fixed row (sound lives in 설정 now; M still mutes), and the
+/* top right: currencies and 설정 on one fixed row (sound lives in 설정 now; M still mutes), and the
    수련 / 장비 / 화첩 icons on a row of their own under it, right-aligned, at every screen size */
 #ui [data-sound] { display: none; }
 #ui .purse { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: none; column-gap: 8px; row-gap: 2px; }

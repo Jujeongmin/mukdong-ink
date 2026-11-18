@@ -201,11 +201,6 @@ export function colorBloom(x: number, z: number, col: readonly number[], onPeak:
   bloomPeak = onPeak;
   peakDue = false;
 }
-/** One-shot: `fn` gets the game canvas right after the next frame is drawn (photo mode's shutter). */
-let afterFrame: ((canvas: HTMLCanvasElement) => void) | null = null;
-export function afterNextFrame(fn: (canvas: HTMLCanvasElement) => void): void {
-  afterFrame = fn;
-}
 /** 추억 속 풍경: the whole field held in its own color, tinted by `col` (null lets the ink back). */
 export function holdColor(col: readonly number[] | null): void {
   bloomT = -1;
@@ -787,11 +782,6 @@ export function renderFrame(dt: number): void {
   renderer.autoClear = false;
   renderer.render(overlay, camera);
   renderer.autoClear = true;
-  if (afterFrame) {
-    const fn = afterFrame;
-    afterFrame = null;
-    fn(renderer.domElement);
-  }
   if (peakDue && bloomPeak) {
     // read the drawing buffer now, before the browser presents (and clears) it
     const fn = bloomPeak;

@@ -11,7 +11,6 @@ import { Chat } from "./ui/chat";
 import { newNav, questNav } from "./questnav";
 import { RoutePreview } from "./render/route";
 import { ALBUM_PAGES, PAGE_FOR_BOSS, album, pageEarned, paintFrame, type AlbumPage } from "./album";
-import { PhotoMode, saveFrame } from "./photo";
 import { TargetRing } from "./render/target-ring";
 import { aimFor, pickTarget, targetable } from "./targeting";
 import type { MView as TargetView } from "./monsters";
@@ -23,7 +22,7 @@ import { audio, SKILL_SFX, type SfxName } from "./audio";
 import { Monsters } from "./monsters";
 import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
-import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, afterNextFrame, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
+import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
 import type { RGB } from "./util";
 import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
@@ -180,7 +179,6 @@ export class Game {
       channels: () => attempt(this.api.channelList(), ["not_ready"]),
       changeChannel: (ch) => void this.changeChannel(ch),
       exitMemory: () => void this.exitMemory(),
-      photo: () => this.togglePhoto(),
       interact: () => this.interact(),
       skill: (i) => this.pressSkill(i),
       respawn: () => void this.respawn(),
@@ -215,7 +213,6 @@ export class Game {
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
-      photo: () => this.togglePhoto(),
       help: () => this.hud.help(),
       escape: () => this.onEscape(),
       chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
@@ -280,7 +277,6 @@ export class Game {
   private onEscape(): void {
     if (this.hud.autoPopOpen()) { this.hud.closeSoundPop(); return; }
     if (this.sheets.isOpen()) { this.sheets.close(); return; }
-    if (this.photo?.on) { this.togglePhoto(); return; }
     if (this.memory) { void this.exitMemory(); return; }
     if (this.dialogue.isOpen() || this.transitioning || this.dead) return;
     this.openSettings();
@@ -677,7 +673,7 @@ export class Game {
 
   /* ---------- input actions ---------- */
   private pressAct(a: Act): void {
-    if (!this.player || this.dead || ((this.memory || this.photo?.on) && a === "atk")) return;
+    if (!this.player || this.dead || (this.memory && a === "atk")) return;
     this.player.input[a] = BUF;
   }
 
@@ -883,25 +879,6 @@ export class Game {
     this.auto.zoneChanged();
   }
 
-  /* ---------- 사진 모드 ---------- */
-  private photo: PhotoMode | null = null;
-
-  private togglePhoto(): void {
-    if (!this.player || this.transitioning) return;
-    if (this.photo?.on) { this.photo.close(); return; }
-    if (this.sheets.isOpen() || this.dialogue.isOpen()) return;
-    this.input.clear();
-    this.photo ??= new PhotoMode(el("#ui"), el<HTMLCanvasElement>("#stage"), {
-      shoot: () => {
-        afterNextFrame((canvas) => saveFrame(canvas));
-        this.photo?.flash();
-        audio.play("ui-open");
-      },
-      close: () => this.togglePhoto(),
-    });
-    this.photo.open();
-  }
-
   /* ---------- 추억 속 풍경: walk a recovered region alone, in its own color ---------- */
   // Built locally (no room, no monsters, no other players); your real self keeps standing where you were in a
   // safe zone, and nothing you do here reaches the server. Esc or 돌아가기 brings you back.
@@ -1023,7 +1000,7 @@ export class Game {
     if (inp.mx === 0 && inp.mz === 0) this.auto.steer(realDt);
     inp.atk = Math.max(0, inp.atk - realDt);
     // holding the button keeps the combo going (the actor still waits out the chain timing)
-    if (this.input.holdAtk && !this.dead && !this.sheets.isOpen() && !this.dialogue.isOpen() && !this.photo?.on) inp.atk = BUF;
+    if (this.input.holdAtk && !this.dead && !this.sheets.isOpen() && !this.dialogue.isOpen()) inp.atk = BUF;
     inp.dash = Math.max(0, inp.dash - realDt);
     inp.jump = Math.max(0, inp.jump - realDt);
     inp.skT -= realDt;
@@ -1236,16 +1213,8 @@ export class Game {
     const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
     // a low quarter view: the player stays lower-middle, the field ahead reads, and the upper part of the
     // frame opens onto the field's far edge, the painted backdrop and the moon
-    const ph = this.photo?.on ? this.photo.view : null;
-    if (ph) {
-      // 사진 모드: turned around the player, pulled in or out, lowered toward eye level
-      const back = 15 * k * ph.zoom, up = (2.6 + 5.8 * ph.tilt) * k * ph.zoom, s = Math.sin(ph.yaw), c = Math.cos(ph.yaw);
-      camera.position.set(this.camX + s * back, up, this.camZ + c * back);
-      camera.lookAt(this.camX - s * 4, 1.4 + 0.8 * ph.tilt, this.camZ - c * 4);
-    } else {
-      camera.position.set(this.camX + sx, 8.4 * k + sy, this.camZ + 15 * k);
-      camera.lookAt(this.camX + sx * 0.5, 2.2 + sy * 0.5, this.camZ - 4);
-    }
+    camera.position.set(this.camX + sx, 8.4 * k + sy, this.camZ + 15 * k);
+    camera.lookAt(this.camX + sx * 0.5, 2.2 + sy * 0.5, this.camZ - 4);
     camFocus.set(this.camX, 0, this.camZ);
     camera.updateMatrixWorld();
     camera.getWorldDirection(camFwd);
