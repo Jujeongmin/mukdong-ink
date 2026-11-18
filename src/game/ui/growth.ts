@@ -176,13 +176,14 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
   const help = `+${DESTROY_FROM}부터는 실패하면 붓이 부서질 수 있다.\n${MATERIALS.protect.name}을 쓰면 부서지지 않는다. 처음 받은 먹붓은 +0으로 돌아갈 뿐.`;
   return `${resBar([["stone", p.stones ?? 0], ["protect", p.protects ?? 0], ["pigment", p.pigment], ["jade", p.jade]], help)}
     <div class="enh2">
-      <div class="enh2-pick"><h4 class="sec">무기 고르기</h4><div class="tiles">${tiles}</div></div>
-      <section class="enh2-main">${stage}<h3 class="ttl enh2-name">${esc(it?.name ?? "")}</h3>${detail}</section>
-    </div>
-    <details class="rate-detail"${odds ? " open" : ""}><summary>강화 확률표</summary>
-      <p class="cap${odds ? " focus" : ""}">+${DESTROY_FROM}부터는 실패하면 붓이 부서질 수 있다. ${MATERIALS.protect.name}을 쓰면 부서지지 않고 단계만 그대로 남는다. 처음 받은 먹붓은 부서지지 않고 +0으로 돌아간다.</p>
-      <div class="rate-table"><table><thead><tr><th>목표</th><th>성공</th><th>실패 시 파괴</th><th>한 번에 파괴</th><th>먹돌</th><th>안료</th></tr></thead><tbody>${rows}</tbody></table></div>
-    </details>`;
+      <div class="enh2-pick"><h4 class="sec">무기 고르기</h4><div class="tiles">${tiles}</div>
+        <details class="rate-detail"${odds ? " open" : ""}><summary>강화 확률표</summary>
+          <p class="cap${odds ? " focus" : ""}">+${DESTROY_FROM}부터는 실패하면 붓이 부서질 수 있다. ${MATERIALS.protect.name}을 쓰면 부서지지 않고 단계만 그대로 남는다. 처음 받은 먹붓은 부서지지 않고 +0으로 돌아간다.</p>
+          <div class="rate-table"><table><thead><tr><th>목표</th><th>성공</th><th>실패 시 파괴</th><th>한 번에 파괴</th><th>먹돌</th><th>안료</th></tr></thead><tbody>${rows}</tbody></table></div>
+        </details>
+      </div>
+      <section class="enh2-main"><div class="enh2-head">${stage}<h3 class="ttl enh2-name">${esc(it?.name ?? "")}</h3></div>${detail}</section>
+    </div>`;
 }
 
 /* ---------- actions ---------- */
