@@ -1,7 +1,7 @@
 """Clean the matte of a painted icon sheet (RGBA): drop the faint coloured fringe the background removal left,
 pull the edge colour from the opaque paint next to it (no red/yellow halo), and soften the cut edge by ~1 px.
 
-    python tools/clean_matte.py public/assets/items.png public/assets/items_v2.png [--lo 40 --hi 232]
+    python tools/clean_matte.py <painted sheet>.png <cleaned sheet>.png [--lo 40 --hi 232]
 
 Writes a new file; the source is never touched (deploys cache by filename).
 """

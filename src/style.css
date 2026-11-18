@@ -3,7 +3,7 @@
    a hanging scroll (족자) for the quest on the right edge, a thumb arc of ensō rings (bottom-right), the
    zone name painted down the left side on arrival. Sheets unroll as scrolls. Ink, paper, and cinnabar
    only for seals; any other color belongs to skills and dyed gear.
-   ui.png cells are addressed by their painted region (see .spr-*); the URL is set from ui/dom.ts. */
+   Brush shapes (.spr-*, --m-*) are masks from assets/ui, set from ui/dom.ts. */
 :root {
   --paper: #ece3cf;
   --paper-deep: #e2d6bb;
@@ -45,8 +45,7 @@ kbd { font-family: var(--f-brush); font-weight: 700; }
 .ic-pigment, .ic-jade { width: 22px; height: 22px; background-size: 300% 300%; }
 .ic-pigment { background-position: 100% 50%; }
 .ic-jade { background-position: 0% 100%; }
-/* ui.png painted regions: brush stroke, ensō, loose ink frame, cinnabar seal. ui/dom.ts lifts the
-   sheet's paper into alpha once, so only the ink is drawn over the field. */
+/* brush shapes: stroke, ensō, loose ink frame, seal (drawn through the assets/ui masks further down) */
 .spr-stroke, .spr-enso, .spr-frame, .spr-seal { display: block; background-repeat: no-repeat; }
 .spr-stroke { background-size: 213% 602%; background-position: 3% 20.5%; }
 .spr-enso { background-size: 327% 238%; background-position: 85.9% 6.7%; }

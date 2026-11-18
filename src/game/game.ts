@@ -32,7 +32,7 @@ import { Input, KEYS, type Act } from "./ui/input";
 import { Sheets } from "./ui/sheets";
 import { Dialogue } from "./ui/dialogue";
 import { Story } from "./story";
-import { npcMark, subStatus } from "./quests";
+import { mainWall, npcMark, subStatus } from "./quests";
 import { NPC_INFO, SUB_STORY } from "../shared/story";
 import { Title, mockAdPresenter } from "./ui/title";
 import { CharacterCreator } from "./ui/create";
@@ -375,6 +375,7 @@ export class Game {
 
   /* ---------- start ---------- */
   async begin(profile: ProfileView): Promise<void> {
+    this.begunAt = performance.now();
     this.hints.bind(this.api.account);
     this.dialogue.bindAccount(this.api.account);
     this.dialogue.portraitFor = (who) => this.portraitOf(who);
@@ -1120,9 +1121,29 @@ export class Game {
 
 
   /** ~4 Hz: the quest card's distance line and state tag (no allocation on the hot path). */
+  /** when this session's play began (first-time feature thoughts wait a little) */
+  private begunAt = 0;
+
+  /**
+   * Once per account, at the moment they matter, a thought about the newer controls: the quest tracker drives
+   * 자동 진행, 서브 퀘스트 are the way past a walled 본편, a crowded field can be left for another channel.
+   * Non-urgent: the hint pacing (one per ~20 s, never mid-fight) still applies.
+   */
+  private featureHints(): void {
+    if (this.dead || this.transitioning || this.memory || this.dialogue.isOpen() || this.sheets.isOpen()) return;
+    const h = this.hints;
+    if (!h.has("f-sub") && mainWall(this.profile)) { h.think("f-sub", "본편은 아직 무리다… 서브 의뢰부터 해 볼까."); return; }
+    if (!h.has("f-quest") && !this.auto.progress && performance.now() - this.begunAt > 12000 && this.hints.has("ui:auto")) {
+      h.think("f-quest", "퀘스트를 누르면 알아서 찾아가겠지.", { key: KEYS.auto });
+      return;
+    }
+    if (!h.has("f-channel") && !this.zone.def.safe && this.remotes.size >= 6) h.think("f-channel", "사람이 많다… 이름 아래 채널을 눌러 옮겨 볼까.");
+  }
+
   private questTick(): void {
     const p = this.player;
     if (!p || !this.profile) return;
+    this.featureHints();
     questNav(this.profile, this.zone.def.id, p.x, p.z, this.monsters.views, this.nav);
     this.hud.setQuestNav(this.nav);
     this.hud.refreshHover();

@@ -58,16 +58,16 @@ export function installSprites(): void {
 export function itemIcon(it: ItemDef, size = ""): string {
   const w2 = weapons2Cell(it);
   if (w2 >= 0) {
-    // weapons2.png: 3×2, the swords
+    // weapons3.png: 3×2, the swords
     return `<i class="spr ic-item w2${size ? ` ${size}` : ""}" style="background-position:${(w2 % 3) * 50}% ${Math.floor(w2 / 3) * 100}%" aria-hidden="true"></i>`;
   }
   const col = it.icon % 4, row = Math.floor(it.icon / 4);
   return `<i class="spr ic-item${size ? ` ${size}` : ""}" style="background-position:${col * 33.333}% ${row * 33.333}%" aria-hidden="true"></i>`;
 }
 
-/** The swords' cells in weapons2.png, by id (used until / unless the item names its atlas). */
+/** The swords' cells in weapons3.png, by id (used until / unless the item names its atlas). */
 const WEAPONS2: Record<string, number> = { w_inkblade: 0, w_reedblade: 1, w_rainblade: 2, w_nightblade: 3, w_voidblade: 4 };
-/** Cell in weapons2.png, or -1 for an items_v2.png item. An `atlas: "weapons2"` field wins and uses `icon` as the cell. */
+/** Cell in weapons3.png, or -1 for an items_v3.png item. An `atlas: "weapons2"` field wins and uses `icon` as the cell. */
 function weapons2Cell(it: ItemDef): number {
   if (it.atlas === "weapons2") return it.icon;
   if (it.atlas) return -1;
@@ -87,7 +87,7 @@ export const RES: Record<ResKind, { name: string; tip: string }> = {
   exp: { name: "경험", tip: "쌓이면 경지가 오른다." },
 };
 
-/** The picture for a resource (`.ic-res` sizes it; pigment / jade come from the skills sheet, the rest from materials.png). */
+/** The picture for a resource (`.ic-res` sizes it; pigment / jade come from the skills sheet, the rest from materials2.png). */
 export function resIcon(k: ResKind, size = ""): string {
   const cls = k === "pigment" ? "ic-pigment" : k === "jade" ? "ic-jade" : k === "points" ? "ic-pts" : k === "exp" ? "ic-exp" : `ic-mat ic-mat-${k}`;
   return `<i class="spr ic-res ${cls}${size ? ` ${size}` : ""}" aria-hidden="true"></i>`;
