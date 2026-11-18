@@ -348,11 +348,12 @@ export class Game {
 
   /** Z: 자동 진행 - takes the main quest, goes where it leads, hands it in, and on to the next. */
   private autoProgress(): void {
+    // stopping always works (mid-conversation, mid-crossing); starting needs a free moment
+    if (this.auto.progress || this.auto.on || this.auto.traveling) { this.auto.stop(); toast("자동 진행 끔"); return; }
     if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
-    const wasOn = this.auto.progress || this.auto.on || this.auto.traveling;
     const why = this.auto.toggleProgress();
     if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
-    toast(wasOn ? "자동 진행 끔" : "자동 진행");
+    toast("자동 진행");
   }
 
   /* ---------- start ---------- */
