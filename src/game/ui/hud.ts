@@ -337,19 +337,23 @@ export class Hud {
       tag = `<span class="qtag done">${s.done ? "완료" : "진행 중"} · ${esc(npcName(s.q.turnIn))}${z && z !== this.zoneId ? ` (${esc(ZONES[z].name)})` : ""}</span>`;
     } else tag = `<span class="qtag">진행 중</span>`;
     const state = s.done ? "done" : !s.accepted ? "fresh" : "";
-    box.innerHTML = `<div class="qcard ${state}" title="${esc(s.q.text)}">
-      <header data-qfold><span class="qch">${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small></header>
+    // the whole card is the 자동 진행 button (no separate one); on phones a small mark folds it
+    box.innerHTML = `<div class="qcard ${state}${this.travelling ? " going" : ""}" data-go role="button" tabindex="0" aria-pressed="${this.travelling}" data-tip-title="${this.travelling ? "자동 진행 중 · 누르면 멈춘다" : "누르면 자동 진행 (Z)"}" data-tip="${esc(s.q.text)}
+의뢰를 받고, 사냥하고, 보고하러 저절로 간다.">
+      <header><button type="button" class="qfold" data-qfold aria-label="접기/펴기"></button><span class="qch">${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small></header>
       <div class="qbody">
         <p class="qobj" aria-label="${esc(progressText(s))}"><span>${esc(o.text)}</span>${o.count ? `<b>${o.count}</b>` : ""}</p>${bar}
         <small class="qdist" data-qdist>${esc(this.qdist)}</small>
-        <footer><span class="qstate" data-qstate>${QSTATE[this.qState]}</span>${tag}<button type="button" class="qgo btn btn-sm${this.travelling ? " on" : ""}" data-go aria-pressed="${this.travelling}" data-tip-title="자동 진행 (Z)" data-tip="의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 대화도 저절로 넘어간다. 다시 누르면 멈춘다.">${this.travelling ? "이동 중" : "자동 진행"}</button></footer>
+        <footer><span class="qstate" data-qstate>${QSTATE[this.qState]}</span>${tag}</footer>
       </div></div>${this.dailyCard(p)}`;
-    box.querySelector("[data-go]")?.addEventListener("click", () => this.h.travel());
-    box.querySelector("[data-qfold]")?.addEventListener("click", () => this.foldQuest());
+    const card = box.querySelector<HTMLElement>("[data-go]");
+    card?.addEventListener("click", () => this.h.travel());
+    card?.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); this.h.travel(); } });
+    box.querySelector("[data-qfold]")?.addEventListener("click", (e) => { e.stopPropagation(); this.foldQuest(); });
     box.dataset.state = this.qState;
   }
 
-  /** ~4 Hz: is the pointer resting on 자동 진행? (survives the card's re-renders) */
+  /** ~4 Hz: is the pointer resting on the quest card (자동 진행)? (survives the card's re-renders) */
   refreshHover(): void {
     this.goHover = !!this.root.querySelector("[data-go]:hover");
   }
