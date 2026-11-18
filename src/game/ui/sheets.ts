@@ -278,14 +278,14 @@ export class Sheets {
       const stat = b.stat === "atk" ? "공격" : "생명";
       const next = stage === 2 ? "완성" : `${fmt(n)} / ${fmt(b.need[stage])}`;
       const steps = [0, 1].map((k) => `<i class="bk-step${stage > k ? " on" : ""}" aria-hidden="true"></i>`).join("");
-      const tip = tipAttr(n > 0 ? def.name : "?", `${b.need[0]}마리를 베면 밑그림, ${b.need[1]}마리면 완성. 한 단계마다 ${stat} +${pct(BOOK_STEP)}.`);
+      const tip = tipAttr(n > 0 ? def.name : "?", `밑그림 ${b.need[0]} · 완성 ${b.need[1]}`);
       return `<li class="bk-page s${stage}${n > 0 ? "" : " unmet"}"${tip}>
         <div class="bk-pic">${pic ? `<img src="${pic}" alt="" loading="lazy">` : ""}</div>
         <b class="bk-name">${n > 0 ? esc(def.name) : "?"}</b>
         <span class="bk-count">${steps}<small>${next}</small></span>
-        <span class="bk-gain${stage > 0 ? " on" : ""}">${stat} +${pct(stage * BOOK_STEP)}</span></li>`;
+        <span class="bk-gain${stage > 0 ? " on" : ""}">${stat} +${pct(stage * BOOK_STEP)}<small> / ${pct(2 * BOOK_STEP)}</small></span></li>`;
     }).join("");
-    return `${this.head("화첩")}<p class="say">벤 것들을 한 장씩 그려 둔다. 밑그림이 생기고 그림이 완성될 때마다 조금씩 강해진다.</p>
+    return `${this.head("화첩")}<p class="say">벤 것들을 그려 둔다. 그릴수록 강해진다.</p>
       <p class="cap album-count">완성 ${done} / ${BOOK.length}장 · 공격 +${pct(total.atk)} · 생명 +${pct(total.hp)}</p><ol class="bk-grid">${pages}</ol>`;
   }
 

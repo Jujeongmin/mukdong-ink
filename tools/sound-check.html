@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>채묵 소리 점검</title>
+<!-- Dev-only listening page: open http://localhost:5190/tools/sound-check.html while `npm run dev:offline` runs.
+     Not part of the build (vite builds index.html only). Plays the files in public/assets/audio as they are. -->
+<style>
+  :root { --paper: #efe5d1; --ink: #2b2622; --soft: #6b625a; --line: rgba(43, 38, 34, 0.18); --red: #a8261b; }
+  * { box-sizing: border-box; }
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 "Gowun Batang", "Nanum Myeongjo", serif; padding: 24px 16px 60px; }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 30px 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  p.note { margin: 0 0 6px; color: var(--soft); font-size: 13.5px; }
+  .bar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 14px 0 0; font-size: 14px; }
+  .bar input { accent-color: var(--red); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: grid; grid-template-columns: 34px 1fr auto; gap: 4px 12px; align-items: center; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+  li.playing b { color: var(--red); }
+  button.play { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--ink); background: none; color: var(--ink); cursor: pointer; font-size: 13px; }
+  li.playing button.play { background: var(--ink); color: var(--paper); }
+  .what small { display: block; color: var(--soft); font-size: 12.5px; }
+  .what code { font-size: 11.5px; color: var(--soft); }
+  .side { display: flex; gap: 8px; align-items: center; color: var(--soft); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .side button { border: 0; background: none; color: var(--red); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 3px; padding: 2px; }
+  .prog { grid-column: 2 / 4; height: 3px; background: var(--line); position: relative; display: none; }
+  li.playing .prog { display: block; }
+  .prog i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ink); width: 0; }
+  .prog .loop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
+  .unused { opacity: 0.55; }
+  @media (max-width: 560px) { li { grid-template-columns: 34px 1fr; } .side { grid-column: 2; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>채묵 소리 점검</h1>
+  
+  <p class="note">붉은 선: 배경음 루프 지점. "이음새 듣기"는 그 5초 전부터.</p>
+  <div class="bar">
+    <label>음량 <input type="range" min="0" max="100" value="70" data-vol></label>
+    <label><input type="checkbox" data-trim checked> 게임 속 음량대로</label>
+    <button type="button" data-stop style="border:1.5px solid var(--ink);background:none;border-radius:3px;padding:3px 12px;cursor:pointer;font:inherit">정지</button>
+  </div>
+  <h2>배경음 (BGM)</h2><ul data-list="bgm"></ul>
+  <h2>환경음</h2><ul data-list="amb"></ul>
+  <h2>효과음 · 전투</h2><ul data-list="combat"></ul>
+  <h2>효과음 · 검법</h2><ul data-list="skill"></ul>
+  <h2>효과음 · 몬스터·보스</h2><ul data-list="mon"></ul>
+  <h2>효과음 · 성장·화면</h2><ul data-list="ui"></ul>
+</main>
+<script>
+const BASE = "../assets/audio/";
+// loop points from public/assets/audio/bgm/loops.json (kept in sync by hand for this page)
+const LOOPS = {
+  title: [42.957, 120.748], village: [49.18, 130.313], bamboo: [42.353, 136.423], pond: [50.62, 120.426],
+  peak: [42.284, 127.617], kiln: [43.63, 126.961], temple: [42.818, 116.744], censer: [39.149, 104.01],
+};
+// in-game mix trims (src/game/audio.ts TRIM)
+const TRIM = { "ui-click": 0.45, "dialogue-next": 0.4, "ui-open": 0.55, "swing-1": 0.7, "swing-2": 0.7, "swing-3-spin": 0.8, "hit-ink": 0.75, roll: 0.6 };
+const LISTS = {
+  bgm: [
+    ["title", "타이틀", "첫 화면"], ["village", "먹골 마을", "마을"], ["bamboo", "죽림", "1장 사냥터"], ["pond", "연못가", "1장 사냥터"],
+    ["peak", "먹봉우리", "1장 보스 지역"], ["kiln", "가마터", "2장 사냥터"], ["temple", "산사", "2장 사냥터"], ["censer", "향로 마당", "2장 보스 지역"],
+  ],
+  amb: [
+    ["amb-village", "마을"], ["amb-bamboo", "죽림"], ["amb-pond", "연못가"], ["amb-rain", "먹봉우리 (빗소리)"],
+    ["amb-kiln", "가마터"], ["amb-temple", "산사"], ["amb-censer", "향로 마당"],
+  ],
+  combat: [
+    ["swing-1", "베기 1타"], ["swing-2", "베기 2타"], ["swing-3-spin", "베기 3타 (돌려 베기)"], ["hit-ink", "몬스터를 맞힘"],
+    ["kill-burst", "몬스터를 쓰러뜨림"], ["roll", "구르기"], ["resisted", "안 먹힘 (껍데기·갑옷에 막힘)"], ["player-hurt", "내가 맞음"],
+    ["potion", "물약 마시기"], ["death", "먹에 잠김 (죽음)"], ["respawn", "다시 일어남"],
+  ],
+  skill: [
+    ["skill-wave", "물결베기"], ["skill-fire", "화염선풍"], ["skill-earth", "대지낙하"], ["skill-wind", "바람질주"], ["skill-ink", "먹감옥"],
+  ],
+  mon: [
+    ["monster-slam", "몬스터 내려찍기 (부푼 먹방울·대먹귀 등)"], ["monster-spit", "먹두꺼비 침 뱉기"], ["jar-hop", "옹기귀 깡충"], ["jar-break", "옹기귀 깨짐"],
+    ["crow-caw", "잿까마귀 울음"], ["ash-impact", "잿까마귀 재 떨어짐"], ["monk-staff", "그림자 승병 지팡이"], ["stone-slam", "석등지기 내려찍기"],
+    ["armor-clunk", "가마 지킴이 껍데기에 막힘"], ["glaze-crack", "가마 지킴이 껍데기 갈라짐"], ["lantern-ignite", "홍매 대사 (등불 켜짐)"],
+    ["boss-windup", "보스 기 모으기"], ["boss-slam-bronze", "잿불귀 청동 내려찍기"], ["boss-fade", "보스 쓰러짐"], ["voice-bleed", "알 수 없는 목소리 대사"],
+  ],
+  ui: [
+    ["levelup", "레벨 업"], ["quest-done", "의뢰 완료 · 도감 단계"], ["pickup", "전리품 얻음"], ["portal", "지역 이동"],
+    ["enhance-charge", "강화 시도 (모으는 소리)"], ["enhance-success", "강화 성공"], ["enhance-fail", "강화 실패"], ["enhance-destroy", "강화 파괴"],
+    ["ui-click", "버튼 누름"], ["ui-open", "창 열기"], ["dialogue-next", "대화 넘기기"],
+  ],
+};
+
+const audio = new Audio();
+audio.preload = "auto";
+let current = null; // { li, id, kind }
+const vol = document.querySelector("[data-vol]");
+const trim = document.querySelector("[data-trim]");
+const fmt = (s) => (isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}` : "-:--");
+
+function level(kind, id) {
+  const v = Number(vol.value) / 100;
+  return kind === "sfx" && trim.checked ? v * (TRIM[id] ?? 1) : v;
+}
+function stop() {
+  audio.pause();
+  if (current) current.li.classList.remove("playing"), (current.li.querySelector(".play").textContent = "▶");
+  current = null;
+}
+function play(li, id, kind, from = 0) {
+  const same = current && current.id === id;
+  if (same && !audio.paused && from === 0) { stop(); return; }
+  stop();
+  current = { li, id, kind };
+  const dir = kind === "bgm" ? "bgm/" : "sfx/";
+  if (!audio.src.endsWith(`${dir}${id}.mp3`)) audio.src = `${BASE}${dir}${id}.mp3`;
+  audio.loop = kind === "amb";
+  audio.volume = level(kind, id);
+  const go = () => { audio.currentTime = from; audio.play().catch(() => {}); };
+  if (audio.readyState >= 1) go(); else audio.addEventListener("loadedmetadata", go, { once: true });
+  li.classList.add("playing");
+  li.querySelector(".play").textContent = "■";
+}
+audio.addEventListener("timeupdate", () => {
+  if (!current) return;
+  const loop = current.kind === "bgm" ? LOOPS[current.id] : null;
+  // the game's loop: at `end`, back to `start`
+  if (loop && audio.currentTime >= loop[1] - 0.03) audio.currentTime = loop[0];
+  const bar = current.li.querySelector(".prog i");
+  if (bar && audio.duration) bar.style.width = `${(audio.currentTime / audio.duration) * 100}%`;
+  const t = current.li.querySelector("[data-t]");
+  if (t) t.textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`;
+});
+audio.addEventListener("ended", () => { if (current && current.kind !== "amb") stop(); });
+vol.addEventListener("input", () => { if (current) audio.volume = level(current.kind, current.id); });
+trim.addEventListener("change", () => { if (current) audio.volume = level(current.kind, current.id); });
+document.querySelector("[data-stop]").addEventListener("click", stop);
+
+for (const [key, rows] of Object.entries(LISTS)) {
+  const ul = document.querySelector(`[data-list="${key}"]`);
+  const kind = key === "bgm" ? "bgm" : key === "amb" ? "amb" : "sfx";
+  for (const [id, name, where] of rows) {
+    const li = document.createElement("li");
+    const loop = kind === "bgm" ? LOOPS[id] : null;
+    li.innerHTML = `<button type="button" class="play" aria-label="${name} 재생">▶</button>
+      <div class="what"><b>${name}</b>${where ? `<small>${where}</small>` : ""} <code>${id}.mp3</code></div>
+      <div class="side"><span data-t>${loop ? `도입 ${fmt(loop[0])} · 루프 ${fmt(loop[1] - loop[0])}` : ""}</span>${loop ? `<button type="button" data-seam>이음새 듣기</button>` : ""}</div>
+      <div class="prog"><i></i>${loop ? `<span class="loop" data-loopmark></span>` : ""}</div>`;
+    li.querySelector(".play").addEventListener("click", () => play(li, id, kind));
+    li.querySelector("[data-seam]")?.addEventListener("click", () => play(li, id, kind, Math.max(0, loop[1] - 5)));
+    if (loop) {
+      // the loop end marker, placed once the length is known
+      const probe = new Audio();
+      probe.preload = "metadata";
+      probe.src = `${BASE}bgm/${id}.mp3`;
+      probe.addEventListener("loadedmetadata", () => {
+        li.querySelector("[data-loopmark]").style.left = `${(loop[1] / probe.duration) * 100}%`;
+        if (!current || current.id !== id) li.querySelector("[data-t]").textContent = `${fmt(probe.duration)} · 도입 ${fmt(loop[0])} · 루프 ${fmt(loop[1] - loop[0])}`;
+        probe.src = "";
+      }, { once: true });
+    }
+    ul.appendChild(li);
+  }
+}
+</script>
+</body>
+</html>
