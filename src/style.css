@@ -2029,3 +2029,23 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* the quest card is placed from measured screen positions (--purse-b, --arc-top), which zoom would rescale:
    it shrinks in place from its top-right corner instead */
 #ui .jokja { transform: scale(var(--ui, 1)); transform-origin: top right; }
+/* 화첩 되찾은 색, as an album of paintings: each page a picture mounted in a thin ink frame on the paper.
+   A color not yet recovered shows its place as a faint ink sketch under fog (the zone's own art, grey and
+   pale); a chapter not yet written is a blank mount with a dry ensō. Titles in the brush face, the chapter
+   as a small cinnabar seal. */
+#ui .sheet .album-grid { gap: 22px 18px; }
+#ui .sheet .album-pic, #ui .sheet .album-pic.empty { position: relative; padding: 0; border: 0; border-radius: 0; overflow: hidden;
+  background: #e7dcc4; box-shadow: 0 0 0 1px rgba(43, 38, 34, 0.55), 0 0 0 5px #efe5d1, 0 0 0 6px rgba(43, 38, 34, 0.28), 0 6px 14px rgba(43, 38, 34, 0.22); }
+#ui .sheet .album-page.locked .album-pic.empty, #ui .sheet .album-pic.empty { background: #e7dcc4; }
+#ui .sheet .album-pic.empty::before { content: ""; position: absolute; inset: 0; }
+#ui .sheet .album-pic.empty.has-art::before { background: var(--art) center / cover no-repeat; filter: grayscale(1) contrast(0.8) brightness(1.15); opacity: 0.32; }
+#ui .sheet .album-pic.empty:not(.has-art)::before { inset: 18% 34%; background: rgba(43, 38, 34, 0.16); -webkit-mask: var(--m-enso) center / contain no-repeat; mask: var(--m-enso) center / contain no-repeat; }
+#ui .sheet .album-pic.empty::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 55%, rgba(239, 229, 209, 0) 30%, rgba(239, 229, 209, 0.55) 100%); }
+#ui .sheet .album-pic.empty span { position: relative; z-index: 1; font-family: var(--f-brush); font-size: 15px; font-weight: 700; color: #3a332d; letter-spacing: 0.04em; text-shadow: 0 0 6px #efe5d1, 0 0 12px #efe5d1; }
+#ui .sheet .album-page.locked { opacity: 1; }
+#ui .sheet .album-cap { margin-top: 8px; }
+#ui .sheet .album-cap .sec { display: flex; align-items: center; gap: 8px; font-family: var(--f-brush); font-size: 17px; font-weight: 700; color: var(--ink); }
+#ui .sheet .album-cap .cap { font-size: 12.5px; color: #6b625a; padding-left: 2px; }
+#ui .sheet .al-seal { font-style: normal; flex: none; font-family: var(--f-brush); font-size: 11.5px; font-weight: 700; line-height: 1; padding: 4px 5px 3px; color: #f3ecdf; background: #a8261b; border-radius: 2px 4px 2px 3px; transform: rotate(-4deg); }
+#ui .sheet .album-page.locked .al-seal { background: #6b625a; }
+#ui .sheet .album-count { font-family: var(--f-brush); font-size: 14px; font-weight: 700; color: #4a433c; }

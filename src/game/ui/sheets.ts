@@ -311,10 +311,10 @@ export class Sheets {
       const earned = !!pic || pageEarned(pg, p.main);
       const body = pic
         ? `<button type="button" class="album-pic" data-page="${pg.id}" aria-label="${esc(pg.title)} 크게 보기"><img src="${pic.url}" alt="" loading="lazy"></button>`
-        : `<div class="album-pic empty"><span>${earned ? "그림이 비어 있다.<br>다시 베면 이 날이 남는다." : pg.boss ? "아직 되찾지 못한 색" : "아직 이어지지 않은 이야기"}</span></div>`;
+        : `<div class="album-pic empty${pg.zone ? " has-art" : ""}"${pg.zone ? ` style="--art:url('./assets/art/loading-${pg.zone}.webp')"` : ""}><span>${earned ? "그림이 비어 있다.<br>다시 베면 이 날이 남는다." : pg.boss ? "아직 되찾지 못한 색" : "아직 이어지지 않은 이야기"}</span></div>`;
       const sub = pic ? `${pg.place} · ${date(pic.at)}` : pg.place;
       return `<li class="album-page${pic ? " has" : earned ? " earned" : " locked"}" style="--hue:${pg.hue}">${body}
-        <div class="album-cap"><div><b class="sec">${esc(pg.chapter)} · ${esc(earned || pic ? pg.title : pg.boss ? "?" : pg.title)}</b><span class="cap">${esc(sub)}</span></div>${earned && pg.zone ? this.walkBtn(pg.id, false) : ""}</div></li>`;
+        <div class="album-cap"><div><b class="sec"><i class="al-seal">${esc(pg.chapter)}</i>${esc(earned || pic ? pg.title : pg.boss ? "아직 모르는 색" : pg.title)}</b><span class="cap">${esc(sub)}</span></div>${earned && pg.zone ? this.walkBtn(pg.id, false) : ""}</div></li>`;
     }).join("");
     return `${this.head("화첩")}<p class="say">보스를 벤 순간 잠깐 돌아온 색을 그림으로 남긴다. 들어가 보면 그날의 색 속을 혼자 걸어 볼 수 있다.</p>
       <p class="cap album-count">${got} / ${ALBUM_PAGES.length}장</p><ol class="album-grid">${pages}</ol>`;
