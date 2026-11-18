@@ -65,7 +65,7 @@ function grantText(g?: Grant): string {
   if (!g) return "";
   return [g.stones ? `먹돌 ${g.stones}` : "", g.shards ? `색 조각 ${g.shards}` : ""].filter(Boolean).join(" · ");
 }
-/** The picture for a gacha material bundle (materials.png cell: 0 먹돌, 1 색 조각, 2 파괴방지권, 3 물약). */
+/** The picture for a gacha material bundle (materials2.png cell: 0 먹돌, 1 색 조각, 2 파괴방지권, 3 물약). */
 const MAT_KIND: ResKind[] = ["stone", "shard", "protect", "potion"];
 function bundleIcon(id: string, size: string): string {
   const g = GACHA_EXTRA_BY_ID[id];

@@ -88,7 +88,7 @@ export class Chat {
     const p = document.createElement("p");
     p.dataset.id = m.id;
     p.className = m.sys ? "sys" : "";
-    p.innerHTML = m.sys ? esc(m.text) : `<b>${esc(m.name || "먹동이")}</b> ${esc(m.text)}`;
+    p.innerHTML = m.sys ? esc(m.text) : `<b>${esc(m.name || "나그네")}</b> ${esc(m.text)}`;
     this.log.appendChild(p);
     while (this.log.childElementCount > KEEP) this.log.firstElementChild?.remove();
     this.wake();

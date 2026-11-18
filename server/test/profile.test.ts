@@ -11,9 +11,9 @@ describe("profile", () => {
     expect(typeof v.now).toBe("number");
   });
 
-  test("is made on the first load with a 먹동이 name, the starter kit and three potions", async (server) => {
+  test("is made on the first load with a 나그네 name, the starter kit and three potions", async (server) => {
     const p = await newPlayer(server, "test-a");
-    expect(p.name).toMatch(/^먹동이\d{4}$/);
+    expect(p.name).toMatch(/^나그네\d{4}$/);
     expect(p.owned).toEqual(STARTER_OWNED);
     expect(p.equip).toEqual(STARTER_EQUIP);
     expect(p.dye).toEqual(STARTER_DYE);

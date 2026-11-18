@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { clamp, type RGB, type Spot } from "../util";
 import { G, dyeCloth } from "./materials";
-import { addLight, camFwd, feel, onQuality, overlay, scene, screenSplash } from "./gfx";
+import { addLight, camFwd, colorStain, feel, onQuality, overlay, scene, screenSplash } from "./gfx";
 import { Rig } from "./rig";
 
 export const INK_TRAIL: RGB = [0.08, 0.075, 0.07];
@@ -472,12 +472,16 @@ const PAPER: RGB = [0.94, 0.91, 0.84];
 const SHELL: RGB = [0.6, 0.57, 0.52];
 const SHELL_EDGE: RGB = [0.35, 0.33, 0.3];
 const INK_RING: RGB = [0.06, 0.055, 0.06];
-/** A blow lands at (x, y, z) travelling (dx, dz): splatter and droplets, `power` ~0.6 (light) .. 2 (heavy). */
-export function inkHit(x: number, y: number, z: number, dx: number, dz: number, power: number): void {
+/**
+ * A blow lands at (x, y, z) travelling (dx, dz): splatter and droplets, `power` ~0.6 (light) .. 2 (heavy).
+ * `tint` is the blow's color (a skill's, or the scarf's for a brush strike): it seeps into the ground there.
+ */
+export function inkHit(x: number, y: number, z: number, dx: number, dz: number, power: number, tint: RGB | null = null): void {
   inkBurst(x, y, z, Math.round(6 + power * 8), dx * 0.8, dz * 0.8, 0.7 + power * 0.35);
   for (let k = 0; k < 1 + power; k++) addDecal(x + dx * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, z + dz * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, 0.15 + Math.random() * 0.12 * power, 2);
   ring(x, z, 0.55 + power * 0.35, INK_RING, 0.28, 0, INK_RING);
-  screenSplash(x, y, z, 0.025 + power * 0.012);
+  screenSplash(x, y, z, 0.03 + power * 0.014);
+  if (tint) colorStain(x, z, 1.4 + power * 0.7, tint);
 }
 /** The third hit: a full circle of ink swept round the body and a bloom of ink where it closes. */
 export function inkSweep(x: number, z: number, r: number): void {
@@ -545,10 +549,16 @@ function updateFlow(dt: number): void {
   }
 }
 
-/** Hit-stop and shake for a blow (light 0..1 heavy) or a kill. */
+/**
+ * Hit-stop and shake for a blow (light 0..1 heavy) or a kill. Every blow holds the world still for a few frames
+ * (3 for a light one, ~6 for the third strike, ~7 for a kill) while the ink and color bleed on the paper in real
+ * time, then lets it creep on for a moment: the quiet painting cuts hard on the blow. The server does not stop,
+ * so this stays short.
+ */
 export function hitFeel(weight: number, kill: boolean): void {
-  feel.hitstop = Math.max(feel.hitstop, kill ? 0.07 : 0.045 + weight * 0.02);
-  feel.shake = Math.max(feel.shake, kill ? 0.22 : 0.1 + weight * 0.08);
+  feel.freeze = Math.max(feel.freeze, kill ? 0.12 : 0.05 + weight * 0.05);
+  feel.hitstop = Math.max(feel.hitstop, 0.04);
+  feel.shake = Math.max(feel.shake, kill ? 0.22 : 0.1 + weight * 0.1);
 }
 
 /** Ink droplet that falls with gravity (blot suction, shot trails). */

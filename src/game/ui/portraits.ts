@@ -1,7 +1,7 @@
 // Dialogue portraits rendered in-engine: a waist-up cutout (transparent background) of the speaker's actual rig
 // (the NPC standing in this zone, or the player's own figure with their dyes), drawn once per speaker into a
-// 320×384 render target with the main renderer, read back to a canvas and kept as two PNG data URLs (neutral and a
-// slight head tilt for "speaking"). The render target, temporary scene, camera and lights are created per
+// 320×384 render target with the main renderer, read back to a canvas and kept as one PNG data URL (speaking is a
+// gentle CSS breath on the same picture: a second, tilted frame made the head twitch). The render target, temporary scene, camera and lights are created per
 // capture and disposed right after (memory checklist). About ten small images are cached.
 
 import * as THREE from "three";
@@ -9,11 +9,46 @@ import { renderOffscreen } from "../render/gfx";
 import type { Rig } from "../render/rig";
 
 const W = 320, H = 384;
+const ray = new THREE.Raycaster();
+const _c = new THREE.Vector3(), _p = new THREE.Vector3(), _n = new THREE.Vector2();
+const _box = new THREE.Box3(), _sz = new THREE.Vector3();
 const MAX_CACHE = 12;
 
 export interface PortraitPair {
   neutral: string;
+  /** the same picture as `neutral` (kept for callers that swap frames) */
   speak: string;
+}
+
+/**
+ * A held weapon or staff that crosses the face (바람이's bamboo staff, a brush held upright) is left out of the
+ * portrait: rays from the camera through a few points on the head; whatever held thing they hit first is hidden.
+ * Props off to the side (the elder's cane, the smith's raised hammer) stay.
+ */
+function hideFaceCovers(rig: Rig, cam: THREE.Camera): THREE.Object3D[] {
+  const held = rig.held();
+  const head = rig.headMesh();
+  _box.setFromObject(head);
+  _box.getCenter(_c);
+  _box.getSize(_sz);
+  const r = Math.max(_sz.x, _sz.y) * 0.32;
+  const out: THREE.Object3D[] = [];
+  for (let i = 0; i < 9; i++) {
+    const ox = ((i % 3) - 1) * r, oy = (Math.floor(i / 3) - 1) * r;
+    _p.set(_c.x + ox, _c.y + oy, _c.z).project(cam);
+    _n.set(_p.x, _p.y);
+    ray.setFromCamera(_n, cam);
+    const hits = ray.intersectObjects([head, ...held], true);
+    if (!hits.length) continue;
+    // the first thing in front: if it belongs to a held object, that object covers the face
+    for (const o of held) {
+      if (out.includes(o)) continue;
+      let h: THREE.Object3D | null = hits[0].object;
+      while (h && h !== o) h = h.parent;
+      if (h) { o.visible = false; out.push(o); }
+    }
+  }
+  return out;
 }
 
 export class Portraits {
@@ -48,8 +83,8 @@ export class Portraits {
     const cam = new THREE.PerspectiveCamera(24, W / H, 0.1, 30);
     const rt = new THREE.WebGLRenderTarget(W, H);
     rt.texture.colorSpace = THREE.SRGBColorSpace;
-    const pose1 = rig.pose[1];
     let pair: PortraitPair | null = null;
+    let hidden: THREE.Object3D[] = [];
     try {
       rig.apply();
       g.updateMatrixWorld(true);
@@ -63,18 +98,13 @@ export class Portraits {
       cam.position.set(cx + dist * 0.12, ty + span * 0.04, cz + dist);
       cam.lookAt(cx, ty, cz);
       cam.updateMatrixWorld(true);
+      hidden = hideFaceCovers(rig, cam);
       if (renderOffscreen(scene, cam, rt, this.buf)) {
         const neutral = this.toUrl();
-        rig.pose[1] = pose1 + 0.14; // the head tips as they speak
-        rig.apply();
-        g.updateMatrixWorld(true);
-        renderOffscreen(scene, cam, rt, this.buf);
-        const speak = this.toUrl();
-        pair = { neutral, speak };
+        pair = { neutral, speak: neutral };
       }
     } finally {
-      rig.pose[1] = pose1;
-      rig.apply();
+      for (const o of hidden) o.visible = true;
       scene.remove(g);
       g.position.copy(pos);
       g.rotation.y = rotY;

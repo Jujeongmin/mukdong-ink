@@ -3,7 +3,7 @@
 ## Pitch
 An ink-wash (수묵화) multiplayer RPG on Verse8. The world is drawn in ink on rice paper; the only color comes from the
 five-color (오방색) brush techniques players use and from dyed gear, so every other player's skill is visible as a
-flash of color across the monochrome field. The hero, 먹동이, fights with a large calligraphy brush.
+flash of color across the monochrome field. The hero (an ink stick figure, called 먹동이 in code) fights with a large calligraphy brush.
 
 ## Decided (by the user)
 - RPG, 3D quarter-view camera, multiplayer, Verse8 first (paid store later if it does well).
@@ -14,6 +14,7 @@ flash of color across the monochrome field. The hero, 먹동이, fights with a l
   색 조각 +1). Starter gear is never drawn. Duplicate gear becomes materials (weapons → 먹돌 4/8/16/30, hats and sashes
   → 색 조각 1/1/2/4 by rarity). Pity always gives 전설 gear. Dyes with free 안료,
   rewarded ads only. No interstitials ever. Color restoration / progress is never sold.
+- The hero has no fixed name: NPCs call the player by their nickname (`{이름}` in story lines); default name 나그네.
 - No hanja anywhere. Readable fonts (Gowun Batang headings, Gowun Dodum body).
 
 ## Content (v1)

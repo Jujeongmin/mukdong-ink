@@ -77,14 +77,14 @@ describe("chat", () => {
     expect(maskChat("안녕하세요")).toBe("안녕하세요");
   });
 
-  test("names may not pose as staff or hold swearing; chat shows such an old name as 먹동이", async (server) => {
+  test("names may not pose as staff or hold swearing; chat shows such an old name as 나그네", async (server) => {
     for (const bad of ["운영자", "GM먹동", "admin7", "씨발이", "시1발"]) expect(isBannedName(bad)).toBe(true);
     for (const ok of ["Pigment", "먹선이", "Admiral", "검객"]) expect(isBannedName(ok)).toBe(false);
     await inVillage(server, "test-a");
     expect(await errorOf(server.setName("운영자"))).toContain("bad_name");
     expect(await errorOf(server.setName("GM먹동"))).toContain("bad_name");
     await editProfile("test-a", (q) => ({ ...q, name: "관리자" }));
-    expect((await server.chatSay("안녕")).name).toBe("먹동이");
+    expect((await server.chatSay("안녕")).name).toBe("나그네");
   });
 
   test("a line is kept nowhere: no chat in room state, and an old build's leftover is cleared", async (server) => {

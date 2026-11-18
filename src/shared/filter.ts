@@ -109,7 +109,7 @@ export function isBannedName(name: string): boolean {
   return NAME_TAGS.some((tag) => new RegExp(`(^|[^a-z])${tag}([^a-z]|$)`).test(raw));
 }
 
-/** What chat shows for a name (a name from before these rules that poses as staff shows as 먹동이). */
+/** What chat shows for a name (a name from before these rules that poses as staff shows as 나그네). */
 export function chatName(name: string): string {
-  return isBannedName(name) ? "먹동이" : name;
+  return isBannedName(name) ? "나그네" : name;
 }

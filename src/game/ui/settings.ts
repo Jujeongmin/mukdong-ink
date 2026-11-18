@@ -108,7 +108,7 @@ const KEY_ROWS: [string, string][] = [
   ["Space · Shift · 우클릭", "구르기 (구르는 동안은 맞지 않는다)"],
   ["좌클릭 · J", "베기 (가까운 적에게), 누르고 있으면 이어 베기"],
   ["1 · 2 · 3 · 4 · 5", "오방 검법 (물결·화염·대지·바람·먹), 가까운 적에게. 고리를 눌러도 된다. 자동 사냥 중엔 저절로"],
-  [KEYS.auto, "자동 사냥"],
+  [KEYS.auto, "자동 진행"],
   [KEYS.potion, "물약"],
   [KEYS.talk, "말 걸기"],
   [KEYS.gear, "장비"],
@@ -153,7 +153,7 @@ export function settingsHtml(tab: string, ctx: SettingsCtx): string {
   }
   // 정보
   return `<dl class="info-list">
-      <dt>이름</dt><dd>${esc(ctx.name() || "먹동이")}</dd>
+      <dt>이름</dt><dd>${esc(ctx.name() || "나그네")}</dd>
       <dt>판</dt><dd>${esc(version)}</dd>
     </dl>
     <h3>만든 것들</h3>

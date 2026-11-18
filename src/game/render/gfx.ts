@@ -34,7 +34,8 @@ export const camFocus = new THREE.Vector3();
 export const noNormalPass = new Set<THREE.Object3D>();
 
 /** Screen feel shared by gameplay and effects. */
-export const feel = { shake: 0, hitstop: 0, time: 0 };
+/** `freeze` holds the world almost still (a heavy blow lands), then `hitstop` lets it creep on slowly. */
+export const feel = { shake: 0, hitstop: 0, freeze: 0, time: 0 };
 
 /* ---------- zone mood (sky, haze, palette, lights); colors are display-space rgb 0..1 ---------- */
 export interface Mood {
@@ -200,6 +201,11 @@ export function colorBloom(x: number, z: number, col: readonly number[], onPeak:
   bloomPeak = onPeak;
   peakDue = false;
 }
+/** One-shot: `fn` gets the game canvas right after the next frame is drawn (photo mode's shutter). */
+let afterFrame: ((canvas: HTMLCanvasElement) => void) | null = null;
+export function afterNextFrame(fn: (canvas: HTMLCanvasElement) => void): void {
+  afterFrame = fn;
+}
 /** 추억 속 풍경: the whole field held in its own color, tinted by `col` (null lets the ink back). */
 export function holdColor(col: readonly number[] | null): void {
   bloomT = -1;
@@ -249,7 +255,9 @@ bool behindScene() {
   return gdLin(gl_FragCoord.z) > gdLin(s) + 0.3;
 }`;
 
-/* ---------- screen ink splashes ---------- */
+/* ---------- screen ink splashes: ink dropped on the picture plane, bleeding into the paper ---------- */
+// Each blow lands as a drop of ink on the paper itself and bleeds outward along the fibres while the world is
+// held still. (A blow's color bleeds on the ground instead: see stains.)
 const splashes = Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, -1000, 0));
 let splashIdx = 0;
 const vProj = new THREE.Vector3();
@@ -257,6 +265,40 @@ export function screenSplash(x: number, y: number, z: number, size: number): voi
   vProj.set(x, y, z).project(camera);
   splashes[splashIdx].set(vProj.x * 0.5 + 0.5, vProj.y * 0.5 + 0.5, feel.time, size);
   splashIdx = (splashIdx + 1) % splashes.length;
+}
+
+/* ---------- color stains: a blow's color bleeding into the map where it lands ---------- */
+// Like the boss bloom, small: from the struck spot the world's own color comes through, tinted by the blow's
+// pigment, with a ragged, fibrous front that seeps outward (in real time, so it spreads while the hit holds the
+// world still), holds a moment, then the ink takes it back. A pool of 6, no allocation.
+const SN = 6;
+const stainU = Array.from({ length: SN }, () => new THREE.Vector4(0, 0, 0, 0)); // x, z, radius now, strength
+const stainC = Array.from({ length: SN }, () => new THREE.Vector3(1, 1, 1));
+const stainT = new Float32Array(SN).fill(-100);
+const stainR = new Float32Array(SN);
+let stainNext = 0;
+const STAIN_LIFE = 2.6;
+/** A blow's color seeps into the ground at (x, z) out to about `r`. */
+export function colorStain(x: number, z: number, r: number, col: readonly number[]): void {
+  const i = stainNext;
+  stainNext = (stainNext + 1) % SN;
+  stainU[i].set(x, z, 0, 0);
+  stainC[i].set(col[0], col[1], col[2]);
+  stainT[i] = feel.time;
+  stainR[i] = r;
+}
+function updateStains(): void {
+  for (let i = 0; i < SN; i++) {
+    const age = feel.time - stainT[i];
+    if (age < 0 || age > STAIN_LIFE) { stainU[i].w = 0; continue; }
+    stainU[i].z = stainR[i] * (0.3 + 0.7 * (1 - Math.exp(-age * 3.5)));
+    const fade = (age - 1.0) / (STAIN_LIFE - 1.0);
+    stainU[i].w = fade <= 0 ? 1 : 1 - fade * fade * (3 - 2 * fade);
+  }
+}
+export function clearStains(): void {
+  stainT.fill(-100);
+  for (const s of stainU) s.w = 0;
 }
 
 /* ---------- renderer + post ---------- */
@@ -321,6 +363,8 @@ uniform mat4 uInvProj, uCamWorld;
 uniform vec4 uLight[${LN}];
 uniform vec3 uLightCol[${LN}];
 uniform vec4 uSplash[6];
+uniform vec4 uStain[6];
+uniform vec3 uStainCol[6];
 uniform vec3 uPaper, uInk, uSkyTop, uSkyLow, uMist;
 uniform vec4 uMoon;
 uniform float uFogLow, uHazeNear, uHazeFar, uFlash, uHorizon, uCamX, uEdgeR, uPillars, uPillarH;
@@ -542,6 +586,21 @@ void main(){
       bloomM = (1.0 - smoothstep(uBloom.z - 6.0, uBloom.z, bd)) * uBloom.w;
       if (bloomM > reveal) { reveal = bloomM; tint = uBloomCol; }
     }
+    // a blow's color seeping into the ground: a fibrous, lobed front, darker where it is still wet
+    float stainM = 0.0; vec3 stainCol = vec3(1.0);
+    for (int i = 0; i < 6; i++) {
+      vec4 S = uStain[i];
+      if (S.w <= 0.0) continue;
+      vec2 q = wp.xz - S.xy;
+      float sd = length(q);
+      if (sd > S.z * 1.6) continue;
+      float lobe = noise(vec2(atan(q.y, q.x) * 2.2 + float(i) * 7.0, float(i) * 3.1)) - 0.5;
+      float fib = noise(wp.xz * 5.0 + float(i) * 11.0) - 0.5;
+      float rr = S.z * (1.0 + 0.45 * lobe + 0.18 * fib);
+      float m = (1.0 - smoothstep(rr * 0.7, rr, sd)) * S.w;
+      if (m > stainM) { stainM = m; stainCol = uStainCol[i]; }
+    }
+    if (stainM > reveal) { reveal = stainM; tint = stainCol; }
     float Lc = luma(src);
     vec3 chroma = src / max(Lc, 0.02);
     float Lq = mix(Lc, floor(Lc * 5.0 + 0.5) / 5.0, 0.45);
@@ -554,6 +613,8 @@ void main(){
     col = mix(inkImg, colImg, max(reveal, dyed));
     // the bloom also lays a wash of the chapter's color over everything it reaches (muted zones still glow)
     col = mix(col, clamp(col * (0.55 + 0.9 * uBloomCol), 0.0, 1.0), 0.4 * bloomM);
+    // and the blow's pigment washes over what it reaches, so it reads even on grey stone
+    col = mix(col, clamp(col * (0.45 + 1.1 * stainCol), 0.0, 1.0), 0.55 * stainM);
 
     if (water > 0.5) {
       // still water: the painted sky turned upside down (horizon glow, silhouettes, the moon's light),
@@ -595,28 +656,41 @@ void main(){
   fg *= 0.55 + 0.6 * fbm3(uv * vec2(5.0, 11.0) + 1.7);
   col = mix(col, col * 0.55 + uInk * 0.12, clamp(fg, 0.0, 0.85));
 
+  // ink on the paper: lands as a dense drop, then bleeds out along the fibres (a feathered, darker wet rim)
+  // and slowly dries paler
   float spl = 0.0;
   for (int i = 0; i < 6; i++) {
     vec4 s = uSplash[i];
     float age = uTime - s.z;
     if (age < 0.0 || age > 4.0) continue;
-    float seed = fract(s.z * 7.13) + 0.1;
     vec2 p = uv - s.xy; p.x *= uAspect;
     float dist = length(p);
-    float R = s.w * (1.0 - exp(-age * 9.0));
-    float rr = R * (1.0 + 0.6 * (noise(vec2(atan(p.y, p.x) * 2.5 + seed * 20.0, seed * 7.0)) - 0.5));
-    float core = 1.0 - smoothstep(rr * 0.85, rr, dist);
+    if (dist > s.w * 3.4) continue; // past the farthest drop
+    float seed = fract(s.z * 7.13) + 0.1;
+    float ang = atan(p.y, p.x);
+    // spread: half the size at once, the rest seeping out, still creeping a little while it dries
+    float R = s.w * (0.45 + 0.5 * (1.0 - exp(-age * 7.0)) + 0.06 * min(age, 2.0));
+    // ragged lobes plus fine fibre noise along the edge (scaled to the splash, so big and small read alike)
+    float lobe = noise(vec2(ang * 2.5 + seed * 20.0, seed * 7.0)) - 0.5;
+    float fib = noise(p * (32.0 / max(s.w, 0.01)) + seed * 11.0) - 0.5;
+    float rr = R * (1.0 + 0.55 * lobe + 0.16 * fib);
+    float feather = rr * 0.22;
+    float body = 1.0 - smoothstep(rr - feather, rr + feather * 0.4, dist);
+    float rim = smoothstep(rr * 0.55, rr * 0.92, dist) * body; // ink pooled at the wet edge
+    float dry = 1.0 - smoothstep(0.8, 4.0, age);
+    float dens = body * (0.62 + 0.3 * rim + 0.12 * (noise(p * (12.0 / max(s.w, 0.01)) + seed) - 0.5)) * (0.5 + 0.5 * dry);
     float drops = 0.0;
     for (int k = 0; k < 7; k++) {
       float fk = float(k);
       float a = hash(vec2(seed * 13.0 + fk, fk * 1.7)) * 6.2831;
-      float rd = R * (1.35 + hash(vec2(fk, seed * 3.0)) * 1.4);
-      float sz = R * (0.05 + 0.12 * hash(vec2(fk * 3.0, seed * 5.0)));
-      drops = max(drops, 1.0 - smoothstep(sz * 0.7, sz, length(p - vec2(cos(a), sin(a)) * rd)));
+      float rd = s.w * (1.35 + hash(vec2(fk, seed * 3.0)) * 1.4) * min(1.0, 0.4 + age * 12.0);
+      float sz = s.w * (0.05 + 0.12 * hash(vec2(fk * 3.0, seed * 5.0)));
+      drops = max(drops, 1.0 - smoothstep(sz * 0.6, sz, length(p - vec2(cos(a), sin(a)) * rd)));
     }
-    spl = max(spl, max(core * 0.85, drops * 0.8) * (1.0 - smoothstep(1.2, 4.0, age)));
+    float fade = 1.0 - smoothstep(1.2, 4.0, age);
+    spl = max(spl, max(dens, drops * 0.8) * fade);
   }
-  col = mix(col, uInk, spl);
+  col = mix(col, uInk, clamp(spl, 0.0, 0.92));
 
   vec2 vc = (uv - 0.5) * vec2(1.0, 1.15);
   col *= 1.0 - 0.36 * smoothstep(0.3, 0.8, length(vc));
@@ -654,6 +728,8 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
       uLight: { value: lightU },
       uLightCol: { value: lightC },
       uSplash: { value: splashes },
+      uStain: { value: stainU },
+      uStainCol: { value: stainC },
       ...moodU,
       ...bloomU,
     },
@@ -687,6 +763,7 @@ export function renderFrame(dt: number): void {
   if (!renderer) return;
   watchdog(dt);
   updateLights(dt);
+  updateStains();
   updateBloom(dt);
   renderer.info.reset();
   postMat.uniforms.uTime.value = feel.time;
@@ -710,6 +787,11 @@ export function renderFrame(dt: number): void {
   renderer.autoClear = false;
   renderer.render(overlay, camera);
   renderer.autoClear = true;
+  if (afterFrame) {
+    const fn = afterFrame;
+    afterFrame = null;
+    fn(renderer.domElement);
+  }
   if (peakDue && bloomPeak) {
     // read the drawing buffer now, before the browser presents (and clears) it
     const fn = bloomPeak;
@@ -1002,7 +1084,12 @@ export function renderOffscreen(s: THREE.Scene, cam: THREE.Camera, rt: THREE.Web
   renderer.setRenderTarget(rt);
   renderer.setClearColor(0x000000, 0);
   renderer.clear(true, true, true);
+  // the field camera's see-through cut must not touch an offscreen shot: with its own close camera every lit
+  // prop (hats, beards, canes) would read as "nearer than the player" and dither away
+  const occ = occU.uOccOn.value;
+  occU.uOccOn.value = 0;
   renderer.render(s, cam);
+  occU.uOccOn.value = occ;
   renderer.readRenderTargetPixels(rt, 0, 0, rt.width, rt.height, out);
   renderer.setRenderTarget(prevTarget);
   renderer.setClearColor(prevColor, prevAlpha);

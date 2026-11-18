@@ -2,11 +2,14 @@
 // account, never more than one per ~20 s, held back while a fight is busy. Also remembers which HUD parts
 // have been revealed. No modal, no pause. Styling: style.css (.thought, .hint-glow).
 
+import * as THREE from "three";
+import { camera } from "../render/gfx";
 import { el, esc } from "./dom";
 import { KEYS } from "./input";
 
 const GAP_MS = 20000;
 const SHOW_MS = 4200;
+const vProj = new THREE.Vector3();
 const coarse = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
 /** Key glyph → the on-screen control that does it (glows on touch screens instead of a key label). */
@@ -39,6 +42,8 @@ export class Hints {
   private last = -1e9;
   private hideT = 0;
   private glowEl: HTMLElement | null = null;
+  private lx = -1e9;
+  private ly = -1e9;
   /** set by the game: true while a fight is busy */
   busy: () => boolean = () => false;
 
@@ -76,6 +81,20 @@ export class Hints {
     } catch {
       // storage blocked: hints may repeat next visit, which is harmless
     }
+  }
+
+  /**
+   * Per frame: the thought floats over the player's head (a world point), like the figure thinking it. Only
+   * while one is showing; no allocation.
+   */
+  place(x: number, y: number, z: number): void {
+    if (this.bubble.hidden) return;
+    vProj.set(x, y, z).project(camera);
+    const sx = (vProj.x * 0.5 + 0.5) * window.innerWidth, sy = (-vProj.y * 0.5 + 0.5) * window.innerHeight;
+    if (Math.abs(sx - this.lx) < 0.4 && Math.abs(sy - this.ly) < 0.4) return;
+    this.lx = sx; this.ly = sy;
+    this.bubble.style.left = `${sx.toFixed(1)}px`;
+    this.bubble.style.top = `${sy.toFixed(1)}px`;
   }
 
   /** Can a (non-urgent) hint go out right now? */

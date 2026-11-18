@@ -1359,6 +1359,16 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .dlg.dark .dlg-veil { background-color: rgba(10, 9, 8, 0.93); background-image: var(--paper-tile); background-size: 512px 512px; background-blend-mode: soft-light; }
 .dlg.dark.narration .dlg-text { font-style: normal; font-size: 21px; letter-spacing: 0.06em; line-height: 1.9; text-align: left; color: #efe5d1; }
 .dlg.dark.narration .dlg-box { text-align: left; }
+/* the prologue's pictures: full screen behind the words, each bleeding in over the last; the words sit low */
+.dlg-art { display: none; position: absolute; inset: 0; pointer-events: none; }
+.dlg.has-art .dlg-art { display: block; }
+.dlg-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.9s ease, transform 6s ease-out; transform: scale(1.04); }
+.dlg-art img.on { opacity: 1; transform: scale(1); }
+.dlg-art::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(10, 9, 8, 0.9), rgba(10, 9, 8, 0.25) 42%, rgba(10, 9, 8, 0) 70%); }
+.dlg.dark.has-art { align-items: end; }
+.dlg.dark.has-art .dlg-veil { background-color: #0a0908; }
+.dlg.dark.has-art .dlg-text { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85); }
+@media (prefers-reduced-motion: reduce) { .dlg-art img { transition: opacity 0.4s ease; transform: none; } }
 
 /* ---------- quest card: distance line and state tag ---------- */
 .qdist { display: block; margin: -2px 0 0; font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
@@ -1386,17 +1396,18 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .dlg-face { display: none; position: absolute; left: 0; bottom: calc(100% - 56px); width: 270px; aspect-ratio: 5 / 6; z-index: 0; pointer-events: none;
   filter: drop-shadow(0 0 1.5px rgba(239, 229, 209, 0.95)) drop-shadow(0 0 10px rgba(239, 229, 209, 0.35)); }
 .dlg-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: bottom; }
-.dlg-face .f1 { opacity: 0; }
-.dlg-face.talk .f1 { animation: face-talk 0.36s steps(1, end) infinite; }
-@keyframes face-talk { 50% { opacity: 1; } }
-.dlg-face.swap img { animation: face-bleed 0.38s ease-out both; }
-.dlg-face.swap.talk .f1 { animation: face-bleed 0.38s ease-out both, face-talk 0.36s 0.38s steps(1, end) infinite; }
+.dlg-face .f1 { display: none; }
+/* speaking: one picture breathing a little (no frame swap, so the head never jumps) */
+.dlg-face.talk .f0 { animation: face-talk 1.4s ease-in-out infinite; }
+@keyframes face-talk { 50% { translate: 0 -3px; scale: 1.01; } }
+.dlg-face.swap .f0 { animation: face-bleed 0.38s ease-out both; }
+.dlg-face.swap.talk .f0 { animation: face-bleed 0.38s ease-out both, face-talk 1.4s 0.38s ease-in-out infinite; }
 @keyframes face-bleed { from { filter: blur(6px) contrast(0.4) brightness(1.4); opacity: 0.2; transform: translateY(10px); } to { filter: none; transform: none; } }
 .dlg-face-name { display: none; }
 .dlg.has-face .dlg-face { display: block; }
 /* the player speaks from the right, facing in */
 .dlg.me.has-face .dlg-face { left: auto; right: 0; }
-.dlg.me.has-face .dlg-face img { transform: scaleX(-1); }
+.dlg.me.has-face .dlg-face { transform: scaleX(-1); }
 .dlg.me.has-face .dlg-who { justify-content: flex-end; }
 /* 건너뛰기: only on sequences already read */
 .btn.btn.btn.dlg-skip { position: absolute; top: 10px; right: 14px; z-index: 3; min-height: 24px; padding: 2px 10px 3px; font-size: 12px; }
@@ -1405,7 +1416,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   .dlg-face { width: 170px; left: 0; bottom: calc(100% - 38px); }
   .dlg.me.has-face .dlg-face { right: 0; }
 }
-@media (prefers-reduced-motion: reduce) { .dlg-face.talk .f1, .dlg-face.swap img { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .dlg-face.talk .f0, .dlg-face.swap .f0 { animation: none; } }
 
 /* 물약 자동 사용 on: a small 자동 mark on the gourd */
 .gourd.auto-on::after { content: "자동"; position: absolute; left: 50%; top: -9px; transform: translateX(-50%); padding: 0 4px 1px; border-radius: 2px; font-family: var(--f-brush); font-weight: 700; font-size: 10px; line-height: 1.3; color: #efe5d1; background: #2b2622; box-shadow: inset 0 0 0 0.5px rgba(239, 229, 209, 0.5); pointer-events: none; }
@@ -1454,3 +1465,189 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .memory-bar .btn kbd { margin-left: 6px; font-size: 10px; opacity: 0.7; }
 #ui.in-memory .jokja, #ui.in-memory .purse, #ui.in-memory .arc, #ui.in-memory .gourd, #ui.in-memory .chat-log, #ui.in-memory .chat-btn, #ui.in-memory .prompt, #ui.in-memory .zone-mini { display: none; }
 @media (max-width: 640px) { .memory-bar { top: auto; bottom: calc(16px + var(--safe-b)); } }
+
+/* ---------- 사진 모드: everything else steps aside; a hint line and the shutter tablet stay ---------- */
+#ui.photo-mode > :not(.photo-ui) { visibility: hidden; }
+.photo-ui { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
+.photo-ui[hidden] { display: none; }
+.photo-hint { position: absolute; top: calc(14px + var(--safe-t)); left: 50%; transform: translateX(-50%); margin: 0; padding: 4px 12px 5px; border-radius: 3px;
+  font-size: 12.5px; color: #f3ebdc; background: rgba(27, 23, 20, 0.55); white-space: nowrap; }
+.photo-bar { position: absolute; bottom: calc(20px + var(--safe-b)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; pointer-events: auto; }
+.photo-flash { position: absolute; inset: 0; background: #fffaf0; opacity: 0; pointer-events: none; }
+.photo-flash.go { animation: photo-flash 0.42s ease-out; }
+@keyframes photo-flash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .photo-flash.go { animation: none; } }
+
+/* the conversation box keeps one size: short lines don't shrink it and choices don't grow it (they sit in the
+   lower-right corner of the same box). Narration (no box) is untouched. */
+.dlg:not(.narration) .dlg-box { height: 176px; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.dlg:not(.narration) .dlg-text { min-height: 0; flex: 1; overflow: hidden; }
+.dlg:not(.narration) .dlg-choices { position: absolute; right: 26px; bottom: 20px; margin: 0; flex-wrap: nowrap; }
+@media (max-width: 640px) {
+  .dlg:not(.narration) .dlg-box { height: 158px; }
+  .dlg:not(.narration) .dlg-choices { right: 16px; bottom: 16px; }
+}
+/* the 'next' mark sits in the box's lower-right corner (a later `.dlg-box > *` rule had made it flow at the left) */
+.dlg-box > .dlg-next { display: none; } /* no 'next' arrow: a click or the 자동 진행 mark is enough */
+/* 물약 자동 사용 fired: the gourd flashes once */
+.gourd.ping { animation: gourd-ping 0.7s ease-out; }
+@keyframes gourd-ping { 0% { filter: brightness(1.8) drop-shadow(0 0 10px rgba(127, 174, 62, 0.95)); transform: scale(1.12); } 100% { filter: none; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .gourd.ping { animation: none; } }
+/* 자동 진행: an enso drawn in one stroke in the box's lower-right corner; when the circle closes, the line moves
+   on (a click skips). It starts a little past the top and stops short of closing, like a brush lifting off. */
+.dlg-box > .dlg-timer { position: absolute; right: 16px; bottom: 12px; width: 34px; height: 34px; display: none; overflow: visible; transform: rotate(-80deg); pointer-events: none; }
+.dlg-box > .dlg-timer.run { display: block; }
+.dlg-timer circle { fill: none; stroke-linecap: round; }
+.dlg-timer .enso-bed { stroke: rgba(43, 38, 34, 0.1); stroke-width: 2.2; }
+.dlg-timer .enso { stroke: var(--ink); stroke-width: 3.4; stroke-dasharray: 100; stroke-dashoffset: 100; }
+.dlg-timer.run .enso { animation: enso-draw var(--dur, 3s) cubic-bezier(0.45, 0.05, 0.6, 1) forwards; }
+@keyframes enso-draw { 0% { stroke-dashoffset: 100; stroke-width: 4.2; } 70% { stroke-width: 3.4; } 100% { stroke-dashoffset: 6; stroke-width: 1.8; } }
+.dlg.narration .dlg-timer .enso { stroke: #efe5d1; }
+.dlg.narration .dlg-timer .enso-bed { stroke: rgba(239, 229, 209, 0.14); }
+/* choices sit in the same corner: the enso moves above them */
+.dlg-box:has(.dlg-choices:not(:empty)) > .dlg-timer { bottom: auto; top: 14px; }
+@media (prefers-reduced-motion: reduce) { .dlg-timer.run .enso { animation-timing-function: steps(6, end); } }
+/* the thought floats over the player's head (placed per frame by Hints.place), its little bubbles trailing down to
+   the figure, like it is thinking it */
+.thought { left: 50%; top: 40%; translate: -50% calc(-100% - 14px); text-align: center; border-radius: 20px; }
+.thought::before { left: calc(50% - 9px); top: auto; bottom: -12px; width: 9px; height: 9px; box-shadow: 5px 9px 0 -2px rgba(236, 227, 207, 0.85); }
+
+/* ==========================================================================================
+   Ink-sketch HUD (matches the redrawn icons and the prologue paintings): no wooden tablets or riveted boxes.
+   The player panel and the 수련 / 장비 / 화첩 labels sit on a loose swipe of ink wash (the ui-stroke brush mask),
+   paper-white letters on it; nothing framed.
+   ========================================================================================== */
+#ui .portrait::before {
+  /* a soft wash of ink behind the name and gauges: dense in the middle, fading out at every edge (no board,
+     no brush tail), so it reads as ink on the paper, not as a panel */
+  inset: -14px -34px -14px -16px; border-radius: 0; box-shadow: none; border: 0;
+  background: rgba(16, 14, 12, 0.6); background-image: none;
+  -webkit-mask: radial-gradient(farthest-side at 40% 50%, #000 55%, rgba(0, 0, 0, 0.6) 75%, transparent 100%);
+  mask: radial-gradient(farthest-side at 40% 50%, #000 55%, rgba(0, 0, 0, 0.6) 75%, transparent 100%);
+}
+#ui .btn.btn.btn.brush-label {
+  background: none; box-shadow: none; border: 0; color: #f3ecdf; padding: 6px 18px 8px;
+  text-shadow: 0 0 3px rgba(10, 9, 8, 0.9);
+}
+#ui .btn.btn.btn.brush-label::after { content: none; }
+/* no swipe panel: paper letters over the field, a dry brush line under them */
+#ui .btn.btn.btn.brush-label { padding-bottom: 9px; }
+#ui .btn.btn.btn.brush-label::before { content: ""; position: absolute; left: 8%; right: 8%; bottom: 1px; height: 5px; z-index: 0; pointer-events: none; background: #f3ecdf; opacity: 0.85;
+  filter: drop-shadow(0 0 2px rgba(10, 9, 8, 0.9));
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .btn.btn.btn.brush-label:hover { background: none; color: #f6c9b8; }
+#ui .btn.btn.btn.brush-label:hover::before { background: #e07a5f; }
+/* the purse row: currencies on a short ink swipe, the sound / photo / settings buttons as round ink dabs */
+#ui .purse > span { position: relative; background: none; box-shadow: none; padding: 2px 12px 2px 6px; color: #f3ecdf; }
+#ui .purse > span::before { content: ""; position: absolute; inset: -2px -6px -2px -4px; z-index: -1; pointer-events: none; background: rgba(18, 16, 14, 0.7);
+  -webkit-mask: var(--m-stroke) center / 100% 100% no-repeat; mask: var(--m-stroke) center / 100% 100% no-repeat; }
+#ui .btn.btn.btn.snd { position: relative; background: none; box-shadow: none; color: #f3ecdf; }
+#ui .btn.btn.btn.snd::before { content: ""; position: absolute; inset: -3px; z-index: -1; pointer-events: none; background: rgba(18, 16, 14, 0.72);
+  -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; transition: background-color 0.15s ease; }
+#ui .btn.btn.btn.snd:hover::before, #ui .btn.btn.btn.snd:focus-visible::before { background: rgba(168, 38, 27, 0.85); }
+#ui .btn.btn.btn.snd::after { content: none; }
+/* the potion button is the painted gourd itself (materials2.png, cell 3), the count in a small ink dab at its foot.
+   물약 자동 사용 on: a still green enso is drawn round it (no spinning), with the 자동 mark above. */
+#ui .gourd .body { inset: -6px; background: var(--sheet-mat) 100% 100% / 200% 200% no-repeat; filter: drop-shadow(0 0 2px rgba(239, 229, 209, 0.9)); }
+#ui .gourd b { left: auto; right: -6px; top: auto; bottom: -4px; min-width: 20px; height: 20px; padding: 0 4px; display: grid; place-items: center; font-size: 12px; color: #f3ecdf; z-index: 1; }
+#ui .gourd b::before { content: ""; position: absolute; inset: 0; z-index: -1; background: rgba(18, 16, 14, 0.85); -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .gourd.auto-on::before { content: ""; position: absolute; inset: -11px; pointer-events: none; background: #6f9a3a;
+  -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; opacity: 0.9; }
+#ui .gourd.auto-on::after { top: -20px; font-size: 11px; background: #4b6b26; }
+/* drinking on its own: the gourd tips as if poured */
+#ui .gourd.ping .body { animation: gourd-pour 0.8s ease-in-out; }
+@keyframes gourd-pour { 30% { transform: rotate(-28deg) translateY(-2px); } 60% { transform: rotate(-22deg); } }
+/* skill cooldown: the whole seconds left, in the middle of the ring */
+.ring-btn.sk .cds { position: absolute; inset: 0; display: grid; place-items: center; z-index: 2; pointer-events: none; font-family: var(--f-brush); font-weight: 700; font-size: 18px; color: #fff7ea; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.7); font-variant-numeric: tabular-nums; }
+.ring-btn.sk .cds:empty { display: none; }
+
+/* ==========================================================================================
+   Sheets (장비, 수련, 화첩, 설정, NPC 창): ink sketch. No wooden rods, no boxed cards or bevelled buttons: things
+   sit on the paper on faint washes of ink, the chosen one gets an enso drawn round it, lines are brush lines
+   (ui-line), buttons are words with a brush line under them.
+   ========================================================================================== */
+#ui .sheet .scroll::before, #ui .sheet .scroll::after { display: none; }
+#ui .sheet .sheet-card header h2 { position: relative; padding-bottom: 6px; }
+#ui .sheet .sheet-card header h2::after { content: ""; position: absolute; left: -4px; bottom: -2px; width: 120px; height: 7px; background: var(--ink); opacity: 0.75;
+  -webkit-mask: var(--m-line) left center / 100% 100% no-repeat; mask: var(--m-line) left center / 100% 100% no-repeat; }
+/* buttons: words in ink with a dry brush line under them (no box, no swipe); hover turns them cinnabar */
+#ui .sheet .btn.btn.btn { position: relative; background: none; box-shadow: none; color: var(--ink); isolation: isolate; padding-bottom: 7px; }
+#ui .sheet .btn.btn.btn::before { content: none; }
+#ui .sheet .btn.btn.btn::after { content: ""; position: absolute; left: 6%; right: 6%; bottom: 0; height: 5px; inset-block-start: auto; top: auto; border: 0; border-radius: 0; box-shadow: none; background: currentColor; opacity: 0.7;
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .btn.btn.btn:hover:not(:disabled) { background: none; color: var(--cinnabar); }
+#ui .sheet .btn.btn.btn:focus-visible { background: none; outline: none; }
+#ui .sheet .btn.btn.btn:focus-visible::after { opacity: 1; }
+#ui .sheet .btn.btn.btn:disabled { opacity: 0.45; }
+/* resources: just the picture and the number */
+#ui .sheet .rchip { background: none; box-shadow: none; }
+/* equipped slots: no cards; each piece on a faint ink wash, its name under it */
+#ui .sheet .eqslot { background: none; box-shadow: none; }
+#ui .sheet .eqslot .pic { position: relative; isolation: isolate; }
+#ui .sheet .eqslot .pic::before { content: ""; position: absolute; inset: -14%; z-index: -1; background: rgba(43, 38, 34, 0.1);
+  -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .eqslot:hover .pic::before { background: rgba(43, 38, 34, 0.18); }
+#ui .sheet .eqslots { position: relative; padding-bottom: 10px; }
+#ui .sheet .eqslots::after, #ui .sheet .gear2-inv::before { content: ""; position: absolute; left: 4%; right: 4%; bottom: 0; height: 6px; background: var(--ink); opacity: 0.35;
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+/* stats: a label and a number, underlined with a dry brush line */
+#ui .sheet .gear2 .stats > span { position: relative; background: none; box-shadow: none; padding-bottom: 8px; }
+#ui .sheet .gear2 .stats > span::after { content: ""; position: absolute; left: 0; right: 10%; bottom: 0; height: 5px; background: var(--ink); opacity: 0.4;
+  -webkit-mask: var(--m-line) left center / 100% 100% no-repeat; mask: var(--m-line) left center / 100% 100% no-repeat; }
+/* filter: plain words; the chosen one underlined in ink */
+#ui .sheet .seg { box-shadow: none; background: none; gap: 6px; }
+#ui .sheet .seg-b { position: relative; background: none; box-shadow: none; color: var(--ink-soft); }
+#ui .sheet .seg-b[aria-checked="true"] { background: none; box-shadow: none; color: var(--ink); }
+#ui .sheet .seg-b[aria-checked="true"]::after { content: ""; position: absolute; left: 4px; right: 4px; bottom: 0; height: 6px; background: var(--ink);
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+/* owned pieces: no frames; a faint wash under each, an enso round the one chosen */
+#ui .sheet .gear2-inv { position: relative; padding-top: 10px; }
+#ui .sheet .gear2-inv::before { top: 0; bottom: auto; }
+#ui .sheet .tiles .tile { position: relative; isolation: isolate; background: none; box-shadow: none; }
+#ui .sheet .tiles .tile::before { content: ""; position: absolute; left: 10%; right: 10%; top: 4%; aspect-ratio: 1; z-index: -1; background: rgba(43, 38, 34, 0.08);
+  -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .tiles .tile:hover::before { background: rgba(43, 38, 34, 0.15); }
+#ui .sheet .tiles .tile.on::before { left: 8%; right: 8%; top: 1%; background: var(--ink); opacity: 0.55;
+  -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }
+/* the chosen piece: no box, a brush line above it */
+#ui .sheet .gear-detail { position: relative; background: none; box-shadow: none; padding-top: 14px; }
+#ui .sheet .gear-detail::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--ink); opacity: 0.35;
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .seg-b[aria-checked="true"]::after { left: 0; right: 0; bottom: -1px; height: 5px; }
+/* the ? (how it works): a small ink dab with a paper question mark, not a black box */
+#ui .sheet .tipq { position: relative; background: none; box-shadow: none; color: #f3ecdf; isolation: isolate; }
+#ui .sheet .tipq::before { content: ""; position: absolute; inset: -3px; z-index: -1; background: rgba(24, 21, 18, 0.82);
+  -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .tipq::after { content: none; }
+/* a sheet the player opens (장비, 수련, 화첩...) sits above a conversation: it is what they are using right now;
+   the conversation waits underneath (its 자동 진행 countdown holds while a sheet is open) */
+.sheet { z-index: 32; }
+/* side popovers (자동 설정, 소리) also sit above a conversation */
+.auto-pop, .sound-pop { z-index: 33; }
+/* the other sheets' boxes: rows, panels, banners and tiles lose their frames; rows are parted by brush lines, the
+   chosen row gets a faint wash, small badges become ink dabs */
+#ui .sheet .gr2-row, #ui .sheet .qrow, #ui .sheet .dye-row, #ui .sheet .shop-tile { position: relative; background: none; box-shadow: none; border: 0; }
+#ui .sheet .gr2-row::after, #ui .sheet .qrow::after { content: ""; position: absolute; left: 2%; right: 2%; bottom: -1px; height: 4px; background: var(--ink); opacity: 0.22; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .gr2-row.on { background: radial-gradient(ellipse at 30% 50%, rgba(43, 38, 34, 0.1), rgba(43, 38, 34, 0) 70%); }
+#ui .sheet .gr2-row:hover { background: radial-gradient(ellipse at 30% 50%, rgba(43, 38, 34, 0.07), rgba(43, 38, 34, 0) 70%); }
+#ui .sheet .lvb, #ui .sheet .enh-plus { position: relative; isolation: isolate; background: none; box-shadow: none; color: #f3ecdf; }
+#ui .sheet .lvb::before, #ui .sheet .enh-plus::before { content: ""; position: absolute; inset: -3px -5px; z-index: -1; background: rgba(24, 21, 18, 0.85); -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .lvb.lock { color: var(--ink-soft); }
+#ui .sheet .lvb.lock::before { content: none; }
+#ui .sheet .gr2-detail, #ui .sheet .enh2-main, #ui .sheet .banner { position: relative; background: none; box-shadow: none; border: 0; }
+#ui .sheet .gr2-detail::before, #ui .sheet .enh2-main::before, #ui .sheet .banner::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--ink); opacity: 0.35; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .gr2-detail::after, #ui .sheet .enh2-main::after, #ui .sheet .banner::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--ink); opacity: 0.35; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .gr2-big { box-shadow: none; }
+#ui .sheet .first-note { background: none; border: 0; padding-left: 0; color: var(--cinnabar); }
+#ui .sheet .rate-detail { border: 0; }
+#ui .sheet .shop-tile::before { content: ""; position: absolute; inset: 6% 14% auto; aspect-ratio: 1; z-index: -1; background: rgba(43, 38, 34, 0.08); -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .shop-tile { isolation: isolate; }
+#ui .sheet .shop-tile:hover::before { background: rgba(43, 38, 34, 0.15); }
+#ui .sheet .say { background: none; box-shadow: none; border: 0; }
+#ui .sheet .album-pic.empty { background: radial-gradient(ellipse, rgba(43, 38, 34, 0.08), rgba(43, 38, 34, 0) 70%); box-shadow: none; border: 0; }
+#ui .sheet nav.tabs { box-shadow: none; border: 0; }
+/* settings switches: an ink dab that slides along a brush line, no black box */
+#ui .sheet .ink-toggle > i { background: none; box-shadow: none; border: 0; position: relative; }
+#ui .sheet .ink-toggle > i::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border: 0; border-radius: 0; background: var(--ink); opacity: 0.35; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .ink-toggle > i::after { border: 0; box-shadow: none; background: var(--ink-soft); border-radius: 50%; -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .ink-toggle input:checked + i::after { background: var(--cinnabar); }

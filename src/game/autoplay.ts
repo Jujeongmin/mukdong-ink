@@ -75,6 +75,11 @@ export class AutoPlay {
   private tick = 0;
   /* ---------- auto-travel ---------- */
   traveling = false;
+  /**
+   * 자동 진행 (Z): keeps going goal after goal - to the giver to take the main quest, out to hunt, back to hand it
+   * in - until switched off, moved by hand, or there is nowhere to go. Plain travel (the quest card) stops at one.
+   */
+  progress = false;
   private goal: Goal | null = null;
   private wpX = 0;
   private wpZ = 0;
@@ -145,6 +150,7 @@ export class AutoPlay {
   }
 
   stop(): void {
+    this.progress = false;
     if (!this.on && !this.traveling) return;
     this.on = false;
     this.traveling = false;
@@ -157,6 +163,7 @@ export class AutoPlay {
 
   /** Manual movement cancels travel (auto-battle merely waits 2 s). */
   manual(moved: boolean): void {
+    if (moved && this.progress) { this.stop(); return; }
     if (moved && this.traveling) {
       this.traveling = false;
       this.goal = null;
@@ -173,6 +180,38 @@ export class AutoPlay {
     this.hasWp = false;
     this.fails = 0;
     this.ctx.changed();
+  }
+
+  /** Z: 자동 진행 on/off. Returns a reason when it can't start. */
+  toggleProgress(): string | null {
+    if (this.progress || this.on || this.traveling) { this.stop(); return null; }
+    const why = this.startTravel();
+    if (why) {
+      // nowhere to walk to (e.g. "level up first"): out in a field, hunt right here instead
+      if (this.ctx.zone().safe) return why;
+      this.progress = true;
+      this.toggle();
+      this.ctx.think("auto-why", why);
+      return null;
+    }
+    this.progress = true;
+    this.ctx.changed();
+    return null;
+  }
+
+  /** After a conversation or an arrival: on to the next goal while 자동 진행 is on. */
+  private carryOn(): void {
+    if (!this.progress) return;
+    const why = this.startTravel();
+    if (!why) return;
+    // nothing to walk to (e.g. "level up first"): keep hunting where we are, if this is a field
+    if (!this.ctx.zone().safe) {
+      if (!this.on) this.toggle();
+      this.ctx.think("auto-why", why);
+      return;
+    }
+    this.stop();
+    this.ctx.think("auto-why", why);
   }
 
   /* ---------- auto-quest travel ---------- */
@@ -272,7 +311,8 @@ export class AutoPlay {
         this.hasWp = false;
         this.arrow.visible = false;
         this.ctx.changed();
-        void this.ctx.talk(g.npc);
+        // 자동 진행: once the talk (and any accept / hand-in) is over, head for the next goal
+        void this.ctx.talk(g.npc).then(() => { window.setTimeout(() => this.carryOn(), 400); });
         return;
       }
       this.setWp(g.npc.x, g.npc.z + 1.6);
@@ -282,6 +322,7 @@ export class AutoPlay {
       this.hasWp = false;
       this.arrow.visible = false;
       this.ctx.changed();
+      this.carryOn();
     } else {
       // hunt: once inside, auto-battle around the middle of the field with quest targets first
       const s = mainStatus(this.ctx.profile());

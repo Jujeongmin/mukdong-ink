@@ -8,7 +8,7 @@ export interface ItemDef {
   /** icon cell, left-to-right, top-to-bottom, in the sheet `atlas` names */
   icon: number;
   /**
-   * which icon sheet: "items" (default) = public/assets/items_v2.png (4x4); "weapons2" = public/assets/weapons2.png
+   * which icon sheet: "items" (default) = public/assets/items_v3.png (4x4); "weapons2" = public/assets/weapons3.png
    * (3x2, the swords)
    */
   atlas?: "items" | "weapons2";
@@ -99,7 +99,7 @@ export interface GachaExtra {
   id: string;
   name: string;
   r: Rarity;
-  /** cell in public/assets/materials.png (0 먹돌, 1 색 조각, 2 파괴방지권, 3 물약) */
+  /** cell in public/assets/materials2.png (0 먹돌, 1 색 조각, 2 파괴방지권, 3 물약) */
   atlas: "materials";
   icon: number;
   grant: Grant;

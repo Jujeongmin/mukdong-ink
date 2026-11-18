@@ -2,7 +2,7 @@
 // to advance (a click while typing finishes the line), optional choice buttons on the last line.
 // Narration (who "") is shown centered; "me" lines speak as the player. Styling lives in style.css (.dlg*).
 
-import { NPC_INFO, type Line } from "../../shared/story";
+import { NPC_INFO, fillName, type Line } from "../../shared/story";
 import { el, esc } from "./dom";
 import { audio } from "../audio";
 
@@ -12,6 +12,10 @@ export interface Choice {
 }
 
 const TYPE_MS = 20;
+/** 자동 진행: each line (and a choice, taking the first) moves on by itself after this long */
+const AUTO_MS = 3000;
+/** where each prologue picture's subject sits, so a narrow (phone) screen crops around it */
+const ART_FOCUS: Record<string, string> = { "intro-1": "62% 30%", "intro-2": "62% 50%", "intro-3": "24% 60%", "intro-4": "30% 60%" };
 
 /** A speaker's portrait (neutral + speaking frames), or null for none. Supplied by the game. */
 export type PortraitFor = (who: string) => { neutral: string; speak: string } | null;
@@ -32,6 +36,12 @@ export class Dialogue {
   private readonly choiceEl: HTMLElement;
   private open = false;
   private typing = 0;
+  /** set by the game while 자동 진행 is on: lines move on by themselves (a click still moves on at once) */
+  autoNext: () => boolean = () => false;
+  /** true while something sits over the conversation (a sheet): the countdown waits */
+  autoHold: () => boolean = () => false;
+  private autoTimer = 0;
+  private timerEl!: SVGSVGElement;
   private full = "";
   private shown = 0;
   private advance: (() => void) | null = null;
@@ -51,11 +61,16 @@ export class Dialogue {
   private faceB!: HTMLImageElement;
   private faceName!: HTMLElement;
   private skipBtn!: HTMLButtonElement;
+  /** two stacked pictures for dark narration: the new one fades in over the old */
+  private artImgs!: HTMLImageElement[];
+  private artTop = 0;
+  private artName = "";
 
   constructor(private readonly root: HTMLElement, private readonly myName: () => string) {
     root.insertAdjacentHTML("beforeend", `
       <div class="dlg" data-dlg hidden>
         <div class="dlg-veil"></div>
+        <div class="dlg-art" aria-hidden="true"><img alt=""><img alt=""></div>
         <div class="dlg-stage">
         <div class="dlg-face" aria-hidden="true"><img class="f0" alt=""><img class="f1" alt=""><b class="dlg-face-name"></b></div>
         <div class="dlg-box" role="dialog" aria-live="polite">
@@ -64,6 +79,7 @@ export class Dialogue {
           <p class="dlg-text"></p>
           <div class="dlg-choices"></div>
           <span class="dlg-next" aria-hidden="true"></span>
+          <svg class="dlg-timer" viewBox="0 0 40 40" aria-hidden="true"><filter id="dlg-enso-rough"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3"/><feDisplacementMap in="SourceGraphic" scale="1.6"/></filter><circle class="enso-bed" cx="20" cy="20" r="14" pathLength="100"/><circle class="enso" cx="20" cy="20" r="14" pathLength="100" filter="url(#dlg-enso-rough)"/></svg>
         </div>
         </div>
       </div>`);
@@ -73,6 +89,8 @@ export class Dialogue {
     this.textEl = el(".dlg-text", this.box);
     this.choiceEl = el(".dlg-choices", this.box);
     this.face = el(".dlg-face", this.box);
+    this.timerEl = this.box.querySelector<SVGSVGElement>(".dlg-timer") as SVGSVGElement;
+    this.artImgs = Array.from(this.box.querySelectorAll<HTMLImageElement>(".dlg-art img"));
     this.faceA = el<HTMLImageElement>(".dlg-face .f0", this.box);
     this.faceB = el<HTMLImageElement>(".dlg-face .f1", this.box);
     this.faceName = el(".dlg-face-name", this.box);
@@ -167,14 +185,16 @@ export class Dialogue {
     if (line.who === "hongmae" && !this.flared) { this.flared = true; audio.play("lantern-ignite"); }
     this.nameEl.textContent = narration ? "" : me ? this.myName() : info?.name ?? line.who;
     this.showFace(line.who, this.nameEl.textContent ?? "");
+    this.showArt(line.art ?? "");
     this.titleEl.textContent = narration || me || !info ? "" : info.title;
     this.choiceEl.innerHTML = "";
-    this.full = line.text;
+    this.full = fillName(line.text, this.myName());
     this.shown = 0;
     this.textEl.textContent = "";
     this.box.classList.add("typing");
     this.face.classList.add("talk");
     window.clearInterval(this.typing);
+    this.disarmAuto();
     return new Promise((resolve) => {
       const showChoices = () => {
         if (!choices) return;
@@ -192,6 +212,10 @@ export class Dialogue {
         this.box.classList.remove("typing");
         this.face.classList.remove("talk");
         showChoices();
+        this.armAuto(() => {
+          if (choices) resolve(choices[0]?.value ?? "");
+          else { audio.play("dialogue-next"); resolve(""); }
+        });
       };
       this.typing = window.setInterval(() => {
         this.shown++;
@@ -201,10 +225,47 @@ export class Dialogue {
       this.advance = () => {
         if (this.shown < this.full.length) { finish(); return; }
         if (choices) return; // must pick
+        this.disarmAuto();
         audio.play("dialogue-next");
         resolve("");
       };
     });
+  }
+
+  /** 자동 진행: start the countdown bar; `go` runs when it runs out. Cleared by any advance or close. */
+  private armAuto(go: () => void): void {
+    this.disarmAuto();
+    if (!this.autoNext()) return;
+    this.box.classList.add("auto-next");
+    this.timerEl.style.setProperty("--dur", `${AUTO_MS}ms`);
+    void this.timerEl.getBoundingClientRect(); // restart the stroke
+    this.timerEl.classList.add("run");
+    // if the line can't move on by itself when the time is up (a sheet opened over it), wait and look again
+    const tick = (): void => {
+      if (!this.autoNext()) { this.disarmAuto(); return; }
+      if (this.autoHold()) { this.autoTimer = window.setTimeout(tick, 500); return; }
+      this.disarmAuto();
+      go();
+    };
+    this.autoTimer = window.setTimeout(tick, AUTO_MS);
+  }
+  private disarmAuto(): void {
+    window.clearTimeout(this.autoTimer);
+    this.timerEl?.classList.remove("run");
+    this.box.classList.remove("auto-next");
+  }
+
+  /** A picture behind the narration; the next one bleeds in over it, "" takes it away. */
+  private showArt(name: string): void {
+    this.box.classList.toggle("has-art", !!name);
+    if (!name || name === this.artName) return;
+    this.artName = name;
+    const next = this.artImgs[this.artTop ^ 1], prev = this.artImgs[this.artTop];
+    this.artTop ^= 1;
+    next.classList.remove("on");
+    next.onload = () => { next.classList.add("on"); prev.classList.remove("on"); };
+    next.style.objectPosition = ART_FOCUS[name] ?? "50% 50%";
+    next.src = `./assets/art/${name}.webp`;
   }
 
   /** The speaker's portrait (left; the player's own on the right). Narration and the voice have none. */
@@ -229,11 +290,14 @@ export class Dialogue {
   }
 
   private close(): void {
+    this.disarmAuto();
     window.clearInterval(this.typing);
     this.open = false;
     this.advance = null;
     this.box.hidden = true;
-    this.box.classList.remove("dark", "narration", "me", "typing", "voice", "has-face");
+    this.box.classList.remove("dark", "narration", "me", "typing", "voice", "has-face", "has-art");
+    for (const im of this.artImgs) { im.classList.remove("on"); im.onload = null; im.removeAttribute("src"); }
+    this.artName = "";
     this.root.classList.remove("talking");
   }
 }

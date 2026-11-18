@@ -28,6 +28,8 @@ export interface HudHandlers {
   claimDaily(): void;
   /** leave 추억 속 풍경 */
   exitMemory(): void;
+  /** 사진 모드 on/off */
+  photo(): void;
   auto(): void;
   travel(): void;
   autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean };
@@ -53,7 +55,7 @@ const MARKUP = `
   <i class="face" data-face aria-hidden="true"></i>
   <div class="ring spr-enso"><i class="head"></i><i class="scarf" data-scarf></i></div>
   <div class="vitals">
-    <span class="who"><span data-name>먹동이</span><b class="lv-seal" data-lv title="레벨">1</b></span>
+    <span class="who"><span data-name>나그네</span><b class="lv-seal" data-lv title="레벨">1</b></span>
     <div class="hp gauge" title="생명" data-hpbar><i class="track"></i><i class="chip" data-hpchip></i><i class="fill" data-hp></i><span data-hpt></span></div>
     <div class="exp gauge" title="경험" data-expbar><i class="track"></i><i class="fill" data-exp></i></div>
     <span class="zone-mini" data-zone></span>
@@ -64,6 +66,7 @@ const MARKUP = `
   <span class="ui-later" data-ui="gear" data-tip-title="안료" data-tip="사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다."><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
   <span class="ui-later" data-ui="gear" data-tip-title="묵옥" data-tip="뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다."><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
   <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 설정 (${KEYS.mute} 음소거)" data-tip-title="소리" data-tip="음량 조절. ${KEYS.mute} 키로 끄고 켠다."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-photo-btn aria-label="사진 (${KEYS.photo})" data-tip-title="사진 (${KEYS.photo})" data-tip="화면을 가리는 것을 치우고 시점을 돌려 찍는다."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6.5h3l1.4-2h5.2l1.4 2h3v9H3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="11" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
   <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <i class="purse-break" aria-hidden="true"></i>
   <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
@@ -79,14 +82,14 @@ const MARKUP = `
 <div class="arc" data-arc>
   <button class="ring-btn atk" type="button" data-act="atk" aria-label="베기 (클릭, J)" data-tip-title="베기 (클릭 · J)" data-tip="누르고 있으면 이어 벤다."><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>베기</b><kbd>${KEYS.attack}</kbd></button>
   <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="구르기" data-tip-title="구르기 (Space)" data-tip="구르는 동안은 맞지 않는다."><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>구르기</b></button>
-  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="자동 사냥 (Z)" aria-pressed="false" data-tip-title="자동 사냥 (Z)" data-tip="가까운 먹귀신을 찾아 저절로 싸운다. 검법도 저절로 쓴다."><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>자동</b><kbd>Z</kbd></button>
+  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="자동 진행 (Z)" aria-pressed="false" data-tip-title="자동 진행 (Z)" data-tip="의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 갈 곳이 없으면 그 자리에서 사냥한다. 검법도 저절로 쓴다."><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>자동</b></button>
   <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="자동 사냥 설정" data-tip-title="자동 사냥 설정" data-tip="쓸 검법, 물약 기준, 의뢰 대상 먼저.">설정</button>
   <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="물약 마시기 (${KEYS.potion})" data-tip-title="물약 마시기 (${KEYS.potion})" data-tip="길게 누르면 자동 사용 켜기/끄기" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
 </div>
 <div class="keyhelp passive" data-help hidden>
   <p><kbd>WASD</kbd> 걷기 <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>우클릭</kbd> 구르기, 구르는 동안은 맞지 않는다</p>
   <p><kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기. <kbd>1</kbd>–<kbd>5</kbd> 오방 검법 (가까운 적에게), 자동 사냥 중엔 저절로</p>
-  <p><kbd>Z</kbd> 자동 사냥 <kbd>Q</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기</p>
+  <p><kbd>Z</kbd> 자동 진행 <kbd>Q</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기</p>
   <p><kbd>Enter</kbd> 채팅 <kbd>M</kbd> 소리 끄기 <kbd>Esc</kbd> 설정</p>
 </div>
 <button class="prompt btn" type="button" data-prompt hidden></button>
@@ -118,6 +121,8 @@ export class Hud {
   private readonly cdEls: HTMLElement[] = [];
   private readonly lockEls: HTMLElement[] = [];
   private readonly cdLast = new Float32Array(5).fill(-1);
+  private readonly cdsLast = new Int16Array(5).fill(-1);
+  private readonly cdsEls: HTMLElement[] = [];
   private readonly dmgPool: HTMLElement[] = [];
   private dmgNext = 0;
   private promptText = "";
@@ -165,11 +170,12 @@ export class Hud {
       b.style.setProperty("--skc", SKILL_COLOR[i]);
       b.setAttribute("aria-label", `${s.name} (${i + 1})`);
       b.dataset.tipTitle = `${s.name} (${i + 1})`;
-      b.innerHTML = `<i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(i)}"></i><i class="cd"></i><b>${s.label}</b><kbd>${i + 1}</kbd><span class="sklv" data-sklv>1</span><span class="lock" hidden>Lv ${s.unlock}</span>`;
+      b.innerHTML = `<i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(i)}"></i><i class="cd"></i><span class="cds" aria-hidden="true"></span><b>${s.label}</b><kbd>${i + 1}</kbd><span class="sklv" data-sklv>1</span><span class="lock" hidden>Lv ${s.unlock}</span>`;
       b.addEventListener("pointerdown", (e) => { e.preventDefault(); this.h.skill(i); });
       arc.appendChild(b);
       this.skillBtns.push(b);
       this.cdEls.push(el(".cd", b));
+      this.cdsEls.push(el(".cds", b));
       this.lockEls.push(el(".lock", b));
     });
     const dmgBox = el("[data-dmg]", root);
@@ -185,6 +191,7 @@ export class Hud {
     el("[data-growth]", root).addEventListener("click", () => this.h.growth());
     el("[data-album]", root).addEventListener("click", () => this.h.album());
     el("[data-memory-exit]", root).addEventListener("click", () => this.h.exitMemory());
+    el("[data-photo-btn]", root).addEventListener("click", () => this.h.photo());
     // the daily card is rebuilt often; one delegated listener on its box
     el("[data-quest]", root).addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-claim-daily]");
@@ -225,7 +232,7 @@ export class Hud {
   }
 
   setProfile(p: ProfileView): void {
-    el("[data-name]", this.root).textContent = p.name || "먹동이";
+    el("[data-name]", this.root).textContent = p.name || "나그네";
     el("[data-lv]", this.root).textContent = String(p.level);
     el("[data-scarf]", this.root).style.background = p.dye.scarf != null ? hexCss(p.dye.scarf) : "";
     this.setHp(p.hp, p.maxHp);
@@ -291,7 +298,7 @@ export class Hud {
     const p = this.last;
     const box = this.root.querySelector<HTMLElement>("[data-portrait]");
     if (!box || !p) return;
-    box.dataset.tipTitle = `${p.name || "먹동이"} · Lv ${p.level}`;
+    box.dataset.tipTitle = `${p.name || "나그네"} · Lv ${p.level}`;
     box.dataset.tip = `생명 ${this.tipHp} / ${this.tipMax || p.maxHp}
 경험 ${p.exp.toLocaleString("ko-KR")} / ${p.expToNext.toLocaleString("ko-KR")}`;
   }
@@ -335,7 +342,7 @@ export class Hud {
       <div class="qbody">
         <p class="qobj" aria-label="${esc(progressText(s))}"><span>${esc(o.text)}</span>${o.count ? `<b>${o.count}</b>` : ""}</p>${bar}
         <small class="qdist" data-qdist>${esc(this.qdist)}</small>
-        <footer><span class="qstate" data-qstate>${QSTATE[this.qState]}</span>${tag}<button type="button" class="qgo btn btn-sm${this.travelling ? " on" : ""}" data-go aria-pressed="${this.travelling}" data-tip-title="자동 진행" data-tip="다음 목적지까지 저절로 간다. 다시 누르면 멈춘다.">${this.travelling ? "이동 중" : "자동 진행"}</button></footer>
+        <footer><span class="qstate" data-qstate>${QSTATE[this.qState]}</span>${tag}<button type="button" class="qgo btn btn-sm${this.travelling ? " on" : ""}" data-go aria-pressed="${this.travelling}" data-tip-title="자동 진행 (Z)" data-tip="의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 대화도 저절로 넘어간다. 다시 누르면 멈춘다.">${this.travelling ? "이동 중" : "자동 진행"}</button></footer>
       </div></div>${this.dailyCard(p)}`;
     box.querySelector("[data-go]")?.addEventListener("click", () => this.h.travel());
     box.querySelector("[data-qfold]")?.addEventListener("click", () => this.foldQuest());
@@ -418,8 +425,13 @@ export class Hud {
     if (on && autoHideMs > 0) this.helpTimer = window.setTimeout(() => { box.hidden = true; }, autoHideMs);
   }
 
-  /** frac = remaining cooldown 0..1 */
-  setCooldown(i: number, frac: number): void {
+  /** frac = remaining cooldown 0..1; secs = seconds left, shown whole in the middle of the ring while cooling */
+  setCooldown(i: number, frac: number, secs = 0): void {
+    const s = secs > 0 ? Math.ceil(secs) : 0;
+    if (s !== this.cdsLast[i]) {
+      this.cdsLast[i] = s;
+      this.cdsEls[i].textContent = s > 0 ? String(s) : "";
+    }
     const q = Math.round(frac * 40) / 40;
     if (q === this.cdLast[i]) return;
     this.cdLast[i] = q;
@@ -548,6 +560,15 @@ export class Hud {
   }
 
   /** Show a HUD part that was waiting for its moment; `bloom` plays the ink-bloom intro. */
+  /** The gourd flashes once: a potion was just drunk on its own (물약 자동 사용). */
+  potionPing(): void {
+    const g = this.root.querySelector<HTMLElement>("[data-potion]");
+    if (!g) return;
+    g.classList.remove("ping");
+    void g.offsetWidth;
+    g.classList.add("ping");
+  }
+
   reveal(part: "growth" | "gear" | "potion" | "auto" | "album", bloom: boolean): void {
     this.root.querySelectorAll<HTMLElement>(`[data-ui="${part}"]`).forEach((e) => {
       if (!e.classList.contains("ui-later")) return;

@@ -9,8 +9,10 @@ Verse8 web multiplayer RPG. Vite + TypeScript + three.js (vanilla DOM UI, no Rea
 - **Never** show the browser's default scrollbar. Scrollbars are hidden globally in `src/style.css`; scrollable panels keep scrolling and hint overflow with a fade or a drawn ink bar.
 - **Never** add interstitial ads. Rewarded ads only, only from a button press.
 - The world is ink-wash; color appears only in skills and dyed/colored gear.
-- Protagonist: 먹동이 (stick figure, round head, ~5 heads tall, connected joints, scarf + sash props, no clothes,
-  fights with a large calligraphy brush). Not "졸라맨" — never use that name or look.
+- Protagonist has no fixed name: it is the player's nickname (fallback "나그네"). NPC lines call the player with
+  `{이름}` / `{이름/아}` (see `fillName` in `src/shared/story.ts`). Look: stick figure, round head, ~5 heads tall,
+  connected joints, scarf + sash props, no clothes, fights with a large calligraphy brush. Code and comments still
+  call the figure 먹동이 internally. Not "졸라맨" — never use that name or look.
 - Server patterns follow the user's live Verse8 game Grove Hunters (`C:\Users\anjsh\OneDrive\Desktop\grove hunters`,
   read-only reference): one `Server` class + feature modules, identity from `$sender.account`, `$lock` around every
   shared write, purchase dedupe by receipt row, gacha rolled on the server under a lock, pity per player.

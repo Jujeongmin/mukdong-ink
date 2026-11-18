@@ -11,6 +11,7 @@ import { Chat } from "./ui/chat";
 import { newNav, questNav } from "./questnav";
 import { RoutePreview } from "./render/route";
 import { ALBUM_PAGES, PAGE_FOR_BOSS, album, pageEarned, paintFrame, type AlbumPage } from "./album";
+import { PhotoMode, saveFrame } from "./photo";
 import { TargetRing } from "./render/target-ring";
 import { aimFor, pickTarget, targetable } from "./targeting";
 import type { MView as TargetView } from "./monsters";
@@ -22,7 +23,8 @@ import { audio, SKILL_SFX, type SfxName } from "./audio";
 import { Monsters } from "./monsters";
 import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
-import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
+import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, afterNextFrame, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
+import type { RGB } from "./util";
 import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
@@ -87,9 +89,30 @@ interface Remote {
   level: number;
   dead: boolean;
 }
+/**
+ * How a blow lands on screen: a skill's pigment (null: ink only), whether it is a brush strike (which bleeds the
+ * player's own scarf color) and a floor on its weight.
+ */
+interface Blow { col: RGB | null; basic: boolean; heavy: number }
+const LIGHT_BLOW: Blow = { col: null, basic: true, heavy: 0 };
+const HEAVY_BLOW: Blow = { col: null, basic: true, heavy: 0.8 }; // the third strike
+// 먹감옥 is ink itself: no pigment
+const SKILL_BLOW: Blow[] = SKILL_COL.map((c, i) => ({ col: i === 4 ? null : c, basic: false, heavy: 0.5 }));
+/** the scarf's dye as the color a brush strike bleeds (black dye: ink only); recomputed only when it changes */
+let strikeHex = -2;
+const strikeCol: [number, number, number] = [0, 0, 0];
+function strikeTint(hex: number | null | undefined): RGB | null {
+  if (hex == null) return null;
+  if (hex !== strikeHex) {
+    strikeHex = hex;
+    strikeCol[0] = ((hex >> 16) & 255) / 255; strikeCol[1] = ((hex >> 8) & 255) / 255; strikeCol[2] = (hex & 255) / 255;
+  }
+  return strikeCol;
+}
 interface PendingHits {
   t: number;
   res: HitResult;
+  blow: Blow;
 }
 
 export class Game {
@@ -155,11 +178,12 @@ export class Game {
       album: () => this.openAlbum(),
       claimDaily: () => void this.claimDailyAll(),
       exitMemory: () => void this.exitMemory(),
+      photo: () => this.togglePhoto(),
       interact: () => this.interact(),
       skill: (i) => this.pressSkill(i),
       respawn: () => void this.respawn(),
-      auto: () => this.toggleAuto(),
-      travel: () => this.autoTravel(),
+      auto: () => this.autoProgress(),
+      travel: () => this.autoProgress(),
       autoSettings: () => this.auto.settings,
       saveAutoSettings: () => this.auto.saveSettings(),
       settings: (tab) => this.openSettings(tab),
@@ -172,7 +196,7 @@ export class Game {
         resetHints: () => { this.hints.reset(); toast("안내 혼잣말을 처음부터 다시 본다"); },
         openAuto: () => { this.sheets.close(); this.hud.toggleAutoPop(); },
       } });
-    this.dialogue = new Dialogue(root, () => this.profile?.name || "먹동이");
+    this.dialogue = new Dialogue(root, () => this.profile?.name || "나그네");
     this.hints = new Hints(root);
     this.hints.busy = () => {
       const now = performance.now();
@@ -188,12 +212,13 @@ export class Game {
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
+      photo: () => this.togglePhoto(),
       help: () => this.hud.help(),
       escape: () => this.onEscape(),
       chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
       mute: () => { toast(audio.toggleMute() ? "소리를 껐습니다 (M)" : "소리를 켰습니다 (M)"); },
       manual: () => this.onManual(),
-      auto: () => this.toggleAuto(),
+      auto: () => this.autoProgress(),
     }, root, document.getElementById("stage") as HTMLCanvasElement);
     this.auto = new AutoPlay({
       player: () => this.player,
@@ -208,7 +233,7 @@ export class Game {
       travel: (to, from) => this.travel(to, from, true),
       talk: (npc) => this.story.talk(npc),
       think: (id, text) => { this.hints.think(id, text, { urgent: true, repeat: true }); },
-      changed: () => this.hud.setAuto(this.auto.on, this.auto.traveling),
+      changed: () => this.hud.setAuto(this.auto.on || this.auto.progress, this.auto.traveling || this.auto.progress),
     });
     // sounds: every actor's swings, rolls and casts (others by distance); monster spits and slams
     actorSound.fn = (code, a) => {
@@ -251,6 +276,7 @@ export class Game {
   private onEscape(): void {
     if (this.hud.autoPopOpen()) { this.hud.closeSoundPop(); return; }
     if (this.sheets.isOpen()) { this.sheets.close(); return; }
+    if (this.photo?.on) { this.togglePhoto(); return; }
     if (this.memory) { void this.exitMemory(); return; }
     if (this.dialogue.isOpen() || this.transitioning || this.dead) return;
     this.openSettings();
@@ -320,18 +346,13 @@ export class Game {
     this.lastManualAt = performance.now();
   }
 
-  private toggleAuto(): void {
-    if (!this.player || this.dead || this.transitioning || this.memory) return;
-    if (this.zone.def.safe) { this.hints.think("auto-safe", "마을에선 붓을 쉬게 두자.", { urgent: true, repeat: true }); return; }
-    const on = this.auto.toggle();
-    toast(on ? "자동 사냥" : "자동 사냥 끔");
-  }
-
-  private autoTravel(): void {
+  /** Z: 자동 진행 - takes the main quest, goes where it leads, hands it in, and on to the next. */
+  private autoProgress(): void {
     if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
-    if (this.auto.traveling) { this.auto.stop(); return; }
-    const why = this.auto.startTravel();
-    if (why) this.hints.think("auto-why", why, { urgent: true, repeat: true });
+    const wasOn = this.auto.progress || this.auto.on || this.auto.traveling;
+    const why = this.auto.toggleProgress();
+    if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
+    toast(wasOn ? "자동 진행 끔" : "자동 진행");
   }
 
   /* ---------- start ---------- */
@@ -339,6 +360,8 @@ export class Game {
     this.hints.bind(this.api.account);
     this.dialogue.bindAccount(this.api.account);
     this.dialogue.portraitFor = (who) => this.portraitOf(who);
+    this.dialogue.autoNext = () => this.auto.progress;
+    this.dialogue.autoHold = () => this.sheets.isOpen();
     this.monsters.onEffect = (kind) => {
       if (kind === "shot" && this.questIs("c1q7")) this.hints.think("gate5", "떨어질 자리를 보고 굴러야겠다.", { key: KEYS.roll, urgent: true });
       if (kind === "slam" && this.zone.def.id === "peak" && this.questIs("c1q10")) this.hints.think("gate7", "지금이다!", { key: KEYS.roll, urgent: true });
@@ -420,7 +443,7 @@ export class Game {
     this.hud.setProfile(p);
     // the top-left ensō shows your own face (the same in-engine cutout the dialogue uses; cached per look)
     if (this.player) { const face = this.portraitOf("me"); if (face) this.hud.setFace(face.neutral); }
-    this.hud.tag(this, esc(p.name || "먹동이"), "me");
+    this.hud.tag(this, esc(p.name || "나그네"), "me");
     if (prev && p.level > prev.level && this.player) {
       const sk = SKILLS.find((s) => s.unlock > prev.level && s.unlock <= p.level);
       this.hud.levelUp(p.level, sk ? sk.name : null);
@@ -449,7 +472,8 @@ export class Game {
     if ((p.points ?? 0) > 0) open("growth");
     if (p.main > questIndex("c1q3")) open("auto");
     if (p.pigment > 0 || p.jade > 0 || p.main > questIndex("c1q3")) open("gear");
-    if (p.potions > 0 && p.hp < p.maxHp) open("potion");
+    // the gourd shows as soon as there are potions (물약 자동 사용 works from then on, so it must be visible)
+    if (p.potions > 0) open("potion");
     if (ALBUM_PAGES.some((pg) => pageEarned(pg, p.main))) open("album");
   }
 
@@ -530,7 +554,7 @@ export class Game {
       r.level = rp.level;
       r.dead = rp.dead;
       r.actor.setNet(rp.pose, rp.look, rp.dead);
-      this.hud.tag(r, `${esc(rp.name || "먹동이")}<small>Lv ${rp.level}</small>`, rp.dead ? "pc dead" : "pc");
+      this.hud.tag(r, `${esc(rp.name || "나그네")}<small>Lv ${rp.level}</small>`, rp.dead ? "pc dead" : "pc");
     }
     for (const [id, r] of this.remotes) {
       if (id in pl) continue;
@@ -552,22 +576,22 @@ export class Game {
     const sent = performance.now();
     void attempt(this.api.attack({ kind, x: a.x, z: a.z, yaw: a.head }), QUIET_COMBAT).then((res) => {
       // show the blow when the mocap swing actually lands (its impact frame), not when the server answers
-      if (res) this.queueHits(res, Math.max(0, (IMPACT[kind] ?? 0) - (performance.now() - sent) / 1000));
+      if (res) this.queueHits(res, Math.max(0, (IMPACT[kind] ?? 0) - (performance.now() - sent) / 1000), kind === 3 ? HEAVY_BLOW : LIGHT_BLOW);
     });
   }
 
   private sendSkill(i: number, a: Actor, delay: number): void {
     void attempt(this.api.castSkill({ skill: i, x: a.x, z: a.z, yaw: a.head }), QUIET_COMBAT).then((res) => {
-      if (res) this.queueHits(res, delay);
+      if (res) this.queueHits(res, delay, SKILL_BLOW[i] ?? LIGHT_BLOW);
     });
   }
 
-  private queueHits(res: HitResult, delay: number): void {
-    if (delay <= 0.05) this.showHits(res);
-    else this.pending.push({ t: delay, res });
+  private queueHits(res: HitResult, delay: number, blow: Blow): void {
+    if (delay <= 0.05) this.showHits(res, blow);
+    else this.pending.push({ t: delay, res, blow });
   }
 
-  private showHits(res: HitResult): void {
+  private showHits(res: HitResult, blow: Blow): void {
     if (res.hits.length) this.lastHitAt = performance.now();
     for (const h of res.hits) {
       const hv = this.monsters.views.get(h.id);
@@ -588,7 +612,7 @@ export class Game {
           if (this.gateKills >= 3 && !this.hints.has("ui:auto")) {
             this.hints.mark("ui:auto");
             this.hud.reveal("auto", true);
-            this.hints.think("gate2", "손에 익었다… 붓이 알아서 움직일 것 같다.", { key: KEYS.auto, urgent: true });
+            this.hints.think("gate2", "손에 익었다… 붓이 알아서 움직일 것 같다.", { urgent: true });
           }
         }
       }
@@ -614,8 +638,8 @@ export class Game {
       if (!h.resisted) {
         const dx = v.x - pl.x, dz = v.z - pl.z, d = Math.hypot(dx, dz) || 1;
         const power = Math.min(2, 0.6 + Math.log10(1 + h.dmg) * 0.35);
-        heavy = Math.max(heavy, (power - 0.6) / 1.4);
-        inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power);
+        heavy = Math.max(heavy, (power - 0.6) / 1.4, blow.heavy);
+        inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power, blow.basic ? strikeTint(this.profile?.dye.scarf) : blow.col);
         if (h.kill) { killed = true; killBurst(v.x, v.def.height * 0.5, v.z, v.def.radius); }
       }
       if (v.kind === "kilnlord") audio.play(h.resisted ? "armor-clunk" : "glaze-crack", v.x, v.z);
@@ -639,7 +663,7 @@ export class Game {
 
   /* ---------- input actions ---------- */
   private pressAct(a: Act): void {
-    if (!this.player || this.dead || (this.memory && a === "atk")) return;
+    if (!this.player || this.dead || ((this.memory || this.photo?.on) && a === "atk")) return;
     this.player.input[a] = BUF;
   }
 
@@ -673,10 +697,11 @@ export class Game {
     if (this.potionBusy || now - this.lastPotionAt < 1600) return;
     this.lastPotionAt = now;
     this.potionBusy = true;
-    void this.drinkPotion().finally(() => { this.potionBusy = false; });
+    void this.drinkPotion(true).finally(() => { this.potionBusy = false; });
   }
 
-  private async drinkPotion(): Promise<void> {
+  /** `auto`: drunk by 물약 자동 사용 (said so on screen, and the gourd flashes, so it's clear it happened) */
+  private async drinkPotion(auto = false): Promise<void> {
     if (!this.profile || this.dead || this.transitioning) return;
     if (this.profile.potions <= 0) { toast("물약이 없습니다 · 마을 염색 장인에게서 살 수 있습니다"); return; }
     if (this.profile.hp >= this.profile.maxHp) { toast("생명이 가득합니다"); return; }
@@ -685,7 +710,8 @@ export class Game {
     if (!p) return;
     this.applyProfile(p);
     const healed = p.hp - before;
-    if (healed > 0) this.hud.number(this.player.x, 2.4, this.player.z, `+${healed}`, "gain");
+    if (healed > 0) this.hud.number(this.player.x, 2.4, this.player.z, auto ? `자동 물약 +${healed}` : `+${healed}`, "gain");
+    if (auto) this.hud.potionPing();
     sparkBurst(this.player.x, 1, this.player.z, 14, SKILL_COL[3], 0.5, 1.2);
     audio.play("potion");
   }
@@ -807,6 +833,7 @@ export class Game {
     for (const [id, r] of this.remotes) this.dropRemote(id, r);
     clearFx();
     clearLights();
+    clearStains();
     clearBloom();
     this.zone = new ZoneScene(ZONES[zoneId] ?? ZONES[START_ZONE]);
     this.ambient.setTheme(this.zone.def.theme);
@@ -817,6 +844,25 @@ export class Game {
     audio.musicForZone(zoneId);
     audio.ambience(zoneId);
     this.auto.zoneChanged();
+  }
+
+  /* ---------- 사진 모드 ---------- */
+  private photo: PhotoMode | null = null;
+
+  private togglePhoto(): void {
+    if (!this.player || this.transitioning) return;
+    if (this.photo?.on) { this.photo.close(); return; }
+    if (this.sheets.isOpen() || this.dialogue.isOpen()) return;
+    this.input.clear();
+    this.photo ??= new PhotoMode(el("#ui"), el<HTMLCanvasElement>("#stage"), {
+      shoot: () => {
+        afterNextFrame((canvas) => saveFrame(canvas));
+        this.photo?.flash();
+        audio.play("ui-open");
+      },
+      close: () => this.togglePhoto(),
+    });
+    this.photo.open();
   }
 
   /* ---------- 추억 속 풍경: walk a recovered region alone, in its own color ---------- */
@@ -923,7 +969,9 @@ export class Game {
     this.lastFrame = now;
     feel.time += realDt;
     let dt = realDt;
-    if (feel.hitstop > 0) { feel.hitstop -= realDt; dt *= 0.08; }
+    // a heavy blow holds the world almost still, then it creeps on slowly before running again
+    if (feel.freeze > 0) { feel.freeze -= realDt; dt *= 0.02; }
+    else if (feel.hitstop > 0) { feel.hitstop -= realDt; dt *= 0.08; }
     resize();
 
     const p = this.player;
@@ -938,7 +986,7 @@ export class Game {
     if (inp.mx === 0 && inp.mz === 0) this.auto.steer(realDt);
     inp.atk = Math.max(0, inp.atk - realDt);
     // holding the button keeps the combo going (the actor still waits out the chain timing)
-    if (this.input.holdAtk && !this.dead && !this.sheets.isOpen() && !this.dialogue.isOpen()) inp.atk = BUF;
+    if (this.input.holdAtk && !this.dead && !this.sheets.isOpen() && !this.dialogue.isOpen() && !this.photo?.on) inp.atk = BUF;
     inp.dash = Math.max(0, inp.dash - realDt);
     inp.jump = Math.max(0, inp.jump - realDt);
     inp.skT -= realDt;
@@ -967,7 +1015,7 @@ export class Game {
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const h = this.pending[i];
       h.t -= realDt;
-      if (h.t <= 0) { this.pending.splice(i, 1); this.showHits(h.res); }
+      if (h.t <= 0) { this.pending.splice(i, 1); this.showHits(h.res, h.blow); }
     }
 
     this.updateCamera(realDt);
@@ -978,6 +1026,7 @@ export class Game {
     this.hud.placeTag(this, p.x, p.y + 2.55, p.z);
     for (const r of this.remotes.values()) this.hud.placeTag(r, r.actor.x, r.actor.y + 2.55, r.actor.z);
     this.hud.placeSay(this, p.x, p.y + 3.15, p.z);
+    this.hints.place(p.x, p.y + 3.3, p.z);
     const at = this.aimTarget;
     if (at && targetable(at) && !this.dead) {
       this.targetRing ??= new TargetRing();
@@ -1036,7 +1085,8 @@ export class Game {
     this.hud.setQuestNav(this.nav);
     this.hud.refreshHover();
     const now = performance.now();
-    const fight = !this.dead && (now - this.lastHurtAt < 4000 || now - this.lastHitAt < 4000 || p.inCombat);
+    // swinging the brush in the village is only practice: no 전투 중 there
+    const fight = !this.dead && !this.zone.def.safe && (now - this.lastHurtAt < 4000 || now - this.lastHitAt < 4000 || p.inCombat);
     this.hud.setQuestState(fight ? "fight" : this.auto.traveling ? "travel" : this.auto.on ? "auto" : "");
   }
 
@@ -1112,7 +1162,7 @@ export class Game {
     let threat = false;
     for (const v of this.monsters.views.values()) if (v.hp > 0 && Math.abs(v.x - p.x) < 8 && Math.abs(v.z - p.z) < 8) { threat = true; break; }
     p.threat = threat;
-    for (let i = 0; i < SKILLS.length; i++) this.hud.setCooldown(i, p.cd[i] / p.skillCd(i));
+    for (let i = 0; i < SKILLS.length; i++) this.hud.setCooldown(i, p.cd[i] / p.skillCd(i), p.cd[i]);
     // interaction prompt + walking into portals
     let prompt: string | null = null;
     if (!this.dead && !this.transitioning && !this.sheets.isOpen() && !this.story.isBusy()) {
@@ -1149,8 +1199,16 @@ export class Game {
     const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
     // a low quarter view: the player stays lower-middle, the field ahead reads, and the upper part of the
     // frame opens onto the field's far edge, the painted backdrop and the moon
-    camera.position.set(this.camX + sx, 8.4 * k + sy, this.camZ + 15 * k);
-    camera.lookAt(this.camX + sx * 0.5, 2.2 + sy * 0.5, this.camZ - 4);
+    const ph = this.photo?.on ? this.photo.view : null;
+    if (ph) {
+      // 사진 모드: turned around the player, pulled in or out, lowered toward eye level
+      const back = 15 * k * ph.zoom, up = (2.6 + 5.8 * ph.tilt) * k * ph.zoom, s = Math.sin(ph.yaw), c = Math.cos(ph.yaw);
+      camera.position.set(this.camX + s * back, up, this.camZ + c * back);
+      camera.lookAt(this.camX - s * 4, 1.4 + 0.8 * ph.tilt, this.camZ - c * 4);
+    } else {
+      camera.position.set(this.camX + sx, 8.4 * k + sy, this.camZ + 15 * k);
+      camera.lookAt(this.camX + sx * 0.5, 2.2 + sy * 0.5, this.camZ - 4);
+    }
     camFocus.set(this.camX, 0, this.camZ);
     camera.updateMatrixWorld();
     camera.getWorldDirection(camFwd);

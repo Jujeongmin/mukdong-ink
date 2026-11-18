@@ -30,18 +30,19 @@ export function installSprites(): void {
     "--m-enso": "./assets/ui/ui-enso.png",
     "--m-dab": "./assets/ui/ui-dab.png",
     "--m-splash": "./assets/ui/ui-splash.png",
+    "--sheet-mat": "./assets/materials2.png",
   };
   for (const [k, v] of Object.entries(kit)) root.setProperty(k, `url("${url(v)}")`);
-  // the _v2 sheets have a cleaned matte (tools/clean_matte.py); new names so deploy caches can't serve the old ones
+  // ink-sketch sheets (v3, redrawn to match the prologue paintings); new names so deploy caches can't serve the old ones
   const style = document.createElement("style");
   style.textContent = `
-    .ic-item { background-image: url("${url("./assets/items_v2.png")}"); }
-    .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills_v2.png")}"); }
-    .ic-mat { background-image: url("${url("./assets/materials.png")}"); }
-    .ic-item.w2 { background-image: url("${url("./assets/weapons2.png")}"); }`;
+    .ic-item { background-image: url("${url("./assets/items_v3.png")}"); }
+    .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills_v3.png")}"); }
+    .ic-mat { background-image: url("${url("./assets/materials2.png")}"); }
+    .ic-item.w2 { background-image: url("${url("./assets/weapons3.png")}"); }`;
   document.head.appendChild(style);
   // a sheet that fails to load would leave empty frames: say so in the console instead of failing silently
-  for (const f of ["items_v2.png", "skills_v2.png", "materials.png", "weapons2.png"]) {
+  for (const f of ["items_v3.png", "skills_v3.png", "materials2.png", "weapons3.png"]) {
     const img = new Image();
     img.onerror = () => console.warn(`[ui] icon sheet failed to load: ${f}`);
     img.src = url(`./assets/${f}`);

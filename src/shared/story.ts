@@ -8,6 +8,31 @@ export interface Line {
   /** speaker: an NPC id, "me" (먹동이), or "" for narration */
   who: string;
   text: string;
+  /** a full-screen picture behind dark narration (file name under assets/art, without extension) */
+  art?: string;
+}
+
+const PARTICLE: Record<string, readonly [string, string]> = {
+  이: ["이", "가"], 가: ["이", "가"], 은: ["은", "는"], 는: ["은", "는"], 을: ["을", "를"], 를: ["을", "를"],
+  아: ["아", "야"], 야: ["아", "야"], 과: ["과", "와"], 와: ["과", "와"], "(이)": ["이", ""],
+};
+/** Does the name end on a closing consonant (받침)? Latin and digits by how they are read aloud. */
+function endsClosed(name: string): boolean {
+  const c = name.charCodeAt(name.length - 1);
+  if (c >= 0xac00 && c <= 0xd7a3) return (c - 0xac00) % 28 !== 0;
+  const ch = name.charAt(name.length - 1).toLowerCase();
+  return "013678lmn".includes(ch);
+}
+/**
+ * NPCs call the player by their nickname: `{이름}` in a line becomes the name, and `{이름/아}` adds the particle
+ * that fits its last sound (이/가, 은/는, 을/를, 아/야, 과/와, and "(이)" for 이구나 / 구나).
+ */
+export function fillName(text: string, name: string): string {
+  return text.replace(/\{이름(?:\/([^}]+))?\}/g, (_m, p?: string) => {
+    if (!p) return name;
+    const pair = PARTICLE[p];
+    return name + (pair ? pair[endsClosed(name) ? 0 : 1] : p);
+  });
 }
 
 export interface NpcInfo {
@@ -29,10 +54,10 @@ export const NPC_INFO: Record<string, NpcInfo> = {
 };
 
 export const PROLOGUE: Line[] = [
-  { who: "", text: "아주 오래전, 세상은 첫 붓 오방붓이 다섯 빛으로 그린 그림이었다." },
-  { who: "", text: "서른 해 전, 먹 한 방울 '번짐'이 그 붓을 다섯 조각 냈다." },
-  { who: "", text: "세상엔 먹과 종이만 남았다. 색은 검법을 펼치는 순간에만 돌아온다." },
-  { who: "", text: "오늘, 연못에서 한 아이가 깨어났다. 목도리에만 분홍빛을 지닌 채." },
+  { who: "", text: "아주 오래전, 세상은 첫 붓 오방붓이 다섯 빛으로 그린 그림이었다.", art: "intro-1" },
+  { who: "", text: "서른 해 전, 먹 한 방울 '번짐'이 그 붓을 다섯 조각 냈다.", art: "intro-2" },
+  { who: "", text: "세상엔 먹과 종이만 남았다. 색은 검법을 펼치는 순간에만 돌아온다.", art: "intro-3" },
+  { who: "", text: "오늘, 연못에서 한 아이가 깨어났다. 목도리에만 분홍빛을 지닌 채.", art: "intro-4" },
 ];
 
 export interface QuestStory {
@@ -46,7 +71,7 @@ export const QUEST_STORY: Record<string, QuestStory> = {
   // ---------- 1장 「물빛 조각」 ----------
   c1q3: {
     offer: [
-      { who: "elder", text: "눈을 떴구나. 연못에서 너를 건진 지 사흘째다." },
+      { who: "elder", text: "눈을 떴구나, {이름/아}. 연못에서 너를 건진 지 사흘째다." },
       { who: "elder", text: "네 손의 붓으로 먹귀신을 벨 수 있다. 옛 붓 검객처럼." },
       { who: "elder", text: "마을 북쪽 문 너머 죽림에서 먹방울 여덟을 베어 보거라." },
       { who: "elder", text: "다 베면 대숲을 지키는 바람이를 찾거라." },
@@ -54,7 +79,7 @@ export const QUEST_STORY: Record<string, QuestStory> = {
     accept: "죽림으로 간다",
     progress: [{ who: "elder", text: "죽림에서 먹방울 여덟을 베고 바람이를 찾거라." }],
     complete: [
-      { who: "baram", text: "…너구나, 먹에서 태어났다는 애. 난 바람이야." },
+      { who: "baram", text: "…네가 {이름/(이)}구나, 먹에서 태어났다는 애. 난 바람이야." },
       { who: "baram", text: "아직 너를 못 믿어. 그래도 붓놀림은 나쁘지 않네." },
     ],
   },
@@ -153,7 +178,7 @@ export const QUEST_STORY: Record<string, QuestStory> = {
     accept: "먹골 마을로 내려간다",
     progress: [{ who: "heukwol", text: "연못가와 죽림을 지나면 마을이다." }],
     complete: [
-      { who: "elder", text: "…흑월이 버틴다고? 그 고집쟁이가. 고맙다, 아이야." },
+      { who: "elder", text: "…흑월이 버틴다고? 그 고집쟁이가. 고맙다, {이름/아}." },
       { who: "elder", text: "이제 불빛 이야기를 할 때가 됐구나." },
     ],
   },
@@ -317,7 +342,7 @@ export const DAILY_INTRO: Line[] = [
 
 export const CHAPTER_END: Line[] = [
   { who: "", text: "1장 「물빛 조각」 끝." },
-  { who: "", text: "다음 이야기: 불빛을 삼킨 그림자, 그리고 먹동이가 태어난 곳." },
+  { who: "", text: "다음 이야기: 불빛을 삼킨 그림자, 그리고 {이름/이} 태어난 곳." },
 ];
 
 export const CHAPTER2_END: Line[] = [

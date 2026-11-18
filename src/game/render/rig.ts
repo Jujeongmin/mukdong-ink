@@ -499,6 +499,18 @@ export class Rig {
     this.meshes[this.meshes.length - 1] = obj;
   }
 
+  /** What the figure holds (its weapon and hand props): a portrait hides any of these that covers the face. */
+  held(): THREE.Object3D[] {
+    const out: THREE.Object3D[] = [this.weapon];
+    for (const p of this.props) if (p.at === "handL") out.push(p.obj);
+    return out;
+  }
+
+  /** The head mesh (portraits aim at it). */
+  headMesh(): THREE.Mesh {
+    return this.head;
+  }
+
   /** Attach a prop that follows the head or sits across the back. */
   addProp(obj: THREE.Object3D, at: "head" | "back" | "handL"): void {
     this.inner.add(obj);

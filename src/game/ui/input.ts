@@ -17,10 +17,12 @@ export interface InputHandlers {
   growth(): void;
   /** P: 화첩 */
   album?(): void;
+  /** O: 사진 모드 */
+  photo?(): void;
   escape(): void;
   /** any manual input (auto-battle yields to it) */
   manual?(): void;
-  /** Z: auto-battle on/off */
+  /** Z: 자동 진행 on/off */
   auto?(): void;
   /** M: sound on/off */
   mute?(): void;
@@ -30,7 +32,7 @@ export interface InputHandlers {
 
 /** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
 export const KEYS = {
-  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", album: "P", help: "H", mute: "M", chat: "Enter",
+  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", album: "P", photo: "O", help: "H", mute: "M", chat: "Enter",
 } as const;
 
 const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
@@ -130,6 +132,7 @@ export class Input {
     if (e.code === "KeyH") { this.h.help(); return; }
     if (e.code === "KeyK") { this.h.growth(); return; }
     if (e.code === "KeyP") { this.h.album?.(); return; }
+    if (e.code === "KeyO") { this.h.photo?.(); return; }
     if (this.h.blocked()) return;
     if (move) {
       e.preventDefault();

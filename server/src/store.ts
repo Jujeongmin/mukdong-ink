@@ -102,18 +102,18 @@ export async function releaseName(account: string, key: string): Promise<void> {
   if (row && row.account === account) await $global.deleteCollectionItem(NICKNAMES, row.__id);
 }
 
-/** A first profile: a free "먹동이" + 4 digits name, the starter kit. */
+/** A first profile: a free "나그네" + 4 digits name, the starter kit. */
 export async function createProfile(account: string, rand: () => number): Promise<Profile> {
   let picked: { name: string; key: string } | null = null;
   for (let tries = 0; tries < 6 && !picked; tries++) {
-    const name = `먹동이${String(Math.floor(rand() * 10000)).padStart(4, "0")}`;
+    const name = `나그네${String(Math.floor(rand() * 10000)).padStart(4, "0")}`;
     const key = name.toLowerCase();
     const free = await withNameLock(key, () => claimName(account, key, name));
     if (free) picked = { name, key };
   }
   // Six taken in a row: a name nobody else can have (the account's own tail).
   if (!picked) {
-    const name = `먹동이${account.replace(/[^a-zA-Z0-9]/g, "").slice(-4)}`;
+    const name = `나그네${account.replace(/[^a-zA-Z0-9]/g, "").slice(-4)}`;
     picked = { name, key: name.toLowerCase() };
   }
   return starterProfile(picked.name, Date.now());
