@@ -5,6 +5,7 @@
 import type { ProfileView } from "../net/api";
 import { MAX_LEVEL, MONSTERS, SKILLS, attackFor, expToNext, isObstacle, maxHpFor } from "./combat";
 import { ENHANCE_MAX, SKILL_MAX, enhancedAtk, pointsEarned, pointsSpent } from "./growth";
+import { BOOK, bookAfter, bookBonus } from "./book";
 import { ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED, hatHpBonus, sashCdCut } from "./items";
 import { type Look, type Profile, type SlotId, today } from "./types";
 import { AD_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, SUB_QUESTS, ZONES, type QuestDef } from "./world";
@@ -24,7 +25,7 @@ export function starterProfile(name: string, now: number): Profile {
     name, level: 1, exp: 0, hp: maxHpFor(1), potions: STARTER_POTIONS, pigment: 0, jade: 0,
     owned: [...STARTER_OWNED], equip: { ...STARTER_EQUIP }, dye: { ...STARTER_DYE }, pity: 0,
     created: false, skills: SKILLS.map(() => 1), bonusPoints: 0, stones: 0, shards: 0, protects: 0, enh: {},
-    main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), sub: { id: "", prog: 0 }, adsDay: today(now), adsLeft: AD_DAILY,
+    main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), sub: { id: "", prog: 0 }, book: {}, adsDay: today(now), adsLeft: AD_DAILY,
     zone: START_ZONE, channel: 1, createdAt: now,
   };
 }
@@ -81,7 +82,7 @@ export function readProfile(raw: unknown): Profile | null {
     name: r.name,
     level,
     exp: int(r.exp, 0),
-    hp: int(r.hp, maxHpFor(level), 0, Math.round(maxHpFor(level) * (1 + hatHpBonus(equip.hat)))),
+    hp: int(r.hp, maxHpFor(level), 0, maxHpOf({ level, equip, book: readBook(r.book) })),
     potions: int(r.potions, 0, 0, MAX_POTIONS),
     pigment: int(r.pigment, 0),
     jade: int(r.jade, 0),
@@ -107,6 +108,7 @@ export function readProfile(raw: unknown): Profile | null {
       claimed: DAILY_QUESTS.map((_, i) => claimed[i] === true),
     },
     sub: readSub(r.sub),
+    book: readBook(r.book),
     adsDay: typeof r.adsDay === "string" ? r.adsDay : "",
     adsLeft: int(r.adsLeft, AD_DAILY, 0, AD_DAILY),
     zone: typeof r.zone === "string" && ZONES[r.zone] ? r.zone : START_ZONE,
@@ -124,9 +126,24 @@ export function freshDay(p: Profile, now: number): Profile {
   return next;
 }
 
-/** Max health: the level's, raised by the hat worn. */
-export function maxHpOf(p: Pick<Profile, "level" | "equip">): number {
-  return Math.round(maxHpFor(p.level) * (1 + hatHpBonus(p.equip.hat)));
+/** Max health: the level's, raised by the hat worn and the 먹그림 도감. */
+export function maxHpOf(p: Pick<Profile, "level" | "equip"> & { book?: Readonly<Record<string, number>> }): number {
+  return Math.round(maxHpFor(p.level) * (1 + hatHpBonus(p.equip.hat) + bookBonus(p.book ?? {}).hp));
+}
+
+/** Attack: level and brush, raised by the 먹그림 도감. */
+export function atkOf(p: Profile): number {
+  return Math.round(attackFor(p.level, weaponAtk(p)) * (1 + bookBonus(p.book).atk));
+}
+
+function readBook(raw: unknown): Record<string, number> {
+  const r = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const book: Record<string, number> = {};
+  for (const page of BOOK) {
+    const n = int(r[page.kind], 0, 0, page.need[1]);
+    if (n > 0) book[page.kind] = n;
+  }
+  return book;
 }
 
 /** Every 검법 cooldown is multiplied by this (the sash worn cuts it). */
@@ -147,7 +164,7 @@ export function pointsLeft(p: Profile): number {
 
 export function profileView(account: string, p: Profile): ProfileView {
   return {
-    ...p, sub: settleSub(p).sub, account, maxHp: maxHpOf(p), atk: attackFor(p.level, weaponAtk(p)), expToNext: expToNext(p.level), points: pointsLeft(p),
+    ...p, sub: settleSub(p).sub, account, maxHp: maxHpOf(p), atk: atkOf(p), expToNext: expToNext(p.level), points: pointsLeft(p),
   };
 }
 
@@ -219,7 +236,7 @@ export function countKills(p: Profile, felled: Felled[]): Profile {
     const n = felled.filter((f) => counts(f.kind, g.kind) && (!g.zone || f.zone === g.zone)).length;
     if (n > 0) sub = { id: sub.id, prog: Math.min(g.count, sub.prog + n) };
   }
-  return { ...p, mainProgress, daily: { ...p.daily, progress }, sub };
+  return { ...p, mainProgress, daily: { ...p.daily, progress }, sub, book: bookAfter(p.book, felled.map((f) => f.kind)) };
 }
 
 /** One brush technique used, for the daily quest that counts them. */

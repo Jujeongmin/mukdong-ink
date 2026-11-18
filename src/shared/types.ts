@@ -72,6 +72,8 @@ export interface Profile {
   daily: DailyState;
   /** the open 서브 퀘스트 (SUB_QUESTS id; "" = pick by 경지) and its count */
   sub: { id: string; prog: number };
+  /** 먹그림 도감: monsters felled per kind (shared/book.ts), each capped where its page is finished */
+  book: Record<string, number>;
   adsDay: string;
   adsLeft: number;
   zone: string;

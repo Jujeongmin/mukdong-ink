@@ -19,7 +19,8 @@ import { Rig } from "./render/rig";
 import { gameSettings } from "./ui/settings";
 import type { ChatMessage } from "../net/api";
 import { audio, SKILL_SFX, type SfxName } from "./audio";
-import { Monsters } from "./monsters";
+import { Monsters, monsterFigure } from "./monsters";
+import { BOOK, BOOK_STEP, bookStage } from "../shared/book";
 import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
 import { camFocus, camFwd, camera, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
@@ -194,6 +195,7 @@ export class Game {
       chat: () => this.chat.openInput(),
     });
     this.sheets = new Sheets(root, { api, profile: () => this.profile, apply: (p) => this.applyProfile(p),
+      monsterPic: (kind) => this.portraits.figureOf(`mon:${kind}`) ?? this.portraits.figure(`mon:${kind}`, monsterFigure(kind)),
       enterMemory: (id) => void this.enterMemory(id), memoryBlock: () => this.memoryBlock(), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id),
       settings: {
         name: () => this.profile?.name ?? "",
@@ -454,6 +456,17 @@ export class Game {
   }
 
   /* ---------- server state ---------- */
+  /** A 먹그림 도감 page reached 밑그림 or 완성 since the last profile: say so, with what it gave. */
+  private bookNews(prev: ProfileView, p: ProfileView): void {
+    for (const page of BOOK) {
+      const was = bookStage(page, prev.book?.[page.kind] ?? 0), now = bookStage(page, p.book?.[page.kind] ?? 0);
+      if (now <= was) continue;
+      const stat = page.stat === "atk" ? "공격" : "생명";
+      toast(`먹그림 도감 · ${MONSTERS[page.kind]?.name ?? ""} ${now === 2 ? "완성" : "밑그림"} · ${stat} +${Math.round(BOOK_STEP * 100)}%`);
+      audio.play("quest-done");
+    }
+  }
+
   applyProfile(p: ProfileView): void {
     const prev = this.profile;
     this.profile = p;
@@ -463,6 +476,7 @@ export class Game {
     // the top-left ensō shows your own face (the same in-engine cutout the dialogue uses; cached per look)
     if (this.player) { const face = this.portraitOf("me"); if (face) this.hud.setFace(face.neutral); }
     this.hud.tag(this, esc(p.name || "나그네"), "me");
+    if (prev) this.bookNews(prev, p);
     if (prev && p.level > prev.level && this.player) {
       const sk = SKILLS.find((s) => s.unlock > prev.level && s.unlock <= p.level);
       this.hud.levelUp(p.level, sk ? sk.name : null);
@@ -493,7 +507,7 @@ export class Game {
     if (p.pigment > 0 || p.jade > 0 || p.main > questIndex("c1q3")) open("gear");
     // the gourd shows as soon as there are potions (물약 자동 사용 works from then on, so it must be visible)
     if (p.potions > 0) open("potion");
-    if (ALBUM_PAGES.some((pg) => pageEarned(pg, p.main))) open("album");
+    if (ALBUM_PAGES.some((pg) => pageEarned(pg, p.main)) || BOOK.some((b) => bookStage(b, p.book?.[b.kind] ?? 0) > 0)) open("album");
   }
 
   private revealAlbum(): void {

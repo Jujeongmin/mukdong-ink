@@ -1,6 +1,6 @@
 import type { AttackReq, EnhanceResult, GachaPull, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
-  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, attackFor, killExp, type HitShape,
+  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, killExp, type HitShape,
 } from "../../src/shared/combat";
 import {
   DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
@@ -13,7 +13,7 @@ import { chatName } from "../../src/shared/filter";
 import { forwardX, forwardZ } from "../../src/shared/hit";
 import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
 import {
-  MAX_POTIONS, cdMulOf, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, maxHpOf, nextSub, pointsLeft, profileView, settleSub, subDef, subDone, weaponAtk,
+  MAX_POTIONS, atkOf, cdMulOf, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, maxHpOf, nextSub, pointsLeft, profileView, settleSub, subDef, subDone,
   type Felled,
 } from "../../src/shared/profile";
 import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
@@ -222,7 +222,7 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
     if (skillUse) next = countSkillUse(next);
     const gained = gainExp(next, pay.exp);
     await saveProfile(account, gained.profile);
-    return gained;
+    return { ...gained, grew: maxHpOf(gained.profile) !== maxHpOf(p) };
   });
   const levelUp = done?.levelUp ?? false;
   if (done && levelUp) {
@@ -233,6 +233,13 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
       if (!state || state.gone === true || !state.pose) return;
       const maxHp = maxHpOf(done.profile);
       await $room.updateUserState(account, { level, maxHp, hp: maxHp, dead: false }, { returnState: false });
+    });
+  } else if (done?.grew) {
+    // a 먹그림 도감 page raised max health: the room's bar grows, the health you have stays
+    await withRoomLock(roomId, async () => {
+      const [state] = await $room.getUserStates([account], ["pose", "gone"]);
+      if (!state || state.gone === true || !state.pose) return;
+      await $room.updateUserState(account, { maxHp: maxHpOf(done.profile) }, { returnState: false });
     });
   }
   return levelUp;
@@ -303,7 +310,7 @@ async function swing(
     const blow = blowOf(p, heldTo(mine, x, z, now, ZONES[here.zone].radius));
     const state = await $room.getRoomState(["monsters"]);
     const monsters = readMonsters(here.zone, state.monsters, now, Math.random);
-    const damage = attackFor(p.level, weaponAtk(p)) * blow.mul;
+    const damage = atkOf(p) * blow.mul;
     const who = { account, skill: blow.skill, skills: p.skills, plus: p.enh[p.equip.weapon] ?? 0 };
     const result = strikeAreas(monsters, blow.areas, blow.kb, damage, blow.echo, now, who);
     if (result.hits.length > 0) {

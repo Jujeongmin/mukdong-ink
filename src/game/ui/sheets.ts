@@ -10,7 +10,8 @@ import {
   COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, gearBonusText, itemOdds, type Grant, type ItemDef,
 } from "../../shared/items";
 import { enhancedAtk } from "../../shared/growth";
-import { POTION_COST, SKILLS } from "../../shared/combat";
+import { MONSTERS, POTION_COST, SKILLS } from "../../shared/combat";
+import { BOOK, BOOK_STEP, bookBonus, bookStage } from "../../shared/book";
 import type { SlotId } from "../../shared/types";
 import type { GachaPull, GameApi, ProfileView } from "../../net/api";
 import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../quests";
@@ -33,6 +34,8 @@ export interface SheetCtx {
   settings?: SettingsCtx;
   /** 화첩: walk a recovered region (추억 속 풍경); `memoryBlock` says why not right now */
   enterMemory?(pageId: string): void;
+  /** 먹그림 도감: a monster kind's picture (a data URL, drawn once), null if it can't be drawn now */
+  monsterPic?(kind: string): string | null;
   memoryBlock?(): string | null;
 }
 
@@ -84,6 +87,7 @@ const TABS: Partial<Record<SheetId, [string, string][]>> = {
   dyer: [["dye", "염색"], ["potion", "물약"]],
   altar: [["pull", "뽑기"], ["odds", "확률표"], ["jade", "묵옥 얻기"]],
   growth: [["skills", "검법 단련"], ["enhance", "붓 강화"]],
+  album: [["pages", "되찾은 색"], ["book", "먹그림 도감"]],
   settings: SETTINGS_TABS,
 };
 
@@ -155,7 +159,9 @@ export class Sheets {
   openAlbum(page = ""): void {
     if (this.current === "album" && !page) { this.close(); return; }
     this.albumSel = page;
-    this.show("album");
+    // before any color is recovered the 도감 is all there is to see
+    const anyPage = ALBUM_PAGES.some((pg) => album.has(pg.id) || pageEarned(pg, this.ctx.profile().main));
+    this.show("album", page || anyPage ? undefined : "book");
   }
 
   private show(id: SheetId, tab?: string): void {
@@ -232,6 +238,7 @@ export class Sheets {
 
   /* ---------- 화첩 ---------- */
   private album(p: ProfileView): string {
+    if (this.tab === "book") return this.book(p);
     const date = (at: number) => { const d = new Date(at); return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`; };
     const sel = ALBUM_PAGES.find((pg) => pg.id === this.albumSel && album.has(pg.id));
     if (sel) {
@@ -253,6 +260,33 @@ export class Sheets {
     }).join("");
     return `${this.head("화첩")}<p class="say">보스를 벤 순간 잠깐 돌아온 색을 그림으로 남긴다. 들어가 보면 그날의 색 속을 혼자 걸어 볼 수 있다.</p>
       <p class="cap album-count">${got} / ${ALBUM_PAGES.length}장</p><ol class="album-grid">${pages}</ol>`;
+  }
+
+  /**
+   * 먹그림 도감: a page per monster. Unmet ones are a faint shape and "?"; a 밑그림 is the figure in pale ink;
+   * a finished page is the figure in full. Each step adds BOOK_STEP to 공격 or 생명 for good.
+   */
+  private book(p: ProfileView): string {
+    const pct = (f: number) => `${Math.round(f * 100)}%`;
+    const total = bookBonus(p.book ?? {});
+    const done = BOOK.filter((b) => bookStage(b, p.book?.[b.kind] ?? 0) === 2).length;
+    const pages = BOOK.map((b) => {
+      const n = p.book?.[b.kind] ?? 0;
+      const stage = bookStage(b, n);
+      const def = MONSTERS[b.kind];
+      const pic = this.ctx.monsterPic?.(b.kind);
+      const stat = b.stat === "atk" ? "공격" : "생명";
+      const next = stage === 2 ? "완성" : `${fmt(n)} / ${fmt(b.need[stage])}`;
+      const steps = [0, 1].map((k) => `<i class="bk-step${stage > k ? " on" : ""}" aria-hidden="true"></i>`).join("");
+      const tip = tipAttr(n > 0 ? def.name : "?", `${b.need[0]}마리를 베면 밑그림, ${b.need[1]}마리면 완성. 한 단계마다 ${stat} +${pct(BOOK_STEP)}.`);
+      return `<li class="bk-page s${stage}${n > 0 ? "" : " unmet"}"${tip}>
+        <div class="bk-pic">${pic ? `<img src="${pic}" alt="" loading="lazy">` : ""}</div>
+        <b class="bk-name">${n > 0 ? esc(def.name) : "?"}</b>
+        <span class="bk-count">${steps}<small>${next}</small></span>
+        <span class="bk-gain${stage > 0 ? " on" : ""}">${stat} +${pct(stage * BOOK_STEP)}</span></li>`;
+    }).join("");
+    return `${this.head("화첩")}<p class="say">벤 것들을 한 장씩 그려 둔다. 밑그림이 생기고 그림이 완성될 때마다 조금씩 강해진다.</p>
+      <p class="cap album-count">완성 ${done} / ${BOOK.length}장 · 공격 +${pct(total.atk)} · 생명 +${pct(total.hp)}</p><ol class="bk-grid">${pages}</ol>`;
   }
 
   /** 들어가 보기: into 추억 속 풍경 (only from a safe place; the reason shows as the tip otherwise) */

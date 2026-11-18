@@ -109,6 +109,13 @@ const M_aura = new THREE.MeshBasicMaterial({ color: 0x0b0a10, transparent: true,
 const FIRE: RGB = [0.95, 0.42, 0.12];
 const EMBER: RGB = [1, 0.75, 0.3];
 
+/** A standalone figure of a monster kind for the 먹그림 도감 picture (SHARED geometry and materials only). */
+export function monsterFigure(kind: string): THREE.Group {
+  const g = buildLook(kind).group;
+  g.visible = true; // looks start hidden until the field places them
+  return g;
+}
+
 function buildLook(kind: string): Look {
   const group = new THREE.Group();
   const body = new THREE.Group();
