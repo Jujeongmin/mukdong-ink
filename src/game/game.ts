@@ -33,6 +33,7 @@ import { Sheets } from "./ui/sheets";
 import { Dialogue } from "./ui/dialogue";
 import { Story } from "./story";
 import { npcMark, subStatus } from "./quests";
+import { NPC_INFO, SUB_STORY } from "../shared/story";
 import { Title, mockAdPresenter } from "./ui/title";
 import { CharacterCreator } from "./ui/create";
 import { Loading } from "./ui/loading";
@@ -205,7 +206,11 @@ export class Game {
       const now = performance.now();
       return now - this.lastHurtAt < 3000 || now - this.lastSwingAt < 2000 || this.dialogue.isOpen() || this.sheets.isOpen();
     };
-    this.story = new Story({ api, dialogue: this.dialogue, sheets: this.sheets, hints: this.hints, profile: () => this.profile, apply: (p) => this.applyProfile(p) });
+    this.story = new Story({
+      api, dialogue: this.dialogue, sheets: this.sheets, hints: this.hints, profile: () => this.profile, apply: (p) => this.applyProfile(p),
+      claimSub: () => this.claimSub(),
+      startSub: () => { const why = this.auto.startSub(); if (why) this.hints.think("auto-why", why, { urgent: true, repeat: true }); },
+    });
     this.input = new Input({
       blocked: () => this.sheets.isOpen() || this.dialogue.isOpen() || this.transitioning || !this.player || this.chat.isOpen() || this.dead,
       act: (a) => this.pressAct(a),
@@ -758,7 +763,8 @@ export class Game {
     const p = await attempt(this.api.claimSub());
     if (!p || !before) return;
     this.applyProfile(p);
-    this.hud.reward(`서브 · ${before.q.title}`, before.q.reward);
+    const said = SUB_STORY[before.q.id];
+    this.hud.reward(`서브 · ${before.q.title}`, before.q.reward, said ? { who: NPC_INFO[before.q.giver]?.name ?? "", text: said.done } : undefined);
     audio.play("quest-done");
   }
 

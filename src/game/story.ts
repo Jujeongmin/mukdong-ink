@@ -2,10 +2,10 @@
 // on the main quest's state (offer → accept, progress, complete → reward → maybe the next offer); otherwise
 // idle chatter, then the NPC's own service (daily list, dye vats, the altar).
 
-import { CHAPTER_ENDS, IDLE_LINES, DAILY_INTRO, PROLOGUE, QUEST_STORY, chapterOf, type Line } from "../shared/story";
+import { CHAPTER_ENDS, IDLE_LINES, DAILY_INTRO, PROLOGUE, QUEST_STORY, SUB_STORY, chapterOf, type Line } from "../shared/story";
 import { MAIN_QUESTS, type Npc } from "../shared/world";
 import type { GameApi, ProfileView } from "../net/api";
-import { dailyStatus, mainStatus, readyByTalk, rewardText } from "./quests";
+import { dailyStatus, mainStatus, readyByTalk, rewardText, subStatus } from "./quests";
 import type { Dialogue } from "./ui/dialogue";
 import type { Sheets } from "./ui/sheets";
 import { attempt, toast } from "./ui/dom";
@@ -19,6 +19,10 @@ export interface StoryCtx {
   hints?: { has(id: string): boolean; mark(id: string): void };
   profile(): ProfileView;
   apply(p: ProfileView): void;
+  /** hand in the finished 서브 퀘스트 (reward shown by the game) */
+  claimSub?(): Promise<void>;
+  /** 자동 진행 on the 서브 퀘스트 */
+  startSub?(): void;
 }
 
 const LATER = { label: "나중에", value: "" };
@@ -79,6 +83,8 @@ export class Story {
       } else if (s && st && s.accepted && (s.q.giver === npc.id || s.q.turnIn === npc.id)) {
         handled = true;
         await dialogue.play(st.progress);
+        // only a "not yet" from 본편: their 서브 퀘스트 can still come up
+        if (await this.sub(npc)) return;
       }
       await this.service(npc, handled);
     } finally {
@@ -100,10 +106,31 @@ export class Story {
     }
   }
 
+  /**
+   * A field keeper with no story for you this time talks about their 서브 퀘스트: done, a word and the reward;
+   * under way, what they need (and you can head off on it at once). Returns true if they did.
+   */
+  private async sub(npc: Npc): Promise<boolean> {
+    const s = subStatus(this.ctx.profile());
+    const lines = s ? SUB_STORY[s.q.id] : undefined;
+    if (!s || !lines || s.q.giver !== npc.id) return false;
+    if (s.done) {
+      await this.ctx.dialogue.play([{ who: npc.id, text: lines.done }]);
+      await this.ctx.claimSub?.();
+      return true;
+    }
+    const left = s.target - s.prog;
+    const said: Line[] = s.prog > 0 ? [{ who: npc.id, text: (LEFT[npc.id] ?? LEFT.baram)(left) }] : lines.offer;
+    const pick = await this.ctx.dialogue.play(said, { choices: [{ label: "바로 간다", value: "go" }, LATER] });
+    if (pick === "go") this.ctx.startSub?.();
+    return true;
+  }
+
   /** After the story part: idle chatter and the NPC's own work. */
   private async service(npc: Npc, handled: boolean): Promise<void> {
     const { dialogue, sheets } = this.ctx;
     const p = this.ctx.profile();
+    if (!handled && (await this.sub(npc))) return;
     const idle = pickIdle(npc.id);
     if (npc.role === "elder") {
       if (!handled && idle) await dialogue.play(idle);
@@ -141,3 +168,12 @@ function pickIdle(id: string): Line[] | null {
   if (!sets || sets.length === 0) return null;
   return sets[Math.floor(Math.random() * sets.length)];
 }
+
+/** Each keeper's way of saying how many are left, for a 서브 퀘스트 already under way. */
+const LEFT: Record<string, (n: number) => string> = {
+  baram: (n) => `아직 ${n} 남았어.`,
+  noeul: (n) => `아직 ${n} 남았단다.`,
+  heukwol: (n) => `${n} 남았다.`,
+  dalrae: (n) => `아직 ${n} 남었어.`,
+  haedam: (n) => `아직 ${n} 남았소.`,
+};

@@ -460,18 +460,21 @@ export class Hud {
    * A reward shown where you look, with no panel: what it was for in brush letters, then each thing gained as its
    * picture and amount, rising and fading over a couple of seconds.
    */
-  reward(title: string, r: { exp?: number; pigment?: number; jade?: number; stones?: number; shards?: number; potions?: number; protects?: number; points?: number }): void {
+  reward(title: string, r: { exp?: number; pigment?: number; jade?: number; stones?: number; shards?: number; potions?: number; protects?: number; points?: number }, quote?: { who: string; text: string }): void {
+    // a level-up banner takes the same spot: the reward waits until it has gone
+    const wait = this.levelUntil - performance.now();
+    if (wait > 0) { window.setTimeout(() => this.reward(title, r, quote), wait); return; }
     const map: [keyof typeof r, ResKind][] = [["exp", "exp"], ["pigment", "pigment"], ["jade", "jade"], ["stones", "stone"], ["shards", "shard"], ["potions", "potion"], ["protects", "protect"], ["points", "points"]];
     const items = map.filter(([k]) => (r[k] ?? 0) > 0).map(([k, kind], i) => `<span class="rw-item" style="--i:${i}">${resIcon(kind, "l")}<b>+${(r[k] ?? 0).toLocaleString("ko-KR")}</b><small>${esc(RES[kind].name)}</small></span>`).join("");
     if (!items) return;
     const box = el("[data-reward]", this.root);
-    box.innerHTML = `<p class="rw-title">${esc(title)}</p><div class="rw-items">${items}</div>`;
+    box.innerHTML = `<p class="rw-title">${esc(title)}</p><div class="rw-items">${items}</div>${quote ? `<p class="rw-quote"><b>${esc(quote.who)}</b> ${esc(quote.text)}</p>` : ""}`;
     box.hidden = false;
     box.classList.remove("go");
     void box.offsetWidth;
     box.classList.add("go");
     window.clearTimeout(this.rewardTimer);
-    this.rewardTimer = window.setTimeout(() => { box.hidden = true; }, 2800);
+    this.rewardTimer = window.setTimeout(() => { box.hidden = true; }, quote ? 3400 : 2800);
   }
   private rewardTimer = 0;
 
@@ -651,7 +654,10 @@ export class Hud {
     window.setTimeout(() => e.classList.remove(cls), ms);
   }
 
+  /** when the level-up banner is gone (a reward shown meanwhile waits for it) */
+  private levelUntil = 0;
   levelUp(level: number, unlocked: string | null): void {
+    this.levelUntil = performance.now() + 2200;
     this.flashClass("[data-expbar]", "burst", 1200);
     const box = el("[data-lvup]", this.root);
     el("[data-lvtext]", this.root).textContent = unlocked ? `${level}경지, ${unlocked}을 익혔다` : `${level}경지`;

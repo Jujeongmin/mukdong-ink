@@ -363,3 +363,70 @@ export function chapterOf(quest: number | string): number {
   const n = Number(digits);
   return Number.isInteger(n) && n > 0 ? n : 1;
 }
+
+/**
+ * 서브 퀘스트 lines, in each keeper's own voice: what they ask when you talk to them (offer), and the word they
+ * give when it's done (done: said in the talk, and shown under the reward when handed in from the tracker).
+ */
+export const SUB_STORY: Record<string, { offer: Line[]; done: string }> = {
+  s_bam1: {
+    offer: [{ who: "baram", text: "먹방울이 또 불었어. 대숲 길이 미끄러워." }, { who: "baram", text: "열두 마리만 치워 줄래? 나도 쉬고 싶거든." }],
+    done: "길이 좀 보이네. 고마워.",
+  },
+  s_bam2: {
+    offer: [{ who: "baram", text: "대숲 안쪽에 먹그림자가 숨어 있어." }, { who: "baram", text: "네 마리. 혼자 가기엔 좀 무섭더라." }],
+    done: "그림자 없어지니까 대숲이 조용하다.",
+  },
+  s_bam3: {
+    offer: [{ who: "baram", text: "한 바퀴 돌면서 보이는 대로 베 줘." }, { who: "baram", text: "열다섯이면 오늘은 됐어." }],
+    done: "수고했어. 내일 또 부탁할지도 몰라.",
+  },
+  s_pond1: {
+    offer: [{ who: "noeul", text: "물가에 먹방울이 엉겨서 배를 못 댄단다." }, { who: "noeul", text: "열두 놈만 걷어 다오." }],
+    done: "이제 배를 댈 수 있겠구나. 고맙다.",
+  },
+  s_pond2: {
+    offer: [{ who: "noeul", text: "먹두꺼비가 물에 먹을 뱉어 대는구나." }, { who: "noeul", text: "여덟 마리만 쫓아 다오. 뱉는 자리를 잘 보렴." }],
+    done: "물빛이 조금 맑아졌구나.",
+  },
+  s_pond3: {
+    offer: [{ who: "noeul", text: "연못을 한 바퀴 돌아 보련?" }, { who: "noeul", text: "눈에 띄는 먹귀신 열여덟만 베어 다오." }],
+    done: "덕분에 오늘 밤은 편히 노를 젓겠구나.",
+  },
+  s_peak1: {
+    offer: [{ who: "heukwol", text: "바위 사이에 먹그림자가 다시 고였다." }, { who: "heukwol", text: "열을 베라." }],
+    done: "됐다. 손이 빨라졌군.",
+  },
+  s_peak2: {
+    offer: [{ who: "heukwol", text: "바위틈에 먹두꺼비가 붙어 있다." }, { who: "heukwol", text: "열 마리. 뱉는 먹을 맞지 마라." }],
+    done: "좋다. 다음에도 부탁하지.",
+  },
+  s_peak3: {
+    offer: [{ who: "heukwol", text: "봉우리를 한 바퀴 돌아라." }, { who: "heukwol", text: "스물을 베면 돌아와도 된다." }],
+    done: "쉬어라. 오래 버티는 것도 실력이다.",
+  },
+  s_kiln1: {
+    offer: [{ who: "dalrae", text: "아이고, 옹기들이 또 뛰어다니네." }, { who: "dalrae", text: "열두 개만 깨 줘. 다시 빚으면 되니께." }],
+    done: "어이구, 시원허다. 고마워.",
+  },
+  s_kiln2: {
+    offer: [{ who: "dalrae", text: "잿까마귀가 가마 위에서 재를 뿌려 대." }, { who: "dalrae", text: "여덟 마리만 떨궈 줘." }],
+    done: "하늘이 좀 맑아졌구먼.",
+  },
+  s_kiln3: {
+    offer: [{ who: "dalrae", text: "가마터 한 바퀴만 돌아 줄텨?" }, { who: "dalrae", text: "스물만 베면 오늘은 문 닫어도 되겄어." }],
+    done: "수고혔어. 이따 뭐라도 구워 줄게.",
+  },
+  s_tem1: {
+    offer: [{ who: "haedam", text: "그림자 승병들이 아직 절을 지키고 있소." }, { who: "haedam", text: "열 분만 쉬게 해 주시오." }],
+    done: "고맙소. 조금은 편히 쉬실 거요.",
+  },
+  s_tem2: {
+    offer: [{ who: "haedam", text: "석등지기가 길을 막고 있소." }, { who: "haedam", text: "넷만 무너뜨려 주시오. 내리치기 전에 물러나시고." }],
+    done: "길이 트였소. 등불도 더 멀리 보이겠구려.",
+  },
+  s_tem3: {
+    offer: [{ who: "haedam", text: "절터를 한 바퀴 돌아 주겠소?" }, { who: "haedam", text: "스물둘을 베면 오늘 밤은 조용할 거요." }],
+    done: "오늘도 무사히 지나가는구려. 고맙소.",
+  },
+};

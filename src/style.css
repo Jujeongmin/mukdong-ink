@@ -1829,3 +1829,6 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 @keyframes rw-item { 0% { opacity: 0; transform: translateY(14px) scale(0.7); } 12% { opacity: 1; transform: translateY(0) scale(1.08); } 20% { transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-22px); } }
 @media (prefers-reduced-motion: reduce) { .reward-show.go .rw-title, .reward-show.go .rw-item { animation-duration: 2.8s; animation-name: fade-out; } }
 @media (max-height: 480px) { .reward-show { top: 22%; } .rw-item .spr { width: 40px; height: 40px; } .rw-title { font-size: 20px; } }
+.rw-quote { margin: 2px 0 0; font-size: 14px; color: #f3ecdf; text-shadow: 0 0 3px rgba(10, 9, 8, 0.95), 0 0 8px rgba(10, 9, 8, 0.7); }
+.rw-quote b { font-family: var(--f-brush); margin-right: 6px; color: #f3d27a; }
+.reward-show.go .rw-quote { animation: rw-title 3.4s ease-out both; animation-delay: 0.35s; }
