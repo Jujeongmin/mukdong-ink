@@ -92,6 +92,9 @@ const TABS: Partial<Record<SheetId, [string, string][]>> = {
   settings: SETTINGS_TABS,
 };
 
+/** how long a sheet takes to roll itself up when closed (matches .sheet.closing in style.css) */
+const CLOSE_MS = 260;
+
 /** NPC and gear sheets unroll as a hanging scroll (rods top and bottom, paper with a loose ink frame). */
 export class Sheets {
   private readonly wrap: HTMLElement;
@@ -197,6 +200,12 @@ export class Sheets {
 
   private show(id: SheetId, tab?: string): void {
     if (!this.current) audio.play("ui-open");
+    // reopened while rolling up: start the unroll again
+    if (this.wrap.classList.contains("closing")) {
+      window.clearTimeout(this.closeTimer);
+      this.wrap.classList.remove("closing");
+      this.wrap.hidden = true;
+    }
     this.current = id;
     this.tab = tab ?? TABS[id]?.[0][0] ?? "";
     this.wrap.hidden = false;
@@ -205,12 +214,22 @@ export class Sheets {
     this.card.querySelector<HTMLElement>("[data-close]")?.focus();
   }
 
+  /** Closes at once for the game (nothing is open any more); the scroll rolls itself up on screen first. */
   close(): void {
+    if (!this.current && this.wrap.hidden) return;
     this.current = null;
     this.growthState.focus = undefined;
-    this.wrap.hidden = true;
-    this.card.innerHTML = "";
+    if (this.wrap.hidden || this.wrap.classList.contains("closing")) return;
+    this.wrap.classList.add("closing");
+    window.clearTimeout(this.closeTimer);
+    this.closeTimer = window.setTimeout(() => {
+      this.wrap.classList.remove("closing");
+      if (this.current) return; // reopened meanwhile
+      this.wrap.hidden = true;
+      this.card.innerHTML = "";
+    }, CLOSE_MS);
   }
+  private closeTimer = 0;
 
   /** Re-render after a profile change (keeps the gacha results on screen). */
   refresh(): void {

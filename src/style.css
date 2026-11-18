@@ -1962,3 +1962,16 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .power-pop.go { animation: power-pop 1.8s ease-out both; }
 @keyframes power-pop { 0% { opacity: 0; transform: translate(-50%, 8px) scale(0.85); } 12% { opacity: 1; transform: translate(-50%, 0) scale(1.08); } 22% { transform: translate(-50%, 0) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }
 @media (prefers-reduced-motion: reduce) { #ui .power-pop.go { animation-duration: 1.2s; } }
+/* Every window unrolls on opening and rolls up on closing. The tabbed ones have a fixed height (so a tab switch
+   doesn't jump), which a 0fr→1fr row can't animate: they unroll their paper's height instead. */
+#ui .sheet:is([data-kind="growth"], [data-kind="dyer"], [data-kind="altar"], [data-kind="album"], [data-kind="elder"], [data-kind="settings"], [data-kind="rank"]) .scroll { animation: none; }
+#ui .sheet:is([data-kind="growth"], [data-kind="dyer"], [data-kind="altar"], [data-kind="album"], [data-kind="elder"], [data-kind="settings"], [data-kind="rank"]) .sheet-card { animation: unroll-h 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes unroll-h { from { height: 0; padding-top: 0; padding-bottom: 0; } }
+#ui .sheet.closing { pointer-events: none; animation: sheet-veil-out 0.26s ease-in both; }
+#ui .sheet.closing .scroll { animation: rollup 0.26s cubic-bezier(0.5, 0, 0.8, 0.4) both; }
+#ui .sheet.closing:is([data-kind="growth"], [data-kind="dyer"], [data-kind="altar"], [data-kind="album"], [data-kind="elder"], [data-kind="settings"], [data-kind="rank"]) .scroll { animation: none; }
+#ui .sheet.closing:is([data-kind="growth"], [data-kind="dyer"], [data-kind="altar"], [data-kind="album"], [data-kind="elder"], [data-kind="settings"], [data-kind="rank"]) .sheet-card { animation: rollup-h 0.26s cubic-bezier(0.5, 0, 0.8, 0.4) both; }
+@keyframes rollup { to { grid-template-rows: 0fr; } }
+@keyframes rollup-h { to { height: 0; padding-top: 0; padding-bottom: 0; } }
+@keyframes sheet-veil-out { 60% { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #ui .sheet .sheet-card, #ui .sheet.closing, #ui .sheet.closing .scroll, #ui .sheet.closing .sheet-card { animation-duration: 0.01s !important; } }
