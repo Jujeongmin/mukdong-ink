@@ -471,7 +471,7 @@ export class AutoPlay {
       // the quest's own monster is sought out wherever it stands in the field (그림자 무사 keeps its camp far
       // from the middle); everything else only near the hunting spot
       const wanted = !!questKind && questKind !== "any" && v.kind === questKind;
-      if (!engaged && ((!wanted && fromAnchor > RANGE) || v.level >= p.level + 5)) continue;
+      if (!engaged && !wanted && fromAnchor > RANGE) continue;
       let score = d;
       if (engaged) score -= 100;
       else if (wanted) score -= 60;

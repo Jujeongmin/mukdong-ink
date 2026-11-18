@@ -584,6 +584,13 @@ export class Game {
         this.remotes.set(id, r);
       }
       r.name = rp.name;
+      // someone else levelled up: the same gold burst over them as over you (no sound or banner: it isn't yours)
+      if (rp.level > r.level && !rp.dead) {
+        const a = r.actor;
+        ring(a.x, a.z, 4, GOLD_RGB, 1.0);
+        sparkBurst(a.x, 0.5, a.z, 40, GOLD_RGB, 0.9, 1.4);
+        addLight(a.x, a.z, 9, 1.4, GOLD_RGB, a);
+      }
       r.level = rp.level;
       r.dead = rp.dead;
       r.actor.setNet(rp.pose, rp.look, rp.dead);
