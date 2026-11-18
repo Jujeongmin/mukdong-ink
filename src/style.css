@@ -1991,9 +1991,14 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .menu:not(.open) .menu-items { max-width: 0; opacity: 0; transform: translateX(18px); pointer-events: none; }
 #ui .menu-items > .brush-label { flex: none; }
 #ui .menu-toggle { position: relative; flex: none; width: 26px; height: 52px; margin-top: 4px; border: 0; padding: 0; background: none; cursor: pointer; pointer-events: auto; }
-/* the chevron: a brush stroke bent into ‹ (open: › to fold it away) */
-#ui .menu-toggle i { position: absolute; left: 50%; top: 50%; width: 11px; height: 11px; margin: -6px 0 0 -3px; border-left: 3px solid #efe5d1; border-bottom: 3px solid #efe5d1; border-radius: 1px 0 1px 2px; transform: rotate(45deg); filter: drop-shadow(0 0 2px rgba(10, 9, 8, 0.95)); transition: transform 0.32s ease; }
-#ui .menu.open .menu-toggle i { transform: rotate(-135deg); margin-left: -8px; }
-#ui .menu-toggle:hover i { border-color: #fff; }
+/* the toggle is a scroll rod (the same wood as the windows' rods): the menu unrolls leftward off it like a
+   hanging scroll and rolls back onto it */
+#ui .menu-toggle i { position: absolute; left: 50%; top: 4px; bottom: 4px; width: 9px; margin-left: -4.5px; border-radius: 4px;
+  background: linear-gradient(90deg, #4a3a2c, #1f1913 55%, #3d3025); box-shadow: 0 0 0 1px rgba(239, 229, 209, 0.18), 0 2px 4px rgba(0, 0, 0, 0.5); transition: transform 0.32s ease; }
+#ui .menu-toggle i::before, #ui .menu-toggle i::after { content: ""; position: absolute; left: -2.5px; width: 14px; height: 6px; border-radius: 3px; background: linear-gradient(#5a4836, #2a2119); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
+#ui .menu-toggle i::before { top: -3px; }
+#ui .menu-toggle i::after { bottom: -3px; }
+#ui .menu:not(.open) .menu-toggle i { transform: rotate(-4deg); }
+#ui .menu-toggle:hover i { filter: brightness(1.25); }
 #ui .menu-dot { position: absolute; right: 2px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: #c0281c; box-shadow: 0 0 0 1.5px rgba(10, 9, 8, 0.6); }
 @media (prefers-reduced-motion: reduce) { #ui .menu-items, #ui .menu-toggle i { transition: none; } }
