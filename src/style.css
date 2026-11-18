@@ -1879,3 +1879,18 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 @media (prefers-reduced-motion: reduce) { .dlg-box > .dlg-next.dlg-next { animation: none; opacity: 0.7; } }
 /* NPC and own names read over a dark night village: a tighter, denser paper halo round the ink */
 .tag.npc, .tag.me { color: #1d1916; text-shadow: 0 0 1px #f3ecdf, 0 0 2px #f3ecdf, 0 0 3px #f3ecdf, 0 0 6px rgba(243, 236, 223, 0.9); }
+/* enhance odds: one brush stroke split by pigment (solid ink = 성공, a pale wash = 실패, cinnabar = 파괴, ochre = +0으로),
+   the legend marked with ink dabs, not colored squares */
+#ui .sheet .odds-bar { height: 15px; border-radius: 0; box-shadow: none; background: none; overflow: visible;
+  -webkit-mask: var(--m-stroke) center / 100% 100% no-repeat; mask: var(--m-stroke) center / 100% 100% no-repeat; }
+#ui .sheet .odds-bar i + i { box-shadow: inset 2px 0 0 #efe5d1; }
+#ui .sheet .odds-bar .ok { background: #2b2622; }
+#ui .sheet .odds-bar .keep { background: rgba(43, 38, 34, 0.22); }
+#ui .sheet .odds-bar .brk { background: #a8261b; }
+#ui .sheet .odds-bar .reset { background: #a7802f; }
+#ui .sheet .odds-legend .k::before { width: 11px; height: 9px; border-radius: 0; box-shadow: none; background: rgba(43, 38, 34, 0.3);
+  -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .odds-legend .k.ok::before { background: #2b2622; }
+#ui .sheet .odds-legend .k.brk::before { background: #a8261b; }
+#ui .sheet .odds-legend .k.reset::before { background: #a7802f; }
+#ui .sheet .odds-legend .k.safe::before { content: none; }
