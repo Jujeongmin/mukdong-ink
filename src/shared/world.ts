@@ -148,7 +148,7 @@ export const NPC_SAFE_R = 5;
 
 /* ---------- channels ---------- */
 export const CHANNELS = 10;
-export const CHANNEL_CAPACITY = 20; // players per zone room
+export const CHANNEL_CAPACITY = 15; // players per zone room (everyone in a room hears every move; kept low for lag)
 /** A player picks their own channel at most this often (no hopping from boss to boss). */
 export const CHANNEL_HOP_MS = 10_000;
 export function roomIdFor(zone: string, channel: number): string {
