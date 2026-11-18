@@ -2102,7 +2102,9 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   #ui .sheet[data-kind="growth"] .odds-legend b { font-size: 13px; }
   #ui .sheet[data-kind="growth"] .enh2-protect { padding: 2px 0; }
 }
-/* tabs: the open one in ink with a short cinnabar brush flick under its middle (the long black bar read as a
-   web tab, not a mark on paper) */
-#ui .sheet .tabs [aria-selected="true"]::after { left: 18%; right: 18%; bottom: 2px; height: 5px; background: #a8261b; opacity: 0.85; }
+/* tabs: told apart by ink alone (an underline read as a web tab) */
+#ui .sheet .tabs [aria-selected="true"]::after { content: none; }
+/* no underline at all: the open tab is full ink, the others pale */
+#ui .sheet .tabs button { color: rgba(43, 38, 34, 0.42); }
+#ui .sheet .tabs button[aria-selected="true"] { color: var(--ink); }
 #ui .sheet .tabs button { padding-bottom: 8px; }
