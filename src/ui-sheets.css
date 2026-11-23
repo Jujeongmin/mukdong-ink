@@ -693,3 +693,30 @@
   #ui .sheet[data-kind="growth"] .gr2-art { width: 40px; height: 40px; }
   #ui .sheet[data-kind="growth"] .gr2-art::before { opacity: 0.12; }
 }
+
+/* =========================== 염색: the figure in its colors =========================== */
+#ui .sheet .dye-fig { position: relative; isolation: isolate; margin: 4px auto 0; width: 150px; height: 170px; display: grid; place-items: center; }
+#ui .sheet .dye-fig::before { content: ""; position: absolute; inset: -6% -30%; z-index: -1; background: var(--scarf); opacity: 0.16; transform: rotate(-14deg);
+  -webkit-mask: var(--m-splash) center / contain no-repeat; mask: var(--m-splash) center / contain no-repeat; transition: background 0.4s; }
+#ui .sheet .dye-fig::after { content: ""; position: absolute; left: 18%; right: 18%; bottom: 2px; height: 7px; background: var(--ink); opacity: 0.3; z-index: -1;
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .dye-fig svg { width: 120px; height: 170px; overflow: visible; }
+#ui .sheet .dye-fig svg [stroke="var(--scarf)"], #ui .sheet .dye-fig svg [stroke="var(--sash)"] { transition: stroke 0.4s; }
+#ui .sheet[data-kind="dyer"] .dye-harmony { text-align: center; }
+/* phones: the sheet already scrolls for the two swatch rows; the preview would only push them further */
+@media (max-height: 480px) { #ui .sheet .dye-fig { display: none; } }
+
+/* =========================== quiet sheets: a far range of ink hills =========================== */
+/* 먹노인, 염색 and 설정 often leave the lower paper empty: a faint range of hills sits along the bottom of the scroll. */
+#ui .sheet:is([data-kind="elder"], [data-kind="dyer"], [data-kind="settings"]) .scroll::after {
+  display: block; left: 6px; right: 6px; bottom: 10px; top: auto; height: 120px; border-radius: 0; z-index: 1; pointer-events: none; background: var(--ink); opacity: 0.09;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 140' preserveAspectRatio='none'%3E%3Cpath fill-opacity='.45' d='M0 140V95Q40 70 70 82Q100 50 130 66Q160 30 190 58Q215 70 240 60Q280 40 310 70Q350 85 380 62Q420 35 450 58Q490 80 520 66Q560 52 600 74V140Z'/%3E%3Cpath fill-opacity='.7' d='M466 140L474 58Q480 34 488 56L497 140ZM500 140L506 82Q511 68 517 84L522 140Z'/%3E%3Cpath d='M0 140V118Q60 96 110 110Q150 88 190 104Q260 120 300 100Q340 86 380 106Q440 124 480 104Q540 90 600 112V140Z'/%3E%3C/svg%3E") center bottom / 100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 140' preserveAspectRatio='none'%3E%3Cpath fill-opacity='.45' d='M0 140V95Q40 70 70 82Q100 50 130 66Q160 30 190 58Q215 70 240 60Q280 40 310 70Q350 85 380 62Q420 35 450 58Q490 80 520 66Q560 52 600 74V140Z'/%3E%3Cpath fill-opacity='.7' d='M466 140L474 58Q480 34 488 56L497 140ZM500 140L506 82Q511 68 517 84L522 140Z'/%3E%3Cpath d='M0 140V118Q60 96 110 110Q150 88 190 104Q260 120 300 100Q340 86 380 106Q440 124 480 104Q540 90 600 112V140Z'/%3E%3C/svg%3E") center bottom / 100% 100% no-repeat; }
+@media (max-height: 480px) {
+  #ui .sheet:is([data-kind="elder"], [data-kind="dyer"], [data-kind="settings"]) .scroll::after { display: none; }
+}
+
+/* =========================== 먹노인: quests marked with a seal =========================== */
+#ui .sheet[data-kind="elder"] .qrow { padding-left: 30px; }
+#ui .sheet[data-kind="elder"] .qrow::before { content: ""; position: absolute; left: 2px; top: 12px; width: 20px; height: 20px; background: var(--cinnabar); opacity: 0.85;
+  -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }

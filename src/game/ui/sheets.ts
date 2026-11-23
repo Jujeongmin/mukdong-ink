@@ -53,6 +53,32 @@ const SLOT_NAME: Record<SlotId, string> = { weapon: t("무기"), hat: t("머리"
 const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ? t("검") : t("붓")) : SLOT_NAME[it.slot]);
 const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", 일반: "c" };
 
+/**
+ * The 염색 sheet's preview: the stick figure (round head, joined limbs, big brush) drawn in ink, its sash and scarf in
+ * the colors it wears now (undyed = ink). Drawn on a wash of the scarf's color so a new dye shows at once.
+ */
+function dyeFigure(sash: number | null | undefined, scarf: number | null | undefined): string {
+  const c = (h: number | null | undefined) => (h == null ? "#3d3a36" : hexCss(h));
+  return `<figure class="dye-fig" style="--sash:${c(sash)};--scarf:${c(scarf)}" aria-hidden="true"><svg viewBox="0 0 120 170">
+    <g fill="none" stroke="#2b2622" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M60 40 L60 98" stroke-width="7"/>
+      <path d="M60 52 L44 74 L36 96" stroke-width="6"/><path d="M60 52 L76 70 L90 66" stroke-width="6"/>
+      <path d="M60 98 L48 128 L44 158" stroke-width="7"/><path d="M60 98 L72 128 L80 156" stroke-width="7"/>
+      <path d="M92 70 L104 8" stroke-width="4"/>
+    </g>
+    <path d="M100 10 Q112 -4 108 18 Q104 30 100 10 Z" fill="#2b2622"/>
+    <circle cx="60" cy="24" r="15" fill="#2b2622"/>
+    <g fill="none" stroke="var(--scarf)" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M49 40 Q60 47 71 40" stroke-width="7"/>
+      <path d="M50 42 Q34 50 22 46 Q30 54 14 60" stroke-width="5"/>
+    </g>
+    <g fill="none" stroke="var(--sash)" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M51 90 L69 90" stroke-width="7"/>
+      <path d="M54 92 Q50 106 56 116" stroke-width="4"/><path d="M57 92 Q62 104 60 114" stroke-width="3.5"/>
+    </g>
+  </svg></figure>`;
+}
+
 /** gearBonusText (shared/items.ts) built here so it can be translated: same rounding */
 function gearBonus(id: string): string {
   const hp = hatHpBonus(id), cd = sashCdCut(id);
@@ -434,6 +460,7 @@ export class Sheets {
       <div class="dye-cost"><span class="cap">${t("한 번 물들이는 데")}</span>${resChip("pigment", DYE_COST, { need: true, short: p.pigment < DYE_COST })}</div>
       <div class="dye-row"><span class="sec">${t("허리띠")}</span><div class="swatches">${sw("sash")}</div></div>
       <div class="dye-row"><span class="sec">${t("목도리")}</span><div class="swatches">${sw("scarf")}</div></div>
+      ${dyeFigure(p.dye.sash, p.dye.scarf)}
       ${harmony >= 0 ? `<p class="dye-harmony on">${esc(t("염색 조화 · {skill} 피해 +{n}%", { skill: t(SKILLS[harmony].name), n: Math.round(HARMONY_BONUS * 100) }))}</p>` : `<p class="dye-harmony">${t("허리띠와 목도리가 같은 색이면 그 색 검법 피해 +{n}%", { n: Math.round(HARMONY_BONUS * 100) })}</p>`}`;
   }
 
