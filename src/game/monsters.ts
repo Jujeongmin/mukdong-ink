@@ -109,6 +109,31 @@ const M_aura = new THREE.MeshBasicMaterial({ color: 0x0b0a10, transparent: true,
 const FIRE: RGB = [0.95, 0.42, 0.12];
 const EMBER: RGB = [1, 0.75, 0.3];
 
+/**
+ * 먹덩굴's bramble (a low clump, nine stalks and their thorns), baked into one geometry once (SHARED, never
+ * disposed): a vine is a single draw instead of 19, and a zone has about ten of them.
+ */
+let vineGeo: THREE.BufferGeometry | null = null;
+function vineGeometry(): THREE.BufferGeometry {
+  if (vineGeo) return vineGeo;
+  const parts: THREE.BufferGeometry[] = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), p = new THREE.Vector3(), sc = new THREE.Vector3();
+  const put = (geo: THREE.BufferGeometry, x: number, y: number, z: number, sx: number, sy: number, sz: number, rx = 0, rz = 0) => {
+    const g = geo.index ? geo.toNonIndexed() : geo.clone();
+    g.applyMatrix4(m.compose(p.set(x, y, z), q.setFromEuler(e.set(rx, 0, rz)), sc.set(sx, sy, sz)));
+    parts.push(g);
+  };
+  put(G.head, 0, 0.25, 0, 1.3, 0.38, 1.3);
+  for (let k = 0; k < 9; k++) {
+    const a = (k / 9) * Math.PI * 2, r = 0.55 + (k % 3) * 0.22, h = 1.3 + (k % 4) * 0.35;
+    put(G.cone, Math.cos(a) * r, h * 0.5, Math.sin(a) * r, 0.13, h, 0.13, Math.sin(a) * 0.45, -Math.cos(a) * 0.45);
+    put(G.cone, Math.cos(a) * (r + 0.18), h * 0.55, Math.sin(a) * (r + 0.18), 0.05, 0.28, 0.05, Math.sin(a) * 1.3, -Math.cos(a) * 1.3);
+  }
+  vineGeo = mergeGeometries(parts)!;
+  for (const g of parts) g.dispose();
+  return vineGeo;
+}
+
 /** A standalone figure of a monster kind for the 먹그림 도감 picture (SHARED geometry and materials only). */
 export function monsterFigure(kind: string): THREE.Group {
   const g = buildLook(kind).group;
@@ -154,15 +179,8 @@ function buildLook(kind: string): Look {
     armL = arm(body, 0.2, 2.25, -1.35, 1.7, 0.24, 0.42, flash);
     armR = arm(body, 0.2, 2.25, 1.35, 1.7, 0.24, 0.42, flash);
   } else if (kind === "vine") {
-    // 먹덩굴: a thorny bramble of ink stalks around a low clump
-    add(mesh(G.head, M_enemy, 0, 0.25, 0, 1.3, 0.38, 1.3));
-    for (let k = 0; k < 9; k++) {
-      const a = (k / 9) * Math.PI * 2, r = 0.55 + (k % 3) * 0.22, h = 1.3 + (k % 4) * 0.35;
-      const st = add(mesh(G.cone, M_enemy, Math.cos(a) * r, h * 0.5, Math.sin(a) * r, 0.13, h, 0.13));
-      st.rotation.set(Math.sin(a) * 0.45, 0, -Math.cos(a) * 0.45);
-      const th = add(mesh(G.cone, M_enemy, Math.cos(a) * (r + 0.18), h * 0.55, Math.sin(a) * (r + 0.18), 0.05, 0.28, 0.05));
-      th.rotation.set(Math.sin(a) * 1.3, 0, -Math.cos(a) * 1.3);
-    }
+    // 먹덩굴: a thorny bramble of ink stalks around a low clump, one merged mesh (it never bends apart)
+    add(new THREE.Mesh(vineGeometry(), M_enemy));
   } else if (kind === "shadelord") {
     // 그림자 무사: a bigger shade in a dark aura
     const cone = add(mesh(G.cone, M_enemy, 0, 0.75, 0, 0.42, 1.3, 0.42));

@@ -31,20 +31,20 @@ export function installSprites(): void {
     "--m-enso": "./assets/ui/ui-enso.png",
     "--m-dab": "./assets/ui/ui-dab.png",
     "--m-splash": "./assets/ui/ui-splash.png",
-    "--sheet-mat": "./assets/materials2.png",
+    "--sheet-mat": "./assets/materials2.webp",
     "--sheet-hud": "./assets/hud_icons3.png",
   };
   for (const [k, v] of Object.entries(kit)) root.setProperty(k, `url("${url(v)}")`);
   // ink-sketch sheets (v3, redrawn to match the prologue paintings); new names so deploy caches can't serve the old ones
   const style = document.createElement("style");
   style.textContent = `
-    .ic-item { background-image: url("${url("./assets/items_v3.png")}"); }
-    .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills_v3.png")}"); }
-    .ic-mat { background-image: url("${url("./assets/materials2.png")}"); }
-    .ic-item.w2 { background-image: url("${url("./assets/weapons3.png")}"); }`;
+    .ic-item { background-image: url("${url("./assets/items_v3.webp")}"); }
+    .ic-sk, .ic-pigment, .ic-jade { background-image: url("${url("./assets/skills_v3.webp")}"); }
+    .ic-mat { background-image: url("${url("./assets/materials2.webp")}"); }
+    .ic-item.w2 { background-image: url("${url("./assets/weapons3.webp")}"); }`;
   document.head.appendChild(style);
   // a sheet that fails to load would leave empty frames: say so in the console instead of failing silently
-  for (const f of ["items_v3.png", "skills_v3.png", "materials2.png", "weapons3.png"]) {
+  for (const f of ["items_v3.webp", "skills_v3.webp", "materials2.webp", "weapons3.webp"]) {
     const img = new Image();
     img.onerror = () => console.warn(`[ui] icon sheet failed to load: ${f}`);
     img.src = url(`./assets/${f}`);
@@ -59,16 +59,16 @@ export function installSprites(): void {
 export function itemIcon(it: ItemDef, size = ""): string {
   const w2 = weapons2Cell(it);
   if (w2 >= 0) {
-    // weapons3.png: 3×2, the swords
+    // weapons3.webp: 3×2, the swords
     return `<i class="spr ic-item w2${size ? ` ${size}` : ""}" style="background-position:${(w2 % 3) * 50}% ${Math.floor(w2 / 3) * 100}%" aria-hidden="true"></i>`;
   }
   const col = it.icon % 4, row = Math.floor(it.icon / 4);
   return `<i class="spr ic-item${size ? ` ${size}` : ""}" style="background-position:${col * 33.333}% ${row * 33.333}%" aria-hidden="true"></i>`;
 }
 
-/** The swords' cells in weapons3.png, by id (used until / unless the item names its atlas). */
+/** The swords' cells in weapons3.webp, by id (used until / unless the item names its atlas). */
 const WEAPONS2: Record<string, number> = { w_inkblade: 0, w_reedblade: 1, w_rainblade: 2, w_nightblade: 3, w_voidblade: 4 };
-/** Cell in weapons3.png, or -1 for an items_v3.png item. An `atlas: "weapons2"` field wins and uses `icon` as the cell. */
+/** Cell in weapons3.webp, or -1 for an items_v3.webp item. An `atlas: "weapons2"` field wins and uses `icon` as the cell. */
 function weapons2Cell(it: ItemDef): number {
   if (it.atlas === "weapons2") return it.icon;
   if (it.atlas) return -1;
@@ -88,7 +88,7 @@ export const RES: Record<ResKind, { name: string; tip: string }> = {
   exp: { name: t("경험"), tip: t("쌓이면 경지가 오른다.") },
 };
 
-/** The picture for a resource (`.ic-res` sizes it; pigment / jade come from the skills sheet, the rest from materials2.png). */
+/** The picture for a resource (`.ic-res` sizes it; pigment / jade come from the skills sheet, the rest from materials2.webp). */
 export function resIcon(k: ResKind, size = ""): string {
   const cls = k === "pigment" ? "ic-pigment" : k === "jade" ? "ic-jade" : k === "points" ? "ic-pts" : k === "exp" ? "ic-exp" : `ic-mat ic-mat-${k}`;
   return `<i class="spr ic-res ${cls}${size ? ` ${size}` : ""}" aria-hidden="true"></i>`;

@@ -368,6 +368,26 @@ function addOcclusion(sh: THREE.WebGLProgramParametersWithUniforms): void {
 }
 THREE.MeshLambertMaterial.prototype.onBeforeCompile = addOcclusion;
 normalMat.onBeforeCompile = addOcclusion;
+/*
+ * The normal pass gives each mesh a normal material of its own kind instead of scene.overrideMaterial: one override
+ * material drawn over plain and instanced meshes in turn made three.js rebuild its program key (a long string and
+ * a parameter object) at every switch, ~6 times a frame, which was most of the per-frame garbage. One material per
+ * kind keeps each on its own cached program.
+ */
+const normalInst = normalMat.clone();
+normalInst.onBeforeCompile = addOcclusion;
+const normalInstCol = normalMat.clone();
+normalInstCol.onBeforeCompile = addOcclusion;
+const swapMesh: THREE.Mesh[] = [];
+const swapMat: (THREE.Material | THREE.Material[])[] = [];
+function toNormal(o: THREE.Object3D): void {
+  const m = o as THREE.Mesh;
+  if (!m.isMesh) return;
+  swapMesh.push(m);
+  swapMat.push(m.material);
+  const im = m as unknown as THREE.InstancedMesh;
+  m.material = im.isInstancedMesh ? (im.instanceColor ? normalInstCol : normalInst) : normalMat;
+}
 const _occ = new THREE.Vector3();
 /** In the field the camera cuts scenery away between itself and the player (off on the title screen). */
 export function setOcclusion(on: boolean): void {
@@ -798,13 +818,15 @@ export function renderFrame(dt: number): void {
   }
   renderer.setRenderTarget(colorRT);
   renderer.render(scene, camera);
-  scene.overrideMaterial = normalMat;
   scene.background = BLACK;
   for (const o of noNormalPass) o.visible = false;
+  scene.traverseVisible(toNormal);
   renderer.setRenderTarget(normalRT);
   renderer.render(scene, camera);
+  for (let i = 0; i < swapMesh.length; i++) swapMesh[i].material = swapMat[i];
+  swapMesh.length = 0;
+  swapMat.length = 0;
   for (const o of noNormalPass) o.visible = true;
-  scene.overrideMaterial = null;
   scene.background = BG;
   renderer.setRenderTarget(null);
   renderer.render(postScene, postCam);
