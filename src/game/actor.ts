@@ -16,7 +16,7 @@ import { POSE, KEYS, Rig, blend, runPose, sampleKeys, sampleMotion } from "./ren
 import { HIT1, HIT2, HIT3, type MotionClip } from "./render/motion/sword";
 import {
   BLOT_DELAY, INK_TRAIL, Ribbon, SILVER_TRAIL, SKILL_COL, Trail, earthSlam, fireCrescent, inkBurst, inkDrop, inkSweep, later, ring,
-  inkAfterimage, sparkBurst, sparks, spawnBlot, spawnGhost,
+  inkAfterimage, sparks, spawnBlot, spawnGhost,
 } from "./render/fx";
 import { strokeAdd, strokeBegin, strokeEnd } from "./render/strokes";
 import type { RGB } from "./util";
@@ -74,8 +74,6 @@ const ROLL_POSE = Float32Array.from([1.1, 0.5, 1.9, 1.6, 2.0, 1.5, 1.9, -2.4, 1.
 const SKILL_CD = SKILLS.map((s) => s.cd);
 const WHITE: RGB = [1, 1, 1];
 const EMBER: RGB = [1, 0.62, 0.15];
-const GOLD_MOTE: RGB = [0.95, 0.78, 0.32];
-const BLUE_MOTE: RGB = [0.55, 0.75, 1];
 /** the air round a figure in 영웅 (purple) or 전설 (gold) gear */
 const AURA_EPIC: RGB = [0.62, 0.38, 0.88];
 const AURA_LEGEND: RGB = [1, 0.8, 0.32];
@@ -195,8 +193,6 @@ export class Actor {
   private aura = 0;
   private auraCol: RGB = AURA_EPIC;
   private auraRing = 0;
-  /** the scarf's dye as a color (null: undyed, no flecks) */
-  private scarfCol: RGB | null = null;
   private windX = 0;
   private windZ = 0;
   private lookKey = "";
@@ -246,8 +242,6 @@ export class Actor {
     const best = Math.max(RANK[w?.r ?? ""] ?? 0, RANK[h?.r ?? ""] ?? 0, RANK[s?.r ?? ""] ?? 0);
     this.aura = best >= 2 ? best : 0;
     this.auraCol = best >= 3 ? AURA_LEGEND : AURA_EPIC;
-    const sc = look.scarfDye;
-    this.scarfCol = sc == null ? null : [((sc >> 16) & 255) / 255, ((sc >> 8) & 255) / 255, (sc & 255) / 255];
   }
 
   teleport(x: number, z: number): void {
@@ -348,11 +342,6 @@ export class Actor {
     }
     if (i === 2) { this.trail.col = col; this.sk2Air = false; }
     if (i === 3) { this.trail.col = SILVER_TRAIL; if (flourish) addLight(this.x, this.z, 7, 0.8, WHITE, this); this.windX = this.x; this.windZ = this.z; }
-    // the cast itself: a burst of the skill's pigment round the body (먹감옥 is ink: a burst of ink)
-    if (flourish) {
-      if (i === 4) inkBurst(this.x, 1.1, this.z, 16, 0, 0, 1.1);
-      else sparkBurst(this.x, 1.1, this.z, 18, i === 3 ? WHITE : col, 0.75, 1.3);
-    }
     if (!this.local) return;
     actorFx.onCast?.(i);
     this.cd[i] = this.skillCd(i);
@@ -897,21 +886,11 @@ export class Actor {
     rig.inner.localToWorld(vA);
     rig.inner.localToWorld(vB);
     this.trail.push(vA, vB);
-    // +10: blue motes drift off the brush tip, +15: gold ones, thicker
+    // 영웅 / 전설 gear: a faint ring of its color breathes out at the feet now and then (전설 more often)
     const showy = this.local || !actorFx.remoteLow;
-    if (showy && this.plus >= 10 && Math.random() < (this.plus >= 15 ? 0.55 : 0.22)) {
-      sparks.emit(vB.x, vB.y, vB.z, (Math.random() - 0.5) * 0.8, 0.6 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8, 0.03 + Math.random() * 0.045, 0.85, this.plus >= 15 ? GOLD_MOTE : BLUE_MOTE, 1.5);
-    }
-    // 영웅 / 전설 gear: motes of its color rise off the body; 전설 also breathes a faint ring at the feet
-    if (showy && this.aura && this.state !== "dead") {
-      if (Math.random() < dt * (this.aura >= 3 ? 20 : 10)) {
-        const a = Math.random() * Math.PI * 2, r = 0.25 + Math.random() * 0.35;
-        sparks.emit(this.x + Math.cos(a) * r, this.y + 0.2 + Math.random() * 1.5, this.z + Math.sin(a) * r, Math.cos(a) * 0.3, 1.6 + Math.random() * 1.2, Math.sin(a) * 0.3, 0.04 + Math.random() * 0.05, 1.0, this.auraCol, 1.2);
-      }
-      if (this.aura >= 3 && this.onGround) {
-        this.auraRing -= dt;
-        if (this.auraRing <= 0) { this.auraRing = 2.6; ring(this.x, this.z, 0.95, AURA_LEGEND, 1.3, 0, null, this); }
-      }
+    if (showy && this.aura && this.state !== "dead" && this.onGround) {
+      this.auraRing -= dt;
+      if (this.auraRing <= 0) { this.auraRing = this.aura >= 3 ? 2.2 : 3.4; ring(this.x, this.z, 0.95, this.auraCol, 1.3, 0, null, this); }
     }
     const t = feel.time + this.idx * 3;
     // cloth speed: how hard the scarf and sash are blown back (running, rolling, dashing)
@@ -922,11 +901,6 @@ export class Actor {
       vA.set(rig.neck.x - 0.1, rig.neck.y - 0.06, i ? 0.06 : -0.05);
       rig.inner.localToWorld(vA);
       (i ? this.scarf2 : this.scarf).update(dt, vA.x, vA.y, vA.z, this.head, t + i * 0.9, cloth, i ? 1 : -1);
-    }
-    // a dyed scarf sheds flecks of its color when it streams out behind (running, rolling, dashing)
-    if (showy && this.scarfCol && cloth > 3 && Math.random() < dt * cloth * 1.4) {
-      this.scarf.tailEnd(vA);
-      sparks.emit(vA.x, vA.y, vA.z, (Math.random() - 0.5) * 0.6, 0.3 + Math.random() * 0.6, (Math.random() - 0.5) * 0.6, 0.03 + Math.random() * 0.04, 0.6, this.scarfCol, 2);
     }
     for (let i = 0; i < 2; i++) {
       vA.set(rig.waistBack.x, rig.waistBack.y, i ? 0.05 : -0.05);

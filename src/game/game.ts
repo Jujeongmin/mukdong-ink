@@ -26,7 +26,7 @@ import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
 import { camFocus, camFwd, camera, colorStain, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
 import type { RGB } from "./util";
-import { SKILL_COL, bigMoment, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
+import { SKILL_COL, bigMoment, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
 import { Hud, type TargetInfo } from "./ui/hud";
@@ -624,9 +624,7 @@ export class Game {
       // someone else levelled up: the same gold burst over them as over you (no sound or banner: it isn't yours)
       if (rp.level > r.level && !rp.dead) {
         const a = r.actor;
-        ring(a.x, a.z, 4, GOLD_RGB, 1.0);
-        sparkBurst(a.x, 0.5, a.z, 40, GOLD_RGB, 0.9, 1.4);
-        addLight(a.x, a.z, 9, 1.4, GOLD_RGB, a);
+        bigMoment(a.x, a.z, GOLD_RGB, 1, false);
       }
       r.level = rp.level;
       // their technique leaves its color on the ground here too (nothing extra on the wire: the skill counter

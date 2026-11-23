@@ -711,20 +711,15 @@ export function earthSlam(x: number, z: number, local: boolean, r = 5, echo = fa
 }
 
 /* ---------- big moments: level-up, an awakening, a chapter boss falling ----------
-   A swirl of the color rising round the spot, three rings spreading one after another, a burst and a light.
-   About 110 pooled sparks; nothing allocates. */
+   Three rings of the color spreading one after another, the color soaking into the ground and a light.
+   Nothing allocates. */
 export function bigMoment(x: number, z: number, col: readonly number[], power = 1, local = true): void {
   const c = col as RGB;
   ring(x, z, 2.4 * power, c, 0.8);
   ring(x, z, 4.4 * power, c, 1.15, 0, INK_RING);
   ring(x, z, 6.6 * power, c, 1.5);
-  for (let k = 0; k < 72; k++) {
-    const a = k * 0.36, r = 0.35 + k * 0.03 * power;
-    sparks.emit(x + Math.cos(a) * r, 0.15 + k * 0.035, z + Math.sin(a) * r,
-      -Math.sin(a) * 4 + Math.cos(a) * 1.2, 2.5 + Math.random() * 3, Math.cos(a) * 4 + Math.sin(a) * 1.2,
-      0.05 + Math.random() * 0.07, 1.1 + Math.random() * 0.5, k % 4 === 0 ? WHITE : c, 1);
-  }
-  sparkBurst(x, 1.2, z, 40, c, 1.3 * power, 2.2);
+  // no sparks (dots read as noise): the color floods the ground instead
+  colorStain(x, z, 5.5 * power, c);
   addLight(x, z, 12 * power, 1.8, c);
   if (local) feel.shake = Math.max(feel.shake, 0.35);
 }
