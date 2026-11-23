@@ -2110,3 +2110,19 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .sheet .tabs button { padding-bottom: 8px; }
 /* the price under each jade product, readable */
 #ui .sheet .shop-tile small.price { font-family: var(--f-brush); font-weight: 700; font-size: 14px; color: #8a6418; }
+
+/* readability pass: no stray underlines. Window titles, 닫기 and the chosen filter carry no brush line (the title's
+   fixed-width stroke overshot short titles and read as "수련_"); the chosen filter is told by full ink like the tabs.
+   Stat labels drop their lines too. Unchosen tabs/filters and unaffordable buttons are a little darker to read. */
+#ui .sheet .sheet-card header h2::after,
+#ui .sheet .close.btn.btn.btn::after, #ui .sheet .close::after,
+#ui .sheet .seg-b[aria-checked="true"]::after,
+#ui .sheet .gear2 .stats > span::after { content: none; }
+#ui .sheet .sheet-card header h2 { padding-bottom: 0; }
+#ui .sheet .close.close.btn.btn.btn { padding-bottom: 2px; color: var(--ink-soft); }
+#ui .sheet .close.close.btn.btn.btn:hover { color: var(--ink); }
+#ui .sheet .gear2 .stats > span { padding-bottom: 2px; }
+#ui .sheet .seg-b { color: rgba(43, 38, 34, 0.5); }
+#ui .sheet .seg-b[aria-checked="true"] { color: var(--ink); }
+#ui .sheet .tabs button:not([aria-selected="true"]) { color: rgba(43, 38, 34, 0.52); }
+#ui .sheet .btn.btn.btn:disabled, #ui .sheet .pull:disabled { opacity: 0.62; }
