@@ -2143,8 +2143,8 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .bossbar .tg-pic::before { content: ""; position: absolute; inset: -5px; z-index: -1; background: rgba(239, 229, 209, 0.82);
   -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
 #ui .bossbar .tg-pic[hidden] { display: none; }
-#ui .bossbar .gauge .chip { background: #fbf7ee; transition: clip-path 0.5s ease-in-out 1s; }
-#ui .bossbar .gauge .chip.snap { transition: none; }
+#ui .bossbar .gauge .chip, #ui [data-hpbar] .chip { background: #fbf7ee; transition: clip-path 0.5s ease-in-out 1s; }
+#ui .bossbar .gauge .chip.snap, #ui [data-hpbar] .chip.snap { transition: none; }
 #ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 15px; }
 #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(300px, 36vw); height: 20px; }
 #ui .bossbar[data-tier="named"] > b { color: #f3d9a8; }

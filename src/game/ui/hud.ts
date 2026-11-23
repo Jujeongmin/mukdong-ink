@@ -167,6 +167,7 @@ export class Hud {
   private bossShown = false;
   private bossFrac = -1;
   private tgId = "";
+  private hpChip = -1;
   private hpFrac = -1;
   private hpShown = 1;
   private lastExp = -1;
@@ -448,8 +449,11 @@ export class Hud {
     if (this.hpFrac >= 0 && f < this.hpShown) this.flashClass("[data-hpbar]", "hit", 200);
     this.hpShown = f;
     fill.style.setProperty("--f", f.toFixed(3));
-    // the lost part lingers as a darker chip, then catches up
-    el("[data-hpchip]", this.root).style.setProperty("--f", f.toFixed(3));
+    // the lost part lingers as a white band, holds 1 s, then runs down; healing moves it at once (no band)
+    const chip = el("[data-hpchip]", this.root);
+    if (f > this.hpChip) this.snapChip(chip, f);
+    else chip.style.setProperty("--f", f.toFixed(3));
+    this.hpChip = f;
     fill.parentElement?.classList.toggle("low", f < 0.3);
     el("[data-hpt]", this.root).textContent = `${Math.max(0, Math.round(hp))}`;
     this.tipHp = Math.max(0, Math.round(hp));
