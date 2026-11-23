@@ -2159,13 +2159,13 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { height: 16px; }
 #ui .bossbar > b { color: #f6f0e2; text-shadow: 0 0 3px #120e0c, 0 0 2px #120e0c, 0 1px 2px #120e0c; }
 #ui .bossbar[data-tier="named"] > b { color: #f3d9a8; }
-/* phone held sideways: under the menu row, in the middle (clear of my life bar on the left and the quest card on
-   the right; the very top ran into both) */
+/* phone held sideways: a strip along the very top, centred in the free gap between my life bar and the wallet
+   (hud.ts measures it: --top-c, --top-w) and no wider than that gap, so the play area below stays clear */
 @media (max-height: 480px) {
-  #ui .bossbar { top: calc(var(--purse-b, 120px) + 6px); column-gap: 6px; }
-  #ui .bossbar .tg-pic { width: 30px; height: 30px; }
-  #ui .bossbar > b, #ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 12.5px; line-height: 1.15; }
-  #ui .bossbar .gauge.boss, #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(220px, 30vw); height: 13px; }
+  #ui .bossbar { top: calc(3px + var(--safe-t)); left: var(--top-c, 50%); column-gap: 5px; }
+  #ui .bossbar .tg-pic { width: 26px; height: 26px; }
+  #ui .bossbar > b, #ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 12px; line-height: 1.1; max-width: calc(var(--top-w, 260px) - 34px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ui .bossbar .gauge.boss, #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(220px, calc(var(--top-w, 260px) - 36px)); height: 12px; }
 }
 /* at 100% the enso stays open like the painted one (its gap is part of the art); the straight closing flick sat
    off the ring's line beside the gap and read as a stray mark, so it's gone */

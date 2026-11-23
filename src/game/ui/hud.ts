@@ -275,6 +275,16 @@ export class Hud {
         fitMenu();
         root.style.setProperty("--purse-b", `${Math.ceil(purse.getBoundingClientRect().bottom)}px`);
         if (portrait) root.style.setProperty("--portrait-b", `${Math.ceil(portrait.getBoundingClientRect().bottom)}px`);
+        // the free strip along the top between my life bar and the wallet: the target frame sits in its middle
+        const hpR = root.querySelector<HTMLElement>("[data-hpbar]")?.getBoundingClientRect().right ?? 0;
+        let walletL = window.innerWidth;
+        // the wallet chips and the two round buttons only (the menu scroll hangs below them)
+        purse.querySelectorAll<HTMLElement>(":scope > span, :scope > button").forEach((c) => {
+          const r = c.getBoundingClientRect();
+          if (r.width > 0) walletL = Math.min(walletL, r.left);
+        });
+        root.style.setProperty("--top-c", `${Math.round((hpR + walletL) / 2)}px`);
+        root.style.setProperty("--top-w", `${Math.max(120, Math.floor(walletL - hpR - 16))}px`);
         // the top of the thumb arc (its highest visible button): the tracker stops above it
         let top = window.innerHeight;
         root.querySelectorAll<HTMLElement>("[data-arc] > *").forEach((b) => { const r = b.getBoundingClientRect(); if (r.height > 0 && r.right > window.innerWidth * 0.55) top = Math.min(top, r.top); });
