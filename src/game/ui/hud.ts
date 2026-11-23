@@ -105,7 +105,7 @@ const MARKUP = `
   <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="구르기" data-tip-title="구르기 (Space)" data-tip="구르는 동안은 맞지 않는다."><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>구르기</b></button>
   <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="자동 진행 (Z)" aria-pressed="false" data-tip-title="자동 진행 (Z)" data-tip="의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 갈 곳이 없으면 그 자리에서 사냥한다. 검법도 저절로 쓴다."><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>자동</b></button>
   <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="자동 사냥 설정" data-tip-title="자동 사냥 설정" data-tip="쓸 검법, 물약 기준, 의뢰 대상 먼저.">설정</button>
-  <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="물약 마시기 (${KEYS.potion})" data-tip-title="물약 마시기 (${KEYS.potion})" data-tip="길게 누르면 자동 사용 켜기/끄기" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
+  <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="물약 마시기 (${KEYS.potion})" data-tip-title="물약 마시기 (${KEYS.potion})" data-tip="길게 누르거나 우클릭: 자동 사용 켜기/끄기" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
 </div>
 <div class="keyhelp passive" data-help hidden>
   <p><kbd>WASD</kbd> 걷기 <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>우클릭</kbd> 구르기, 구르는 동안은 맞지 않는다</p>
@@ -459,7 +459,7 @@ export class Hud {
     const g = this.root.querySelector<HTMLElement>("[data-potion]");
     if (!g || !this.last) return;
     const s = gameSettings.v;
-    g.dataset.tip = `길게 누르면 자동 사용 켜기/끄기
+    g.dataset.tip = `길게 누르거나 우클릭: 자동 사용 켜기/끄기
 남은 물약 ${this.last.potions}개 · 자동 사용 ${s.autoPotion ? `켜짐 (생명 ${Math.round(s.potionAt * 100)}% 아래)` : "꺼짐"}`;
   }
 
@@ -848,23 +848,32 @@ export class Hud {
   /** The gourd: tap to drink; hold (~0.55 s) to switch 물약 자동 사용; a 자동 mark while it's on. */
   private wireGourd(g: HTMLElement): void {
     let timer = 0, held = false;
+    const flip = () => {
+      const on = !gameSettings.v.autoPotion;
+      gameSettings.set({ autoPotion: on });
+      toastLine(on ? "물약 자동 사용: 켬" : "물약 자동 사용: 끔");
+      this.gourdTip();
+    };
     g.addEventListener("pointerdown", () => {
       held = false;
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        held = true;
-        const on = !gameSettings.v.autoPotion;
-        gameSettings.set({ autoPotion: on });
-        toastLine(on ? "물약 자동 사용: 켬" : "물약 자동 사용: 끔");
-      }, 550);
+      timer = window.setTimeout(() => { held = true; flip(); }, 550);
     });
     const cancel = () => window.clearTimeout(timer);
     g.addEventListener("pointerup", cancel);
     g.addEventListener("pointerleave", cancel);
     g.addEventListener("pointercancel", cancel);
     g.addEventListener("click", (e) => { if (held) { e.preventDefault(); held = false; return; } this.h.potion(); });
-    g.addEventListener("contextmenu", (e) => e.preventDefault());
+    // right click (PC) switches it too; a touch long-press that also raises contextmenu switches only once
+    g.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      window.clearTimeout(timer);
+      if (held) return;
+      held = true;
+      flip();
+    });
     gameSettings.onChange((s) => g.classList.toggle("auto-on", s.autoPotion));
+    g.classList.toggle("auto-on", gameSettings.v.autoPotion);
   }
 
   autoPopOpen(): boolean {
