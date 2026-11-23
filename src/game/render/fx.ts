@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { clamp, type RGB, type Spot } from "../util";
 import { G, dyeCloth } from "./materials";
-import { addLight, camFwd, colorStain, feel, onQuality, overlay, scene, screenSplash } from "./gfx";
+import { GROUND_DEPTH_GLSL, addLight, camFwd, colorStain, feel, groundDepthU, onQuality, overlay, scene, screenSplash } from "./gfx";
 import { Rig } from "./rig";
 
 export const INK_TRAIL: RGB = [0.08, 0.075, 0.07];
@@ -190,10 +190,13 @@ const NOISE_GLSL = `
   float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
   float noise(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
     return mix(mix(hash(i), hash(i + vec2(1, 0)), u.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), u.x), u.y); }`;
+// rings lie on the ground: a figure or prop standing on one is drawn in front of it (scene depth test, as the route)
 const BRUSH_FRAG = `
   uniform vec3 uCol, uEdge; uniform float uProg, uFade, uSeed, uMode; varying vec2 vUv;
   ${NOISE_GLSL}
+  ${GROUND_DEPTH_GLSL}
   void main(){
+    if (behindScene()) discard;
     vec2 p = vUv * 2.0 - 1.0;
     float r = length(p), a = atan(p.y, p.x);
     float n = (noise(vec2(a * 3.0 + uSeed, uSeed)) - 0.5) * 0.16 + (noise(vec2(a * 12.0 + uSeed * 2.0, r * 6.0)) - 0.5) * 0.06;
@@ -217,7 +220,7 @@ const rings: RingFx[] = [];
 for (let i = 0; i < 16; i++) {
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthTest: false, depthWrite: false, side: THREE.DoubleSide,
-    uniforms: { uCol: { value: new THREE.Vector3() }, uEdge: { value: new THREE.Vector3() }, uProg: { value: 0 }, uFade: { value: 0 }, uSeed: { value: 0 }, uMode: { value: 0 } },
+    uniforms: { uCol: { value: new THREE.Vector3() }, uEdge: { value: new THREE.Vector3() }, uProg: { value: 0 }, uFade: { value: 0 }, uSeed: { value: 0 }, uMode: { value: 0 }, ...groundDepthU },
     vertexShader: QUAD_VERT, fragmentShader: BRUSH_FRAG,
   });
   const mesh = new THREE.Mesh(G.flat, mat);

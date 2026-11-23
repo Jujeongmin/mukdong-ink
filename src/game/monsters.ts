@@ -51,6 +51,14 @@ export interface MView {
   grow: number;
   speed: number;
   stamp: number;
+  /** the hit flash's material: the blow's color (null: paper white) */
+  flashMat: THREE.Material | null;
+  /** seconds left of the death (the body swells in the killing color, then bursts); 0 = not dying */
+  dying: number;
+  /** the color of the blow that killed it and when it landed (ms), if it had one */
+  dieCol: RGB | null;
+  dieAt: number;
+  dieTinted: boolean;
 }
 
 function mesh(geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number): THREE.Mesh {
@@ -380,6 +388,28 @@ const SPLAT_EDGE: RGB = [0.02, 0.02, 0.02];
 const INK: RGB = [0.06, 0.06, 0.06];
 
 /** Chapter bosses: the color their shard held (물빛 for 대먹귀, 불빛 for 잿불귀). */
+/* ---------- colored hits and deaths ----------
+   A blow with a color (a skill's, or the scarf's for a brush strike) flashes the body in that color, and a kill by
+   it fills the body with the color: it swells, shrinks and bursts into sparks of it. The materials are written
+   with the dyed alpha (like lantern light) so the ink pass keeps the color; one per color, SHARED, never disposed
+   (a handful: five skills and the dyes). */
+const DIE = 0.5;
+const tintMats = new Map<string, THREE.MeshBasicMaterial>();
+function tintMat(c: RGB): THREE.MeshBasicMaterial {
+  // full strength: the ink pass lays paper over it, so a paler tint read as pink
+  const r = c[0], g = c[1], b = c[2];
+  const key = `${r.toFixed(2)},${g.toFixed(2)},${b.toFixed(2)}`;
+  let m = tintMats.get(key);
+  if (!m) {
+    m = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(r, g, b), opacity: 0.5, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.ZeroFactor,
+      blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.ZeroFactor,
+    });
+    tintMats.set(key, m);
+  }
+  return m;
+}
+
 const BOSS_BLOOM: Record<string, readonly number[]> = { boss: [0.42, 0.74, 1.0], ashboss: [1.0, 0.46, 0.24] };
 
 export class Monsters {
@@ -462,10 +492,12 @@ export class Monsters {
       id: s.id, kind: s.kind, def, look, shadow, x: s.x, z: s.z, y: 0, tx: s.x, tz: s.z, head: 0, mode: s.mode, since: s.since,
       hitAt: s.hitAt, hp: s.hp, maxHp: s.maxHp, level: s.level, flash: 0, flashOn: false, drop: 0, shown: false,
       phase: Math.random() * 6, speed: 0, stamp: 0, windTele: null, obst: { x: s.x, z: s.z, r: def.radius }, grow: 1,
+      flashMat: null, dying: 0, dieCol: null, dieAt: 0, dieTinted: false,
     };
   }
 
   private release(v: MView): void {
+    if (v.dying > 0) this.endDying(v, false);
     if (v.windTele) { v.windTele.mesh.visible = false; v.windTele = null; }
     v.look.group.visible = false;
     v.shadow.visible = false;
@@ -518,9 +550,12 @@ export class Monsters {
         feel.hitstop = Math.max(feel.hitstop, 0.06);
         feel.shake = Math.max(feel.shake, v.def.boss ? 0.8 : 0.25);
       }
-      v.look.group.visible = false;
-      v.shadow.visible = false;
+      // it doesn't vanish at once: it swells and bursts (in the killing blow's color, if that has come in)
+      v.dying = DIE;
+      v.dieTinted = false;
+      if (v.dieCol && performance.now() - v.dieAt < 1500) this.tintBody(v);
     } else if (s.mode !== "dead" && wasDead) {
+      if (v.dying > 0) this.endDying(v, false);
       v.x = s.x; v.z = s.z;
       if (isObstacle(v.def)) { v.grow = 0.05; v.drop = 0; } else v.drop = 7;
       v.look.group.visible = true;
@@ -559,9 +594,60 @@ export class Monsters {
     return null;
   }
 
+  /**
+   * One of our blows landed on `id`: its flash takes the blow's color, and a kill by a colored blow fills the dying
+   * body with it (also when the server's "dead" came in first).
+   */
+  struck(id: string, col: RGB | null, kill: boolean): void {
+    const v = this.views.get(id);
+    if (!v) return;
+    v.flashMat = col ? tintMat(col) : null;
+    if (v.flashOn) for (const m of v.look.flash) m.material = v.flashMat ?? M_flash;
+    if (kill && col) {
+      v.dieCol = col;
+      v.dieAt = performance.now();
+      if (v.dying > 0 && !v.dieTinted) this.tintBody(v);
+    }
+  }
+  private tintBody(v: MView): void {
+    if (!v.dieCol) return;
+    v.dieTinted = true;
+    const m = tintMat(v.dieCol);
+    for (const f of v.look.flash) f.material = m;
+  }
+  /** The death's last frame: the body bursts (in its color) and goes; materials back for the respawn. */
+  private endDying(v: MView, burst: boolean): void {
+    v.dying = 0;
+    if (burst && v.dieTinted && v.dieCol) {
+      const h = v.def.height * 0.5;
+      sparkBurst(v.x, h, v.z, v.def.boss ? 70 : 34, v.dieCol, v.def.boss ? 1.8 : 1.2, 1.5);
+      ring(v.x, v.z, v.def.radius * 1.8 + 0.6, v.dieCol, 0.5);
+    }
+    for (const f of v.look.flash) f.material = f.userData.base ?? M_enemy;
+    v.flashOn = false;
+    v.flash = 0;
+    v.dieCol = null;
+    v.dieTinted = false;
+    v.look.group.scale.set(1, 1, 1);
+    if (v.mode === "dead") { v.look.group.visible = false; v.shadow.visible = false; }
+  }
+  private dyingStep(v: MView, dt: number): void {
+    v.dying -= dt;
+    if (v.dying <= 0) { this.endDying(v, true); return; }
+    const u = 1 - v.dying / DIE;
+    const swell = 1 + 0.28 * Math.sin(Math.min(1, u * 2.2) * Math.PI * 0.5);
+    const s = swell * (1 - u * u * 0.8);
+    v.look.group.scale.set(s, s * (1 - u * 0.25), s);
+    if (v.dieTinted && v.dieCol && Math.random() < 0.8) {
+      const a = Math.random() * Math.PI * 2, r = v.def.radius * (0.3 + Math.random() * 0.7);
+      sparks.emit(v.x + Math.cos(a) * r, v.def.height * (0.2 + Math.random() * 0.7), v.z + Math.sin(a) * r, Math.cos(a) * 1.5, 1.5 + Math.random() * 2, Math.sin(a) * 1.5, 0.05 + Math.random() * 0.06, 0.6, v.dieCol, 1.5);
+    }
+  }
+
   update(dt: number, time: number, px: number, pz: number): void {
     const now = this.serverNow();
     for (const v of this.views.values()) {
+      if (v.dying > 0) { this.dyingStep(v, dt); continue; }
       if (v.mode === "dead" || !v.look.group.visible) continue;
       const ox = v.x, oz = v.z;
       if (Math.abs(v.tx - v.x) > 8 || Math.abs(v.tz - v.z) > 8) { v.x = v.tx; v.z = v.tz; }
@@ -589,7 +675,7 @@ export class Monsters {
       const on = v.flash > 0;
       if (on !== v.flashOn) {
         v.flashOn = on;
-        for (const m of v.look.flash) m.material = on ? M_flash : (m.userData.base ?? M_enemy);
+        for (const m of v.look.flash) m.material = on ? (v.flashMat ?? M_flash) : (m.userData.base ?? M_enemy);
       }
       this.animate(v, time, now);
       // melee wind-up: a red ring that fills until the blow lands

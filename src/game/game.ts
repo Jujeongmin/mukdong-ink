@@ -722,7 +722,9 @@ export class Game {
         const dx = v.x - pl.x, dz = v.z - pl.z, d = Math.hypot(dx, dz) || 1;
         const power = Math.min(2, 0.6 + Math.log10(1 + h.dmg) * 0.35);
         heavy = Math.max(heavy, (power - 0.6) / 1.4, blow.heavy);
-        inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power, blow.basic ? strikeTint(this.profile?.dye.scarf) : blow.col);
+        const tint = blow.basic ? strikeTint(this.profile?.dye.scarf) : blow.col;
+        inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power, tint);
+        this.monsters.struck(h.id, tint, h.kill);
         if (h.kill) { killed = true; killBurst(v.x, v.def.height * 0.5, v.z, v.def.radius); }
       }
       if (v.kind === "kilnlord") audio.play(h.resisted ? "armor-clunk" : "glaze-crack", v.x, v.z);
