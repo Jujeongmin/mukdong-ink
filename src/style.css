@@ -2181,11 +2181,17 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 :root:not([data-lang="ko"]) .loading-place h2 { white-space: nowrap; overflow: hidden; max-width: min(360px, 60vw); }
 
 /* ---------- casting a skill: the screen's edge floods with its color, then drains (hud.skillWash) ----------
-   A ragged frame of pigment (the scroll-frame brush mask) over a soft vignette; it never covers the middle. */
-#ui .skill-wash { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0;
-  background: radial-gradient(ellipse 75% 70% at 50% 52%, transparent 52%, color-mix(in srgb, var(--wc, #2b2622) 38%, transparent) 82%, color-mix(in srgb, var(--wc, #2b2622) 62%, transparent) 100%); }
-#ui .skill-wash::after { content: ""; position: absolute; inset: -2%; background: var(--wc, #2b2622); opacity: 0.55;
-  -webkit-mask: var(--m-frame) center / 100% 100% no-repeat; mask: var(--m-frame) center / 100% 100% no-repeat; }
+   A soft vignette of the pigment, with ink splashes bleeding in from the corners and the middle of each side
+   (the splash brush mask, several layers). No drawn frame: it reads as color soaking in from the paper's edge. */
+#ui .skill-wash { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0; overflow: hidden;
+  background: radial-gradient(ellipse 80% 75% at 50% 50%, transparent 55%, color-mix(in srgb, var(--wc, #2b2622) 30%, transparent) 85%, color-mix(in srgb, var(--wc, #2b2622) 55%, transparent) 100%); }
+#ui .skill-wash::after { content: ""; position: absolute; inset: 0; background: var(--wc, #2b2622); opacity: 0.6;
+  -webkit-mask: var(--m-splash) -14vmax -14vmax / 40vmax 40vmax no-repeat, var(--m-splash) calc(100% + 14vmax) -12vmax / 38vmax 38vmax no-repeat,
+    var(--m-splash) -12vmax calc(100% + 14vmax) / 38vmax 38vmax no-repeat, var(--m-splash) calc(100% + 14vmax) calc(100% + 14vmax) / 42vmax 42vmax no-repeat,
+    var(--m-splash) 50% -20vmax / 34vmax 30vmax no-repeat, var(--m-splash) 50% calc(100% + 20vmax) / 34vmax 30vmax no-repeat;
+  mask: var(--m-splash) -14vmax -14vmax / 40vmax 40vmax no-repeat, var(--m-splash) calc(100% + 14vmax) -12vmax / 38vmax 38vmax no-repeat,
+    var(--m-splash) -12vmax calc(100% + 14vmax) / 38vmax 38vmax no-repeat, var(--m-splash) calc(100% + 14vmax) calc(100% + 14vmax) / 42vmax 42vmax no-repeat,
+    var(--m-splash) 50% -20vmax / 34vmax 30vmax no-repeat, var(--m-splash) 50% calc(100% + 20vmax) / 34vmax 30vmax no-repeat; }
 #ui .skill-wash.ink { mix-blend-mode: multiply; }
 #ui .skill-wash.go { animation: skill-wash 0.6s ease-out both; }
 #ui .skill-wash.go2 { animation: skill-wash2 0.6s ease-out both; }
