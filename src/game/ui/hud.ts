@@ -144,6 +144,8 @@ interface TagSlot { el: HTMLElement; lx: number; ly: number; shown: boolean; w: 
 /** which name wins when two overlap (lower = kept clear); speech bubbles never dim */
 const TAG_RANK: Record<string, number> = { me: 0, npc: 1, elite: 2, portal: 3, pc: 4 };
 const tagOrder: TagSlot[] = [];
+/** screen boxes of the HUD's corner panels (portrait, wallet + menu, quest card): a name under one goes faint */
+const hudBoxes: { l: number; t: number; r: number; b: number }[] = [];
 const vProj = new THREE.Vector3();
 
 /** What the top frame shows (see Hud.target). */
@@ -284,6 +286,11 @@ export class Hud {
           if (r.width > 0) walletL = Math.min(walletL, r.left);
         });
         root.style.setProperty("--top-c", `${Math.round((hpR + walletL) / 2)}px`);
+        hudBoxes.length = 0;
+        for (const sel of [".portrait", ".purse", "[data-quest]"]) {
+          const r = root.querySelector<HTMLElement>(sel)?.getBoundingClientRect();
+          if (r && r.width > 0) hudBoxes.push({ l: r.left, t: r.top, r: r.right, b: r.bottom });
+        }
         root.style.setProperty("--top-w", `${Math.max(120, Math.floor(walletL - hpR - 16))}px`);
         // the top of the thumb arc (its highest visible button): the tracker stops above it
         let top = window.innerHeight;
@@ -828,7 +835,11 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     tagOrder.sort((a, b) => a.rank - b.rank);
     for (let i = 0; i < tagOrder.length; i++) {
       const t = tagOrder[i];
+      // under a HUD panel: faint (the panel's lettering stays readable over it)
       let hidden = false;
+      for (const h of hudBoxes) {
+        if (t.lx + t.w / 2 > h.l && t.lx - t.w / 2 < h.r && t.ly > h.t && t.ly - t.h < h.b) { hidden = true; break; }
+      }
       for (let j = 0; j < i && !hidden; j++) {
         const o = tagOrder[j];
         if (o.dim) continue;

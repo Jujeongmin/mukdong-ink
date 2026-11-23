@@ -299,7 +299,6 @@ export function fireCrescent(x: number, z: number, head: number, limit: number, 
   addLight(c.x, c.z, 8, 0.9, SKILL_COL[0], c);
   if (local) feel.shake = Math.max(feel.shake, 0.22);
 }
-const LIGHT_BLUE: RGB = [0.75, 0.88, 1];
 function updateCrescents(dt: number): void {
   for (const c of crescents) {
     if (!c.mesh.visible) continue;
@@ -308,7 +307,6 @@ function updateCrescents(dt: number): void {
     c.mesh.position.set(c.x, 0.9, c.z);
     c.mesh.rotation.set(0, c.head, 0);
     c.mat.uniforms.uFade.value = 1 - clamp((c.t - (c.life - 0.2)) / 0.2, 0, 1);
-    for (let k = 0; k < 2; k++) sparks.emit(c.x + (Math.random() - 0.5) * 2.4, 0.5 + Math.random() * 1.2, c.z + (Math.random() - 0.5) * 2.4, -c.fx * 3, 1, -c.fz * 3, 0.05 + Math.random() * 0.08, 0.55, Math.random() < 0.5 ? SKILL_COL[0] : LIGHT_BLUE, 2);
     if (c.t > c.life || Math.hypot(c.x, c.z) > c.limit + 2) c.mesh.visible = false;
   }
 }
@@ -523,13 +521,9 @@ export function inkSweep(x: number, z: number, r: number): void {
   }
   for (let k = 0; k < 4; k++) { const a = Math.random() * Math.PI * 2; addDecal(x + Math.cos(a) * r * 0.85, z + Math.sin(a) * r * 0.85, 0.2 + Math.random() * 0.2, 2.2); }
 }
-/** A kill: a big ink burst and flecks of paper torn loose. */
+/** A kill: a big ink burst and a ring (no paper flecks: dots read as noise). */
 export function killBurst(x: number, y: number, z: number, size: number): void {
   inkBurst(x, y, z, 26, 0, 0, 1.4 + size * 0.2);
-  for (let k = 0; k < 16; k++) {
-    const a = Math.random() * Math.PI * 2, s = 2 + Math.random() * 4;
-    sparks.emit(x, y, z, Math.cos(a) * s, 2 + Math.random() * 4, Math.sin(a) * s, 0.05 + Math.random() * 0.07, 0.7 + Math.random() * 0.5, PAPER, 1.2);
-  }
   ring(x, z, 1.4 + size * 0.5, INK_RING, 0.45, 0, INK_RING);
   screenSplash(x, y, z, 0.06 + size * 0.02);
 }
@@ -667,10 +661,6 @@ function updateBlots(dt: number): void {
       b.done = true;
       inkBurst(b.x, 0.5, b.z, 52, 0, 0, 2);
       ring(b.x, b.z, b.r * 1.25, INK_RING, 0.55, 0, INK_RING);
-      for (let k = 0; k < 20; k++) {
-        const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 5;
-        sparks.emit(b.x, 0.6, b.z, Math.cos(a) * s, 3 + Math.random() * 4, Math.sin(a) * s, 0.05 + Math.random() * 0.07, 0.8, PAPER, 1.2);
-      }
       // the prison leaves one bigger blot that lingers a little, and a couple of splashes
       addDecal(b.x, b.z, b.r * 0.55, 4.5);
       for (let k = 0; k < 2; k++) addDecal(b.x + (Math.random() - 0.5) * 4, b.z + (Math.random() - 0.5) * 4, 0.3 + Math.random() * 0.3);
@@ -698,8 +688,7 @@ export function earthSlam(x: number, z: number, local: boolean, r = 5, echo = fa
   ring(x, z, r * 0.64, EARTH_INNER, 0.5);
   ring(x, z, r * 1.3, col, 0.9, 0, INK_RING);
   if (echo) later(0.4, x, z, r, local, "earth");
-  sparkBurst(x, 0.2, z, 64, col, 1.6, 1.8);
-  sparkBurst(x, 0.3, z, 18, EARTH_INNER, 0.9, 2.4);
+  colorStain(x, z, r * 1.1, col);
   inkBurst(x, 0.2, z, 22, 0, 0, 1.4);
   addDecal(x, z, r * 0.5, 3.5);
   addLight(x, z, 13, 1.3, col);
@@ -743,15 +732,14 @@ function updateEchoes(dt: number): void {
     e.on = false;
     if (e.kind === "fire") {
       ring(e.x, e.z, e.r, SKILL_COL[1], 0.6);
-      sparkBurst(e.x, 0.4, e.z, 24, SKILL_COL[1], 1, 1.2);
+      colorStain(e.x, e.z, e.r, SKILL_COL[1]);
     } else if (e.kind === "earth") {
       ring(e.x, e.z, e.r * 1.1, SKILL_COL[2], 0.6);
-      sparkBurst(e.x, 0.2, e.z, 26, SKILL_COL[2], 1.2, 1.3);
+      colorStain(e.x, e.z, e.r * 1.1, SKILL_COL[2]);
       inkBurst(e.x, 0.2, e.z, 10, 0, 0, 1);
       if (e.local) feel.shake = Math.max(feel.shake, 0.4);
     } else {
       ring(e.x, e.z, e.r, WHITE, 0.45, 0, WIND_EDGE);
-      sparkBurst(e.x, 0.8, e.z, 10, WHITE, 0.8, 0.6);
     }
   }
 }

@@ -21,11 +21,20 @@ flash of color across the monochrome field. The hero (an ink stick figure, calle
 ## Content (v1)
 - Zones: 먹골 마을 (safe hub: 먹노인 quests, 염색 장인 dyes+potions, 병기 제단 gacha) → 죽림 (Lv1–8) → 연못가 (Lv8–15)
   → 먹봉우리 (Lv15–20, boss 대먹귀). Portals at zone edges.
-- Levels 1–20. Skills unlock: 물결베기 1, 화염선풍 4, 대지낙하 8, 바람질주 12, 먹감옥 16.
+- Levels 1–35 (MAX_LEVEL). Skills unlock: 물결베기 1, 화염선풍 4, 대지낙하 8, 바람질주 12, 먹감옥 16.
 - Basic combo: 3 ground swings (third is a spin), air spin, dash slash.
 - Monsters: 먹방울 (contact), 먹그림자 (wind-up melee), 먹두꺼비 (ranged ink shot), 대먹귀 (telegraphed slam boss).
 - Main quest chain of 9 steps ending at the boss; 3 daily quests.
 - Potions bought with 안료; respawn in the village after death.
+
+## Health and potions (balance, 2026-11)
+- Max health `100 + 20 × level` (+ hat and 도감 bonuses). It was 80 + 14/level, and a field monster's blow took
+  12–25% of it; an MMO's is nearer 5–10%. 부푼 먹방울 (the roll gate) still takes 35–40% at level 2 (atk 42).
+- Health comes back by itself once nothing has hit you for 5 s: 3% of max a second in a hunting zone, 12% in the
+  village. The server's room tick does it (at most one write a second per player); the profile keeps it once full.
+- A potion heals 45% of max health (1.5 s apart) and costs `10 + level` 안료 (15 at level 5, 45 at 35). A kill's
+  안료 is flat (3 for a 먹방울, 8–10 late), so this keeps a potion at about four or five kills at every stage.
+- Code: `maxHpFor`, `REGEN_*`, `POTION_HEAL`, `potionCost` in `src/shared/combat.ts`; `regenRoom` in the server.
 
 ## Rendering
 - Scene rendered normally, then an ink post pass (edges from depth+normals, quantized washes, paper grain).

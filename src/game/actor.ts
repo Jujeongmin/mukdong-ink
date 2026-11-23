@@ -16,7 +16,7 @@ import { POSE, KEYS, Rig, blend, runPose, sampleKeys, sampleMotion } from "./ren
 import { HIT1, HIT2, HIT3, type MotionClip } from "./render/motion/sword";
 import {
   BLOT_DELAY, INK_TRAIL, Ribbon, SILVER_TRAIL, SKILL_COL, Trail, earthSlam, fireCrescent, inkBurst, inkDrop, inkSweep, later, ring,
-  inkAfterimage, sparks, spawnBlot, spawnGhost,
+  inkAfterimage, spawnBlot, spawnGhost,
 } from "./render/fx";
 import { strokeAdd, strokeBegin, strokeEnd } from "./render/strokes";
 import type { RGB } from "./util";
@@ -73,7 +73,6 @@ const M_rollGhost = new THREE.MeshBasicMaterial({ color: 0x2b2622, transparent: 
 const ROLL_POSE = Float32Array.from([1.1, 0.5, 1.9, 1.6, 2.0, 1.5, 1.9, -2.4, 1.7, -2.3, 2.6, -0.62]);
 const SKILL_CD = SKILLS.map((s) => s.cd);
 const WHITE: RGB = [1, 1, 1];
-const EMBER: RGB = [1, 0.62, 0.15];
 /** the air round a figure in 영웅 (purple) or 전설 (gold) gear */
 const AURA_EPIC: RGB = [0.62, 0.38, 0.88];
 const AURA_LEGEND: RGB = [1, 0.8, 0.32];
@@ -513,7 +512,6 @@ export class Actor {
         const k = Math.min(1, dt * 5);
         this.vx += (inp.mx * 3.5 - this.vx) * k;
         this.vz += (inp.mz * 3.5 - this.vz) * k;
-        this.fireSpinSparks();
         if (this.st >= 0.75) { this.fireEnd(); this.state = "move"; }
         break;
       }
@@ -583,7 +581,6 @@ export class Actor {
         if (this.st >= 0.42) this.state = "move";
         break;
       case "sk1":
-        this.fireSpinSparks();
         if (this.st >= 0.75) { this.fireEnd(); this.state = "move"; }
         break;
       case "sk2":
@@ -631,23 +628,14 @@ export class Actor {
     }
     if (this.local) this.hooks?.skill(0, this, 0.12);
   }
-  private fireSpinSparks(): void {
-    const col = SKILL_COL[1];
-    for (let n = 0; n < 5; n++) {
-      const a = Math.random() * Math.PI * 2, r = 1.2 + Math.random() * 2.2;
-      sparks.emit(this.x + Math.cos(a) * r, 0.4 + Math.random() * 1.6, this.z + Math.sin(a) * r, -Math.sin(a) * 6, 2 + Math.random() * 3, Math.cos(a) * 6, 0.06 + Math.random() * 0.1, 0.45, Math.random() < 0.4 ? EMBER : col, 1);
-    }
-  }
   private windStep(dt: number): void {
-    // two or three ink afterimages along the path, bleeding away (the pale wind sparks stay the colour)
+    // two or three ink afterimages along the path, bleeding away (no sparks: dots read as noise)
     void dt;
     const every = this.windDur() / 2.4;
     if (this.st >= this.windGhosts * every && this.windGhosts < 3) {
       this.windGhosts++;
       inkAfterimage(this.rig, this.local || !actorFx.remoteLow ? 4 : 0);
     }
-    const fx = this.fx, fz = this.fz;
-    for (let n = 0; n < 6; n++) sparks.emit(this.x + (Math.random() - 0.5), 0.3 + Math.random() * 1.7, this.z + (Math.random() - 0.5), -fx * 6, 0.5, -fz * 6, 0.05 + Math.random() * 0.06, 0.35, Math.random() < 0.5 ? WHITE : SILVER_TRAIL, 3);
   }
   private windEnd(): void {
     ring(this.x, this.z, 2.4, WHITE, 0.5, 0, WIND_EDGE);

@@ -802,7 +802,6 @@ export class Game {
     const healed = p.hp - before;
     if (healed > 0) this.hud.number(this.player.x, 2.4, this.player.z, auto ? t("자동 물약 +{n}", { n: healed }) : `+${healed}`, "gain");
     if (auto) this.hud.potionPing();
-    sparkBurst(this.player.x, 1, this.player.z, 14, SKILL_COL[3], 0.5, 1.2);
     audio.play("potion");
   }
 

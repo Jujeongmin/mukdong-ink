@@ -1,4 +1,4 @@
-import { POTION_HEAL, maxHpFor, potionCost } from "../../src/shared/combat";
+import { POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, maxHpFor, potionCost } from "../../src/shared/combat";
 import { COST1, COST10, DUPE_SHARDS, DUPE_STONES, DYES, DYE_COST, GACHA_ENTRIES, GACHA_EXTRA_BY_ID, ITEM, NOT_DRAWN, PITY } from "../../src/shared/items";
 import { DAILY_QUESTS, MAIN_QUESTS, ZONES } from "../../src/shared/world";
 import { NO_ROOM, editProfile, errorOf, goTo, inVillage, newPlayer, profileOf, rolling, walkTo } from "./helpers";
@@ -55,6 +55,25 @@ describe("potions", () => {
   test("are not sold outside the village", async (server) => {
     await goTo(server, "test-a", "bamboo");
     expect(await errorOf(server.buyPotions(1))).toContain("too_far");
+  });
+});
+
+describe("health", () => {
+  test("comes back by itself once nothing has hit you for a while", async (server) => {
+    const entry = await goTo(server, "test-a", "bamboo");
+    const max = maxHpFor(1);
+    // last hit long ago: one tick gives back a share of max health
+    await $room.updateUserState("test-a", { hp: 50, hurtAt: Date.now() - REGEN_DELAY_MS - 1000, regenAt: 0 });
+    await server.simulateTick(entry.roomId, 200);
+    expect((await $room.getUserState("test-a")).hp).toBe(Math.round(50 + max * REGEN_FIELD));
+  });
+
+  test("waits while you are still being hit", async (server) => {
+    const village = await inVillage(server, "test-b");
+    // just hit: nothing yet
+    await $room.updateUserState("test-b", { hp: 50, hurtAt: Date.now(), regenAt: 0 });
+    await server.simulateTick(village.roomId, 200);
+    expect((await $room.getUserState("test-b")).hp).toBe(50);
   });
 });
 
