@@ -511,11 +511,7 @@ export function inkHit(x: number, y: number, z: number, dx: number, dz: number, 
   for (let k = 0; k < 1 + power; k++) addDecal(x + dx * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, z + dz * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, 0.15 + Math.random() * 0.12 * power, 2);
   ring(x, z, 0.55 + power * 0.35, INK_RING, 0.28, 0, INK_RING);
   screenSplash(x, y, z, 0.03 + power * 0.014);
-  if (tint) {
-    colorStain(x, z, 1.4 + power * 0.7, tint);
-    // the blow's pigment flies off where it lands
-    sparkBurst(x, y, z, Math.round(4 + power * 5), tint, 0.55 + power * 0.2, 1);
-  }
+  if (tint) colorStain(x, z, 1.4 + power * 0.7, tint);
 }
 /** The third hit: a full circle of ink swept round the body and a bloom of ink where it closes. */
 export function inkSweep(x: number, z: number, r: number): void {

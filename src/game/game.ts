@@ -104,11 +104,17 @@ interface Remote {
  * How a blow lands on screen: a skill's pigment (null: ink only), whether it is a brush strike (which bleeds the
  * player's own scarf color) and a floor on its weight.
  */
-interface Blow { col: RGB | null; basic: boolean; heavy: number; /** its damage numbers' class */ num: "" | "heavy" | `sk${number}` }
-const LIGHT_BLOW: Blow = { col: null, basic: true, heavy: 0, num: "" };
-const HEAVY_BLOW: Blow = { col: null, basic: true, heavy: 0.8, num: "heavy" }; // the third strike
-// 먹감옥 is ink itself: no pigment
-const SKILL_BLOW: Blow[] = SKILL_COL.map((c, i) => ({ col: i === 4 ? null : c, basic: false, heavy: 0.5, num: `sk${i}` as const }));
+interface Blow {
+  col: RGB | null; basic: boolean; heavy: number; /** its damage numbers' class */ num: "" | "heavy" | `sk${number}`;
+  /** the color a monster struck by it flashes and dies in (null: the scarf's, for a brush strike) */
+  die: RGB | null;
+}
+const LIGHT_BLOW: Blow = { col: null, basic: true, heavy: 0, num: "", die: null };
+const HEAVY_BLOW: Blow = { col: null, basic: true, heavy: 0.8, num: "heavy", die: null }; // the third strike
+/** each skill's death color: its own, with 바람 a pale jade (its white would read as nothing) and 먹감옥 deep violet */
+const SKILL_DIE: RGB[] = [SKILL_COL[0], SKILL_COL[1], SKILL_COL[2], [0.42, 0.78, 0.8], [0.4, 0.18, 0.55]];
+// 먹감옥 is ink itself: no pigment on the ground (but its kills still die in its violet)
+const SKILL_BLOW: Blow[] = SKILL_COL.map((c, i) => ({ col: i === 4 ? null : c, basic: false, heavy: 0.5, num: `sk${i}` as const, die: SKILL_DIE[i] }));
 /** the scarf's dye as the color a brush strike bleeds (black dye: ink only); recomputed only when it changes */
 let strikeHex = -2;
 const strikeCol: [number, number, number] = [0, 0, 0];
@@ -724,7 +730,7 @@ export class Game {
         heavy = Math.max(heavy, (power - 0.6) / 1.4, blow.heavy);
         const tint = blow.basic ? strikeTint(this.profile?.dye.scarf) : blow.col;
         inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power, tint);
-        this.monsters.struck(h.id, tint, h.kill);
+        this.monsters.struck(h.id, blow.die ?? tint, h.kill);
         if (h.kill) { killed = true; killBurst(v.x, v.def.height * 0.5, v.z, v.def.radius); }
       }
       if (v.kind === "kilnlord") audio.play(h.resisted ? "armor-clunk" : "glaze-crack", v.x, v.z);

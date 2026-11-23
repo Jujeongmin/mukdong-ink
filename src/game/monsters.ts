@@ -10,7 +10,7 @@ import type { MonsterMode, MonsterState } from "../shared/types";
 import type { RoomEffect, RoomView } from "../net/api";
 import { angDiff, clamp, type RGB } from "./util";
 import { G, M_enemy, M_eye, M_flash, M_shadow } from "./render/materials";
-import { colorBloom, feel, overlay, scene, screenSplash } from "./render/gfx";
+import { colorBloom, colorStain, feel, overlay, scene, screenSplash } from "./render/gfx";
 import { QUAD_VERT, addDecal, inkBurst, inkDrop, ring, sparkBurst, sparks } from "./render/fx";
 
 interface Look {
@@ -627,10 +627,10 @@ export class Monsters {
   /** The death's last frame: the body bursts (in its color) and goes; materials back for the respawn. */
   private endDying(v: MView, burst: boolean): void {
     v.dying = 0;
+    // it bursts into ink, and its color soaks into the ground where it stood (no sparks: dots read as noise)
     if (burst && v.dieTinted && v.dieCol) {
-      const h = v.def.height * 0.5;
-      sparkBurst(v.x, h, v.z, v.def.boss ? 70 : 34, v.dieCol, v.def.boss ? 1.8 : 1.2, 1.5);
-      ring(v.x, v.z, v.def.radius * 1.8 + 0.6, v.dieCol, 0.5);
+      inkBurst(v.x, v.def.height * 0.5, v.z, v.def.boss ? 30 : 14, 0, 0, 1.1);
+      colorStain(v.x, v.z, v.def.radius * 2.2 + 1.2, v.dieCol);
     }
     for (const f of v.look.flash) f.material = f.userData.base ?? M_enemy;
     v.flashOn = false;
@@ -653,10 +653,6 @@ export class Monsters {
     const swell = 1 + 0.28 * Math.sin(Math.min(1, late * 2.2) * Math.PI * 0.5);
     const s = swell * (1 - late * late * 0.85);
     v.look.group.scale.set(s, s * (1 - u * 0.25), s);
-    if (v.dieTinted && v.dieCol && Math.random() < 0.3 + u * 0.6) {
-      const a = Math.random() * Math.PI * 2, r = v.def.radius * (0.3 + Math.random() * 0.7);
-      sparks.emit(v.x + Math.cos(a) * r, v.def.height * (0.2 + Math.random() * 0.7), v.z + Math.sin(a) * r, Math.cos(a) * 1.5, 1.5 + Math.random() * 2, Math.sin(a) * 1.5, 0.05 + Math.random() * 0.06, 0.6, v.dieCol, 1.5);
-    }
   }
 
   update(dt: number, time: number, px: number, pz: number): void {
