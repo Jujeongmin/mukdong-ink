@@ -7,7 +7,7 @@ import type { Look, Pose, RoomPlayer } from "../shared/types";
 import { MONSTERS, SKILLS } from "../shared/combat";
 import { forwardX, forwardZ } from "../shared/hit";
 import { NPC_REACH, START_ZONE, ZONES, homeOf, type Npc, type Portal } from "../shared/world";
-import { Minimap } from "./ui/minimap";
+import { Minimap, type MapLive } from "./ui/minimap";
 import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
 import { newNav, questNav } from "./questnav";
@@ -222,7 +222,7 @@ export class Game {
     });
     this.sheets = new Sheets(root, { api, profile: () => this.profile, apply: (p) => this.applyProfile(p),
       monsterPic: (kind) => this.portraits.figureOf(`mon:${kind}`) ?? this.portraits.figure(`mon:${kind}`, monsterFigure(kind)),
-      zone: () => this.zone?.def.id ?? START_ZONE, travel: (v) => void this.travelVillage(v),
+      zone: () => this.zone?.def.id ?? START_ZONE, travel: (v) => void this.travelVillage(v), mapLive: () => this.liveMap(),
       enterMemory: (id) => void this.enterMemory(id), memoryBlock: () => this.memoryBlock(), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id),
       settings: {
         name: () => this.profile?.name ?? "",
@@ -941,10 +941,16 @@ export class Game {
     this.sheets.openMap();
   }
 
-  /** The corner map, once per slow UI tick: you, the others in the room, the NPCs and their quest marks. */
+  /** The corner map (and the big one while the map sheet is open), once per slow UI tick. */
   private drawMinimap(): void {
-    const p = this.player;
-    if (!p) return;
+    if (!this.player) return;
+    const live = this.liveMap();
+    this.minimap.draw(live);
+    this.sheets.mapTick(live);
+  }
+  /** You, the others in the room and the quest marks, refilled in place (one object for the life of the game). */
+  private liveMap(): MapLive {
+    const p = this.player, l = this.mapLiveObj;
     let n = 0;
     for (const r of this.remotes.values()) {
       if (r.dead) continue;
@@ -952,8 +958,12 @@ export class Game {
       o.x = r.actor.x; o.z = r.actor.z;
       n++;
     }
-    this.minimap.draw(p.x, p.z, p.fx, p.fz, this.mmOthers, n, this.mmMark);
+    l.zone = this.zone?.def.id ?? "";
+    if (p) { l.x = p.x; l.z = p.z; l.fx = p.fx; l.fz = p.fz; }
+    l.count = n;
+    return l;
   }
+  private readonly mapLiveObj: MapLive = { zone: "", x: 0, z: 0, fx: 0, fz: -1, others: this.mmOthers, count: 0, marks: this.mmMark };
 
   /** 순간이동 from a village to another (the map sheet). */
   private async travelVillage(to: string): Promise<void> {

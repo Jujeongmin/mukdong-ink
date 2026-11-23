@@ -13,6 +13,7 @@ import { DROPS, atkText, enhancedAtk } from "../../shared/growth";
 import { MONSTERS, SKILLS, isObstacle, potionCost } from "../../shared/combat";
 import { BOOK, BOOK_STEP, bookBonus, bookStage } from "../../shared/book";
 import { NPC_INFO } from "../../shared/story";
+import { ZoneMap, type MapLive } from "./minimap";
 import type { RankBoard, RankRow, RankView } from "../../shared/rank";
 import type { SlotId } from "../../shared/types";
 import type { GachaPull, GameApi, ProfileView } from "../../net/api";
@@ -44,10 +45,53 @@ export interface SheetCtx {
   zone?(): string;
   /** 순간이동 to a village (the game closes the sheet and moves you) */
   travel?(village: string): void;
+  /** you, the others and the quest marks, for the big map */
+  mapLive?(): MapLive;
 }
 
-/** The way through the world, in story order: the map's route. */
-const ROUTE = ["village", "bamboo", "pond", "peak", "pass", "kiln", "temple", "censer"];
+/**
+ * The world map: where each place sits on the sheet's painted map (viewBox 240 × 400). 1장 climbs the left side from
+ * 먹골 to 먹봉우리; the east door leads over to 솔재, and 2장 climbs the right side to 향로 마당. Roads come from the
+ * zones' own portals.
+ */
+const WORLD_AT: Record<string, [number, number]> = {
+  village: [58, 368], bamboo: [76, 296], pond: [50, 224], peak: [80, 150],
+  pass: [166, 176], kiln: [184, 112], temple: [154, 62], censer: [192, 22],
+};
+
+/** The world map as an inline ink drawing: the roads and a mark per place; a place is a button. */
+function worldMap(here: string, sel: string): string {
+  const roads: string[] = [];
+  const seen = new Set<string>();
+  for (const [id, at] of Object.entries(WORLD_AT)) {
+    for (const p of ZONES[id]?.portals ?? []) {
+      const to = WORLD_AT[p.to];
+      const key = [id, p.to].sort().join("|");
+      if (!to || seen.has(key)) continue;
+      seen.add(key);
+      // a road that bends a little (a brush stroke, not a ruler line)
+      const mx = (at[0] + to[0]) / 2 + (to[1] - at[1]) * 0.12, my = (at[1] + to[1]) / 2 - (to[0] - at[0]) * 0.12;
+      roads.push(`<path d="M${at[0]} ${at[1]} Q${mx.toFixed(1)} ${my.toFixed(1)} ${to[0]} ${to[1]}"/>`);
+    }
+  }
+  const places = Object.entries(WORLD_AT).filter(([id]) => ZONES[id]).map(([id, [x, y]]) => {
+    const d = ZONES[id];
+    const kind = d.safe ? "safe" : d.boss ? "boss" : "field";
+    const right = x < 180;
+    const lx = right ? x + 13 : x - 13, anchor = right ? "start" : "end";
+    const sub = d.safe ? t("마을") : `Lv ${d.levels[0]}–${d.levels[1]}`;
+    const mark = d.safe
+      ? `<rect x="${x - 7}" y="${y - 7}" width="14" height="14" rx="3" transform="rotate(45 ${x} ${y})" class="wm-safe"/>`
+      : d.boss ? `<circle cx="${x}" cy="${y}" r="7" class="wm-boss"/><circle cx="${x}" cy="${y}" r="2.6" class="wm-boss-dot"/>`
+      : `<circle cx="${x}" cy="${y}" r="6" class="wm-field"/>`;
+    return `<g class="wm-place ${kind}${id === sel ? " on" : ""}${id === here ? " here" : ""}" data-do="mapSel" data-z="${id}" role="button" tabindex="0" aria-label="${esc(t(d.name))}">
+      <circle cx="${x}" cy="${y}" r="17" class="wm-hit"/>${id === sel ? `<circle cx="${x}" cy="${y}" r="12" class="wm-ring"/>` : ""}${mark}
+      <text x="${lx}" y="${y - 1}" text-anchor="${anchor}" class="wm-name">${esc(t(d.name))}</text>
+      <text x="${lx}" y="${y + 11}" text-anchor="${anchor}" class="wm-sub">${esc(sub)}</text>
+      ${id === here ? `<path d="M${x} ${y - 21} l-5 -9 h10 z" class="wm-you"/>` : ""}</g>`;
+  }).join("");
+  return `<svg viewBox="0 0 240 400" class="wm" xmlns="http://www.w3.org/2000/svg"><g class="wm-roads">${roads.join("")}</g>${places}</svg>`;
+}
 /** what each kind of NPC does for you (the map's NPC list) */
 const NPC_WORK: Record<Npc["role"], string> = {
   elder: t("오늘의 의뢰 · 순간이동"),
@@ -279,12 +323,27 @@ export class Sheets {
     const here = this.ctx.zone?.() ?? "";
     const sel = ZONES[this.mapSel] ? this.mapSel : here;
     const z = ZONES[sel];
-    const route = ROUTE.filter((id) => ZONES[id]).map((id) => {
-      const d = ZONES[id];
-      const cls = [d.safe ? "safe" : "", d.boss ? "boss" : "", id === here ? "here" : "", id === sel ? "on" : ""].filter(Boolean).join(" ");
-      return `<li><button type="button" class="map-stop ${cls}" data-do="mapSel" data-z="${id}"><i class="map-dot" aria-hidden="true"></i><b>${esc(t(d.name))}</b><small>${d.safe ? t("마을") : `Lv ${d.levels[0]}–${d.levels[1]}`}</small>${id === here ? `<em>${t("지금 여기")}</em>` : ""}</button></li>`;
-    }).join("");
-    return `${this.head(t("지도"))}<div class="map2"><ol class="map-route">${route}</ol><section class="map-detail">${z ? this.mapZone(p, z, here) : ""}</section></div>`;
+    return `${this.head(t("지도"))}<div class="map3">
+      <figure class="map-world" aria-label="${esc(t("지도"))}">${worldMap(here, sel)}</figure>
+      <figure class="map-zone"><span class="map-zone-slot"></span><figcaption>${z ? esc(t(z.name)) : ""}</figcaption></figure>
+      <section class="map-detail">${z ? this.mapZone(p, z, here) : ""}</section></div>`;
+  }
+
+  /** The big map (the minimap's picture enlarged, names written in): one for the life of the game. */
+  private readonly zoneMap = new ZoneMap(true);
+  /** After the map sheet is drawn: put the big map in its slot and paint the chosen place. */
+  private mountMap(): void {
+    const slot = this.card.querySelector(".map-zone-slot");
+    if (!slot) return;
+    slot.replaceWith(this.zoneMap.canvas);
+    this.zoneMap.canvas.className = "map-zone-cv";
+    const here = this.ctx.zone?.() ?? "";
+    this.zoneMap.setZone(ZONES[this.mapSel] ? this.mapSel : here, true);
+    this.zoneMap.draw(this.ctx.mapLive?.() ?? null);
+  }
+  /** Each slow UI tick while the map is open: you and the others move on it. */
+  mapTick(live: MapLive): void {
+    if (this.current === "map" && this.zoneMap.canvas.isConnected) this.zoneMap.draw(live);
   }
 
   private mapZone(p: ProfileView, z: ZoneDef, here: string): string {
@@ -315,7 +374,6 @@ export class Sheets {
     const mons = [...kinds].map(([kind, k]) => monRow(kind, k.lo, k.hi, k.n, false)).join("")
       + (z.boss ? monRow(z.boss.kind, z.boss.level, z.boss.level, 1, true, z.boss.respawnMs) : "");
     const npcs = z.npcs.map((n) => `<li><b>${esc(npcName(n.id))}</b><small>${esc(t(NPC_INFO[n.id]?.title ?? ""))}</small><span class="cap">${esc(NPC_WORK[n.role])}</span></li>`).join("");
-    const ways = z.portals.map((g) => `<button type="button" class="map-way" data-do="mapSel" data-z="${g.to}">${esc(t(ZONES[g.to]?.name ?? g.to))}</button>`).join("");
     // 순간이동: between villages, starting from one
     let travel = "";
     if (z.safe && z.id !== here) {
@@ -327,8 +385,7 @@ export class Sheets {
     return `<h3 class="map-title">${esc(t(z.name))}<small>${z.safe ? t("마을 · 쉬는 곳, 생명이 빨리 찬다") : t("사냥터 · Lv {a}–{b}", { a: z.levels[0], b: z.levels[1] })}</small></h3>
       ${travel}
       ${mons ? `<h4 class="sec">${t("몬스터와 드랍")}</h4><ul class="map-mons">${mons}</ul>` : ""}
-      ${npcs ? `<h4 class="sec">${t("사람들")}</h4><ul class="map-npcs">${npcs}</ul>` : ""}
-      ${ways ? `<h4 class="sec">${t("이어지는 길")}</h4><div class="map-ways">${ways}</div>` : ""}`;
+      ${npcs ? `<h4 class="sec">${t("사람들")}</h4><ul class="map-npcs">${npcs}</ul>` : ""}`;
   }
 
   /** 화첩: the pictures of each recovered color. */
@@ -418,6 +475,7 @@ export class Sheets {
       this.albumSel = this.albumSel === b.dataset.page ? "" : b.dataset.page ?? "";
       this.render();
     }));
+    if (this.current === "map") this.mountMap();
     if (this.current === "settings" && this.ctx.settings) bindSettings(this.card, () => this.render(), this.ctx.settings);
     this.card.classList.toggle("is-settings", this.current === "settings");
   }

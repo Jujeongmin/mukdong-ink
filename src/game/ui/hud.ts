@@ -492,7 +492,7 @@ ${t("각성: {text}", { text: t(aw.text) })}` : "");
     if (this.hpFrac >= 0 && f < this.hpShown) this.flashClass("[data-hpbar]", "hit", 200);
     this.hpShown = f;
     fill.style.setProperty("--f", f.toFixed(3));
-    // the lost part lingers as a white band, holds 1 s, then runs down; healing moves it at once (no band)
+    // the lost part lingers as a faint white band for 0.3 s, then runs down in 0.3 s; healing moves it at once (no band)
     const chip = el("[data-hpchip]", this.root);
     if (f > this.hpChip) this.snapChip(chip, f);
     else chip.style.setProperty("--f", f.toFixed(3));
