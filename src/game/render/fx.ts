@@ -275,7 +275,7 @@ for (let i = 0; i < 8; i++) {
   const mesh = new THREE.Mesh(G.flat, mat);
   mesh.visible = false;
   mesh.frustumCulled = false;
-  mesh.scale.set(3.4, 1, 4.4);
+  mesh.scale.set(4, 1, 5);
   overlay.add(mesh);
   crescents.push({ mesh, mat, x: 0, z: 0, fx: 1, fz: 0, head: 0, t: 0, limit: 30, life: 0.65 });
 }
@@ -286,10 +286,10 @@ export function fireCrescent(x: number, z: number, head: number, limit: number, 
   crescNext = (crescNext + 1) % crescents.length;
   c.fx = Math.cos(head); c.fz = -Math.sin(head);
   c.x = x + c.fx * 1.2; c.z = z + c.fz * 1.2; c.head = head; c.t = 0; c.limit = limit; c.life = life;
-  c.mesh.scale.set(3.4, 1, 4.4 * width);
+  c.mesh.scale.set(4, 1, 5 * width);
   c.mesh.visible = true;
-  addLight(c.x, c.z, 6, 0.75, SKILL_COL[0], c);
-  if (local) feel.shake = Math.max(feel.shake, 0.15);
+  addLight(c.x, c.z, 8, 0.9, SKILL_COL[0], c);
+  if (local) feel.shake = Math.max(feel.shake, 0.22);
 }
 const LIGHT_BLUE: RGB = [0.75, 0.88, 1];
 function updateCrescents(dt: number): void {
@@ -300,7 +300,7 @@ function updateCrescents(dt: number): void {
     c.mesh.position.set(c.x, 0.9, c.z);
     c.mesh.rotation.set(0, c.head, 0);
     c.mat.uniforms.uFade.value = 1 - clamp((c.t - (c.life - 0.2)) / 0.2, 0, 1);
-    if (Math.random() < 0.7) sparks.emit(c.x + (Math.random() - 0.5) * 2, 0.6 + Math.random(), c.z + (Math.random() - 0.5) * 2, -c.fx * 3, 1, -c.fz * 3, 0.05 + Math.random() * 0.07, 0.5, Math.random() < 0.5 ? SKILL_COL[0] : LIGHT_BLUE, 2);
+    for (let k = 0; k < 2; k++) sparks.emit(c.x + (Math.random() - 0.5) * 2.4, 0.5 + Math.random() * 1.2, c.z + (Math.random() - 0.5) * 2.4, -c.fx * 3, 1, -c.fz * 3, 0.05 + Math.random() * 0.08, 0.55, Math.random() < 0.5 ? SKILL_COL[0] : LIGHT_BLUE, 2);
     if (c.t > c.life || Math.hypot(c.x, c.z) > c.limit + 2) c.mesh.visible = false;
   }
 }
@@ -469,6 +469,7 @@ export function addDecal(x: number, z: number, s: number, life = D_LIFE): void {
 let decalDensity = 1;
 onQuality((l) => {
   inkDrops.density = l === "low" ? 0.5 : 1;
+  sparks.density = l === "low" ? 0.6 : 1;
   decalDensity = l === "low" ? 0.5 : 1;
 });
 const decalOnLand = (x: number, z: number, s: number): void => {
@@ -502,7 +503,11 @@ export function inkHit(x: number, y: number, z: number, dx: number, dz: number, 
   for (let k = 0; k < 1 + power; k++) addDecal(x + dx * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, z + dz * (0.4 + Math.random() * 0.9) + (Math.random() - 0.5) * 0.6, 0.15 + Math.random() * 0.12 * power, 2);
   ring(x, z, 0.55 + power * 0.35, INK_RING, 0.28, 0, INK_RING);
   screenSplash(x, y, z, 0.03 + power * 0.014);
-  if (tint) colorStain(x, z, 1.4 + power * 0.7, tint);
+  if (tint) {
+    colorStain(x, z, 1.4 + power * 0.7, tint);
+    // the blow's pigment flies off where it lands
+    sparkBurst(x, y, z, Math.round(4 + power * 5), tint, 0.55 + power * 0.2, 1);
+  }
 }
 /** The third hit: a full circle of ink swept round the body and a bloom of ink where it closes. */
 export function inkSweep(x: number, z: number, r: number): void {
@@ -577,9 +582,9 @@ function updateFlow(dt: number): void {
  * so this stays short.
  */
 export function hitFeel(weight: number, kill: boolean): void {
-  feel.freeze = Math.max(feel.freeze, kill ? 0.12 : 0.05 + weight * 0.05);
-  feel.hitstop = Math.max(feel.hitstop, 0.04);
-  feel.shake = Math.max(feel.shake, kill ? 0.22 : 0.1 + weight * 0.1);
+  feel.freeze = Math.max(feel.freeze, kill ? 0.14 : 0.055 + weight * 0.06);
+  feel.hitstop = Math.max(feel.hitstop, 0.045);
+  feel.shake = Math.max(feel.shake, kill ? 0.28 : 0.12 + weight * 0.13);
 }
 
 /** Ink droplet that falls with gravity (blot suction, shot trails). */
@@ -656,7 +661,12 @@ function updateBlots(dt: number): void {
       }
     } else if (!b.done) {
       b.done = true;
-      inkBurst(b.x, 0.5, b.z, 40, 0, 0, 1.8);
+      inkBurst(b.x, 0.5, b.z, 52, 0, 0, 2);
+      ring(b.x, b.z, b.r * 1.25, INK_RING, 0.55, 0, INK_RING);
+      for (let k = 0; k < 20; k++) {
+        const a = Math.random() * Math.PI * 2, s = 3 + Math.random() * 5;
+        sparks.emit(b.x, 0.6, b.z, Math.cos(a) * s, 3 + Math.random() * 4, Math.sin(a) * s, 0.05 + Math.random() * 0.07, 0.8, PAPER, 1.2);
+      }
       // the prison leaves one bigger blot that lingers a little, and a couple of splashes
       addDecal(b.x, b.z, b.r * 0.55, 4.5);
       for (let k = 0; k < 2; k++) addDecal(b.x + (Math.random() - 0.5) * 4, b.z + (Math.random() - 0.5) * 4, 0.3 + Math.random() * 0.3);
@@ -682,13 +692,17 @@ export function earthSlam(x: number, z: number, local: boolean, r = 5, echo = fa
   const col = SKILL_COL[2];
   ring(x, z, r, col, 0.7);
   ring(x, z, r * 0.64, EARTH_INNER, 0.5);
+  ring(x, z, r * 1.3, col, 0.9, 0, INK_RING);
   if (echo) later(0.4, x, z, r, local, "earth");
-  sparkBurst(x, 0.2, z, 40, col, 1.4, 1.6);
-  inkBurst(x, 0.2, z, 16, 0, 0, 1.2);
-  addLight(x, z, 10, 1.1, col);
+  sparkBurst(x, 0.2, z, 64, col, 1.6, 1.8);
+  sparkBurst(x, 0.3, z, 18, EARTH_INNER, 0.9, 2.4);
+  inkBurst(x, 0.2, z, 22, 0, 0, 1.4);
+  addDecal(x, z, r * 0.5, 3.5);
+  addLight(x, z, 13, 1.3, col);
   if (local) {
-    feel.shake = Math.max(feel.shake, 0.6);
-    feel.hitstop = Math.max(feel.hitstop, 0.07);
+    screenSplash(x, 0.3, z, 0.08);
+    feel.shake = Math.max(feel.shake, 0.7);
+    feel.hitstop = Math.max(feel.hitstop, 0.08);
   }
 }
 

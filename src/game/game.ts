@@ -98,11 +98,11 @@ interface Remote {
  * How a blow lands on screen: a skill's pigment (null: ink only), whether it is a brush strike (which bleeds the
  * player's own scarf color) and a floor on its weight.
  */
-interface Blow { col: RGB | null; basic: boolean; heavy: number }
-const LIGHT_BLOW: Blow = { col: null, basic: true, heavy: 0 };
-const HEAVY_BLOW: Blow = { col: null, basic: true, heavy: 0.8 }; // the third strike
+interface Blow { col: RGB | null; basic: boolean; heavy: number; /** its damage numbers' class */ num: "" | "heavy" | `sk${number}` }
+const LIGHT_BLOW: Blow = { col: null, basic: true, heavy: 0, num: "" };
+const HEAVY_BLOW: Blow = { col: null, basic: true, heavy: 0.8, num: "heavy" }; // the third strike
 // 먹감옥 is ink itself: no pigment
-const SKILL_BLOW: Blow[] = SKILL_COL.map((c, i) => ({ col: i === 4 ? null : c, basic: false, heavy: 0.5 }));
+const SKILL_BLOW: Blow[] = SKILL_COL.map((c, i) => ({ col: i === 4 ? null : c, basic: false, heavy: 0.5, num: `sk${i}` as const }));
 /** the scarf's dye as the color a brush strike bleeds (black dye: ink only); recomputed only when it changes */
 let strikeHex = -2;
 const strikeCol: [number, number, number] = [0, 0, 0];
@@ -284,6 +284,7 @@ export class Game {
       setQuality(s.quality);
       setShake(s.shake);
       actorFx.remoteLow = s.lowRemote;
+      actorFx.onCast = (i) => this.hud.skillWash(i);
       this.hud.showDmg = s.dmgNumbers;
       this.chat.filter = s.chatFilter;
       root.classList.toggle("names-mine", s.names === "mine");
@@ -711,7 +712,7 @@ export class Game {
       else audio.play(h.resisted ? "resisted" : h.kill ? "kill-burst" : "hit-ink", v.x, v.z);
       const def = MONSTERS[v.kind] ?? v.def;
       if (h.resisted) this.hud.number(v.x, def.height + 0.5, v.z, h.dmg > 0 ? t("{n} 먹혀들지 않는다", { n: h.dmg }) : t("먹혀들지 않는다"), "resist");
-      else this.hud.number(v.x, def.height + 0.5, v.z, String(h.dmg), h.kill ? "kill" : "");
+      else this.hud.number(v.x, def.height + 0.5, v.z, String(h.dmg), h.kill ? (blow.num ? `kill ${blow.num}` : "kill") : blow.num);
     }
     if (any) hitFeel(heavy, killed);
     this.pickTarget(res.hits);

@@ -167,6 +167,7 @@ export class Hud {
   private readonly cdsLast = new Int16Array(5).fill(-1);
   private readonly cdsEls: HTMLElement[] = [];
   private readonly dmgPool: HTMLElement[] = [];
+  private wash!: HTMLElement;
   private dmgNext = 0;
   private promptText = "";
   private bossShown = false;
@@ -227,6 +228,12 @@ export class Hud {
       this.cdsEls.push(el(".cds", b));
       this.lockEls.push(el(".lock", b));
     });
+    // our own skill: the screen's edge washes in its color for a moment (one element, restarted by class flip)
+    this.wash = document.createElement("div");
+    this.wash.className = "skill-wash";
+    this.wash.setAttribute("aria-hidden", "true");
+    this.wash.addEventListener("animationend", () => this.wash.classList.remove("go", "go2"));
+    root.prepend(this.wash);
     const dmgBox = el("[data-dmg]", root);
     for (let i = 0; i < 28; i++) {
       const d = document.createElement("span");
@@ -729,8 +736,18 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
   }
 
   /* ---------- floating numbers ---------- */
-  number(x: number, y: number, z: number, text: string, cls: "" | "kill" | "hurt" | "gain" | "resist"): void {
-    if (!this.showDmg && (cls === "" || cls === "kill" || cls === "hurt")) return;
+  /** The edge of the screen floods with skill i's color and drains (our own casts only). */
+  skillWash(i: number): void {
+    const w = this.wash;
+    if (!w) return;
+    w.style.setProperty("--wc", SKILL_COLOR[i] ?? "#2b2622");
+    const flip = w.classList.contains("go") ? "go2" : "go";
+    w.className = `skill-wash ${flip}${i === 4 ? " ink" : ""}`;
+  }
+
+  /** `cls`: "" (a brush strike), "heavy" (the third), "sk0".."sk4" (a skill, in its color), "kill" (+ either), "hurt", "gain", "resist". */
+  number(x: number, y: number, z: number, text: string, cls: string): void {
+    if (!this.showDmg && cls !== "gain" && cls !== "resist") return;
     vProj.set(x, y, z).project(camera);
     if (vProj.z > 1) return;
     const d = this.dmgPool[this.dmgNext];

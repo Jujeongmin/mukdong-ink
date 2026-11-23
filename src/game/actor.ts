@@ -16,7 +16,7 @@ import { POSE, KEYS, Rig, blend, runPose, sampleKeys, sampleMotion } from "./ren
 import { HIT1, HIT2, HIT3, type MotionClip } from "./render/motion/sword";
 import {
   BLOT_DELAY, INK_TRAIL, Ribbon, SILVER_TRAIL, SKILL_COL, Trail, earthSlam, fireCrescent, inkBurst, inkDrop, inkSweep, later, ring,
-  inkAfterimage, sparks, spawnBlot, spawnGhost,
+  inkAfterimage, sparkBurst, sparks, spawnBlot, spawnGhost,
 } from "./render/fx";
 import { strokeAdd, strokeBegin, strokeEnd } from "./render/strokes";
 import type { RGB } from "./util";
@@ -118,7 +118,11 @@ let actorCount = 0;
  */
 export const actorSound: { fn: ((code: number, a: Actor) => void) | null } = { fn: null };
 /** "다른 유저 효과 줄이기": remote actors skip their roll/skill flourishes (rings, lights, bursts). */
-export const actorFx = { remoteLow: false };
+export const actorFx: { remoteLow: boolean; onCast: ((i: number) => void) | null } = {
+  remoteLow: false,
+  /** our own skill was cast (the game washes the screen edge in its color) */
+  onCast: null,
+};
 
 export class Actor {
   readonly rig = new Rig();
@@ -328,7 +332,13 @@ export class Actor {
     }
     if (i === 2) { this.trail.col = col; this.sk2Air = false; }
     if (i === 3) { this.trail.col = SILVER_TRAIL; if (flourish) addLight(this.x, this.z, 7, 0.8, WHITE, this); this.windX = this.x; this.windZ = this.z; }
+    // the cast itself: a burst of the skill's pigment round the body (먹감옥 is ink: a burst of ink)
+    if (flourish) {
+      if (i === 4) inkBurst(this.x, 1.1, this.z, 16, 0, 0, 1.1);
+      else sparkBurst(this.x, 1.1, this.z, 18, i === 3 ? WHITE : col, 0.75, 1.3);
+    }
     if (!this.local) return;
+    actorFx.onCast?.(i);
     this.cd[i] = this.skillCd(i);
     if (i === 0) { this.vx = fx * 3; this.vz = fz * 3; }
     if (i === 1) this.hooks?.skill(1, this, 0.15);
@@ -618,7 +628,7 @@ export class Actor {
   }
   private fireSpinSparks(): void {
     const col = SKILL_COL[1];
-    for (let n = 0; n < 3; n++) {
+    for (let n = 0; n < 5; n++) {
       const a = Math.random() * Math.PI * 2, r = 1.2 + Math.random() * 2.2;
       sparks.emit(this.x + Math.cos(a) * r, 0.4 + Math.random() * 1.6, this.z + Math.sin(a) * r, -Math.sin(a) * 6, 2 + Math.random() * 3, Math.cos(a) * 6, 0.06 + Math.random() * 0.1, 0.45, Math.random() < 0.4 ? EMBER : col, 1);
     }
@@ -632,7 +642,7 @@ export class Actor {
       inkAfterimage(this.rig, this.local || !actorFx.remoteLow ? 4 : 0);
     }
     const fx = this.fx, fz = this.fz;
-    for (let n = 0; n < 4; n++) sparks.emit(this.x + (Math.random() - 0.5), 0.3 + Math.random() * 1.7, this.z + (Math.random() - 0.5), -fx * 6, 0.5, -fz * 6, 0.05 + Math.random() * 0.06, 0.35, Math.random() < 0.5 ? WHITE : SILVER_TRAIL, 3);
+    for (let n = 0; n < 6; n++) sparks.emit(this.x + (Math.random() - 0.5), 0.3 + Math.random() * 1.7, this.z + (Math.random() - 0.5), -fx * 6, 0.5, -fz * 6, 0.05 + Math.random() * 0.06, 0.35, Math.random() < 0.5 ? WHITE : SILVER_TRAIL, 3);
   }
   private windEnd(): void {
     ring(this.x, this.z, 2.4, WHITE, 0.5, 0, WIND_EDGE);

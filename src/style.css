@@ -2179,3 +2179,27 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .title .title-lang-list button.on { opacity: 1; font-weight: 700; }
 /* the loading screen's place name stays on one line; fit.ts scales a long translated one down */
 :root:not([data-lang="ko"]) .loading-place h2 { white-space: nowrap; overflow: hidden; max-width: min(360px, 60vw); }
+
+/* ---------- casting a skill: the screen's edge floods with its color, then drains (hud.skillWash) ----------
+   A ragged frame of pigment (the scroll-frame brush mask) over a soft vignette; it never covers the middle. */
+#ui .skill-wash { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse 75% 70% at 50% 52%, transparent 52%, color-mix(in srgb, var(--wc, #2b2622) 38%, transparent) 82%, color-mix(in srgb, var(--wc, #2b2622) 62%, transparent) 100%); }
+#ui .skill-wash::after { content: ""; position: absolute; inset: -2%; background: var(--wc, #2b2622); opacity: 0.55;
+  -webkit-mask: var(--m-frame) center / 100% 100% no-repeat; mask: var(--m-frame) center / 100% 100% no-repeat; }
+#ui .skill-wash.ink { mix-blend-mode: multiply; }
+#ui .skill-wash.go { animation: skill-wash 0.6s ease-out both; }
+#ui .skill-wash.go2 { animation: skill-wash2 0.6s ease-out both; }
+@keyframes skill-wash { 0% { opacity: 0; transform: scale(1.06); } 14% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+@keyframes skill-wash2 { 0% { opacity: 0; transform: scale(1.06); } 14% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { #ui .skill-wash.go, #ui .skill-wash.go2 { animation-duration: 0.3s; } }
+
+/* ---------- damage numbers: the third strike heavier, skills in their own color and bigger ---------- */
+.dmg.heavy { font-size: 30px; }
+.dmg[class*="sk"] { font-size: 31px; -webkit-text-stroke: 0.6px rgba(20, 16, 12, 0.55); text-shadow: 0 0 6px rgba(244, 238, 224, 0.95), 0 0 2px rgba(244, 238, 224, 0.95); }
+.dmg.sk0 { color: #2f5fb8; } .dmg.sk1 { color: #d4462a; } .dmg.sk2 { color: #c08a2a; } .dmg.sk3 { color: #3f8f9c; } .dmg.sk4 { color: #3b2a48; }
+.dmg.kill[class*="sk"] { font-size: 37px; }
+.dmg[class*="sk"].go { animation: dmg-pop 1s cubic-bezier(0.2, 1.2, 0.4, 1) both; }
+.dmg[class*="sk"].go2 { animation: dmg-pop2 1s cubic-bezier(0.2, 1.2, 0.4, 1) both; }
+@keyframes dmg-pop { 0% { opacity: 0; translate: -50% 0; scale: 1.9; rotate: -6deg; } 12% { opacity: 1; scale: 1.25; rotate: 0deg; } 26% { scale: 1; } 100% { opacity: 0; translate: -50% -56px; } }
+@keyframes dmg-pop2 { 0% { opacity: 0; translate: -50% 0; scale: 1.9; rotate: -6deg; } 12% { opacity: 1; scale: 1.25; rotate: 0deg; } 26% { scale: 1; } 100% { opacity: 0; translate: -50% -56px; } }
+@media (max-height: 480px) { .dmg[class*="sk"] { font-size: 25px; } .dmg.kill[class*="sk"] { font-size: 29px; } .dmg.heavy { font-size: 25px; } }
