@@ -46,6 +46,7 @@ import { DAILY_QUESTS, MAIN_QUESTS } from "../shared/world";
 const questIndex = (id: string): number => MAIN_QUESTS.findIndex((q) => q.id === id);
 import type { MView } from "./monsters";
 import { AutoPlay } from "./autoplay";
+import { t } from "./i18n";
 import { attempt, el, errorCode, errorText, esc, installSprites, toast } from "./ui/dom";
 
 const BUF = 0.15;
@@ -55,27 +56,27 @@ const ACT_SFX: readonly (SfxName | null)[] = [null, "swing-1", "swing-2", "swing
 
 /** 먹동이's line on the death screen: what took them, by the kind of monster that hurt them last. */
 const DEATH_BY: Record<string, string> = {
-  "": "먹이 몸을 덮었다",
-  blob: "먹방울 떼에 휩쓸렸다",
-  shade: "먹그림자에 붙들렸다",
-  bigblob: "부푼 먹방울에 짓눌렸다",
-  spitter: "먹두꺼비의 먹물을 뒤집어썼다",
-  shadelord: "그림자 무사의 칼끝에 쓰러졌다",
-  boss: "대먹귀의 주먹에 짓눌렸다",
-  vine: "먹덩굴에 휘감겼다",
-  jar: "옹기귀에 떠밀려 쓰러졌다",
-  crow: "잿까마귀의 재에 덮였다",
-  shademonk: "그림자 승병의 지팡이에 쓰러졌다",
-  lantern: "석등지기에 짓눌렸다",
-  kilnlord: "가마 지킴이의 재 껍데기에 짓눌렸다",
-  ashboss: "잿불귀의 불길에 삼켜졌다",
+  "": t("먹이 몸을 덮었다"),
+  blob: t("먹방울 떼에 휩쓸렸다"),
+  shade: t("먹그림자에 붙들렸다"),
+  bigblob: t("부푼 먹방울에 짓눌렸다"),
+  spitter: t("먹두꺼비의 먹물을 뒤집어썼다"),
+  shadelord: t("그림자 무사의 칼끝에 쓰러졌다"),
+  boss: t("대먹귀의 주먹에 짓눌렸다"),
+  vine: t("먹덩굴에 휘감겼다"),
+  jar: t("옹기귀에 떠밀려 쓰러졌다"),
+  crow: t("잿까마귀의 재에 덮였다"),
+  shademonk: t("그림자 승병의 지팡이에 쓰러졌다"),
+  lantern: t("석등지기에 짓눌렸다"),
+  kilnlord: t("가마 지킴이의 재 껍데기에 짓눌렸다"),
+  ashboss: t("잿불귀의 불길에 삼켜졌다"),
 };
 
 const SKILL_THOUGHT: Record<number, string> = {
-  1: "손끝에 불기운이… 화염선풍?",
-  2: "발밑이 무겁게 울린다… 대지낙하?",
-  3: "몸이 바람처럼 가볍다… 바람질주?",
-  4: "먹이 손에 감겨 온다… 먹감옥?",
+  1: t("손끝에 불기운이… 화염선풍?"),
+  2: t("발밑이 무겁게 울린다… 대지낙하?"),
+  3: t("몸이 바람처럼 가볍다… 바람질주?"),
+  4: t("먹이 손에 감겨 온다… 먹감옥?"),
 };
 /** grey sparks when a blow slides off armor or vines */
 const GREY = [0.62, 0.6, 0.58] as const;
@@ -206,10 +207,10 @@ export class Game {
       enterMemory: (id) => void this.enterMemory(id), memoryBlock: () => this.memoryBlock(), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id),
       settings: {
         name: () => this.profile?.name ?? "",
-        resetHints: () => { this.hints.reset(); toast("안내 혼잣말을 처음부터 다시 본다"); },
+        resetHints: () => { this.hints.reset(); toast(t("안내 혼잣말을 처음부터 다시 본다")); },
         openAuto: () => { this.sheets.close(); this.hud.toggleAutoPop(); },
       } });
-    this.dialogue = new Dialogue(root, () => this.profile?.name || "나그네");
+    this.dialogue = new Dialogue(root, () => this.profile?.name || t("나그네"));
     this.hints = new Hints(root);
     this.hints.busy = () => {
       const now = performance.now();
@@ -234,7 +235,7 @@ export class Game {
       help: () => this.hud.help(),
       escape: () => this.onEscape(),
       chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
-      mute: () => { toast(audio.toggleMute() ? "소리를 껐습니다 (M)" : "소리를 켰습니다 (M)"); },
+      mute: () => { toast(audio.toggleMute() ? t("소리를 껐습니다 (M)") : t("소리를 켰습니다 (M)")); },
       manual: () => this.onManual(),
       auto: () => this.autoProgress(),
     }, root, document.getElementById("stage") as HTMLCanvasElement);
@@ -323,7 +324,7 @@ export class Game {
     this.chatRoom = key;
     this.hud.clearSays();
     // the log was cleared when we left; the new room's recent lines may already be in, so the label goes first
-    this.chat.label(`— ${ZONES[zone]?.name ?? zone} ${channel}채널 —`);
+    this.chat.label(t("— {zone} {n}채널 —", { zone: ZONES[zone] ? t(ZONES[zone].name) : zone, n: channel }));
   }
 
   private async sayChat(text: string): Promise<void> {
@@ -331,7 +332,7 @@ export class Game {
       await this.api.chatSay(text);
     } catch (e) {
       const code = errorCode(e);
-      toast(code === "on_cooldown" ? "잠시 후에 다시 말할 수 있다" : code === "rate_limited" ? "같은 말을 너무 자주 했다" : code === "bad_args" ? "말이 너무 길거나 비었다" : errorText(e), true);
+      toast(code === "on_cooldown" ? t("잠시 후에 다시 말할 수 있다") : code === "rate_limited" ? t("같은 말을 너무 자주 했다") : code === "bad_args" ? t("말이 너무 길거나 비었다") : errorText(e), true);
       throw e;
     }
   }
@@ -368,20 +369,20 @@ export class Game {
   /** Z: 자동 진행 - takes the main quest, goes where it leads, hands it in, and on to the next. */
   private autoProgress(): void {
     // stopping always works (mid-conversation, mid-crossing); starting needs a free moment
-    if (this.auto.progress || this.auto.on || this.auto.traveling) { this.auto.stop(); toast("자동 진행 끔"); return; }
+    if (this.auto.progress || this.auto.on || this.auto.traveling) { this.auto.stop(); toast(t("자동 진행 끔")); return; }
     if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
     const why = this.auto.toggleProgress();
     if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
-    toast("자동 진행");
+    toast(t("자동 진행"));
   }
 
   /** A daily quest tapped in the tracker: 자동 진행 on that one (again on the same one: stop). */
   private autoDaily(i: number): void {
-    if (this.auto.progress && this.auto.daily === i) { this.auto.stop(); toast("자동 진행 끔"); return; }
+    if (this.auto.progress && this.auto.daily === i) { this.auto.stop(); toast(t("자동 진행 끔")); return; }
     if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
     const why = this.auto.startDaily(i);
     if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
-    toast(`자동 진행 · ${DAILY_QUESTS[i].title}`);
+    toast(t("자동 진행 · {title}", { title: t(DAILY_QUESTS[i].title) }));
   }
 
   /* ---------- start ---------- */
@@ -393,9 +394,9 @@ export class Game {
     this.dialogue.autoNext = () => this.auto.progress;
     this.dialogue.autoHold = () => this.sheets.isOpen();
     this.monsters.onEffect = (kind) => {
-      if (kind === "shot" && this.questIs("c1q7")) this.hints.think("gate5", "떨어질 자리를 보고 굴러야겠다.", { key: KEYS.roll, urgent: true });
-      if (kind === "slam" && this.zone.def.id === "peak" && this.questIs("c1q10")) this.hints.think("gate7", "지금이다!", { key: KEYS.roll, urgent: true });
-      if (kind === "slam" && this.zone.def.id === "censer" && this.questIs("c2q10")) this.hints.think("gate10", "고리가 넓다… 끝까지!", { key: KEYS.roll, urgent: true });
+      if (kind === "shot" && this.questIs("c1q7")) this.hints.think("gate5", t("떨어질 자리를 보고 굴러야겠다."), { key: KEYS.roll, urgent: true });
+      if (kind === "slam" && this.zone.def.id === "peak" && this.questIs("c1q10")) this.hints.think("gate7", t("지금이다!"), { key: KEYS.roll, urgent: true });
+      if (kind === "slam" && this.zone.def.id === "censer" && this.questIs("c2q10")) this.hints.think("gate10", t("고리가 넓다… 끝까지!"), { key: KEYS.roll, urgent: true });
     };
     this.auto.bind(this.api.account);
     // 화첩: a chapter boss falling near you paints the color bloom's fullest moment into the album
@@ -409,7 +410,7 @@ export class Game {
         void paintFrame(canvas).then(async (blob) => {
           if (!blob || !(await album.keep(page.id, blob))) return;
           audio.play("pickup");
-          toast(`화첩에 한 장이 남았다: ${page.title} [${KEYS.album}]`);
+          toast(t("화첩에 한 장이 남았다: {title} [{key}]", { title: page.title, key: KEYS.album }));
         });
       };
     };
@@ -470,8 +471,11 @@ export class Game {
     for (const page of BOOK) {
       const was = bookStage(page, prev.book?.[page.kind] ?? 0), now = bookStage(page, p.book?.[page.kind] ?? 0);
       if (now <= was) continue;
-      const stat = page.stat === "atk" ? "공격" : "생명";
-      toast(`먹그림 도감 · ${MONSTERS[page.kind]?.name ?? ""} ${now === 2 ? "완성" : "밑그림"} · ${stat} +${Math.round(BOOK_STEP * 100)}%`);
+      const stat = page.stat === "atk" ? t("공격") : t("생명");
+      const name = MONSTERS[page.kind] ? t(MONSTERS[page.kind].name) : "";
+      toast(now === 2
+        ? t("먹그림 도감 · {name} 완성 · {stat} +{n}%", { name, stat, n: Math.round(BOOK_STEP * 100) })
+        : t("먹그림 도감 · {name} 밑그림 · {stat} +{n}%", { name, stat, n: Math.round(BOOK_STEP * 100) }));
       audio.play("quest-done");
     }
   }
@@ -484,19 +488,19 @@ export class Game {
     this.hud.setProfile(p);
     // the top-left ensō shows your own face (the same in-engine cutout the dialogue uses; cached per look)
     if (this.player) { const face = this.portraitOf("me"); if (face) this.hud.setFace(face.neutral); }
-    this.hud.tag(this, esc(p.name || "나그네"), "me");
+    this.hud.tag(this, esc(p.name || t("나그네")), "me");
     if (prev) this.bookNews(prev, p);
     if (prev && p.level > prev.level && this.player) {
       const sk = SKILLS.find((s) => s.unlock > prev.level && s.unlock <= p.level);
-      this.hud.levelUp(p.level, sk ? sk.name : null);
+      this.hud.levelUp(p.level, sk ? t(sk.name) : null);
       audio.play("levelup");
       ring(this.player.x, this.player.z, 4, GOLD_RGB, 1.0);
       sparkBurst(this.player.x, 0.5, this.player.z, 40, GOLD_RGB, 0.9, 1.4);
       addLight(this.player.x, this.player.z, 9, 1.4, GOLD_RGB, this.player);
-      toast(`+${p.level - prev.level} 수련 포인트`);
+      toast(t("+{n} 수련 포인트", { n: p.level - prev.level }));
       if (sk) {
         this.hud.bloomSkill(sk.id);
-        this.hints.think(`skill${sk.id}`, SKILL_THOUGHT[sk.id] ?? `${sk.name}…?`, { urgent: true });
+        this.hints.think(`skill${sk.id}`, SKILL_THOUGHT[sk.id] ?? t("{name}…?", { name: t(sk.name) }), { urgent: true });
       }
     }
     this.revealParts(p);
@@ -550,7 +554,7 @@ export class Game {
     if (dead && !this.dead) {
       this.auto.stop();
       this.hud.deathCause(performance.now() - this.lastHurtAt < 6000 ? DEATH_BY[this.lastHurtKind] ?? DEATH_BY[""] : DEATH_BY[""]);
-      if (!this.hints.has("death")) { this.hints.mark("death"); this.hud.deathThought("물약을 챙길 걸… 단이에게 가 보자."); }
+      if (!this.hints.has("death")) { this.hints.mark("death"); this.hud.deathThought(t("물약을 챙길 걸… 단이에게 가 보자.")); }
       else this.hud.deathThought(null);
       this.dead = true;
       this.player.die();
@@ -615,7 +619,7 @@ export class Game {
       }
       r.dead = rp.dead;
       r.actor.setNet(rp.pose, rp.look, rp.dead);
-      this.hud.tag(r, `${esc(rp.name || "나그네")}<small>Lv ${rp.level}</small>`, rp.dead ? "pc dead" : "pc");
+      this.hud.tag(r, `${esc(rp.name || t("나그네"))}<small>Lv ${rp.level}</small>`, rp.dead ? "pc dead" : "pc");
     }
     for (const [id, r] of this.remotes) {
       if (id in pl) continue;
@@ -659,13 +663,13 @@ export class Game {
       if (h.resisted && hv) {
         // 먹 갑옷 / 덩굴: the blow slides off
         sparkBurst(hv.x, hv.def.height * 0.6, hv.z, 10, GREY, 0.7, 1);
-        if (hv.kind === "shadelord" && this.questIs("c1q5")) this.hints.think("gate4", "칼이 미끄러진다…", { key: KEYS.growth, urgent: true });
-        if (hv.def.boss && this.questIs("c1q10")) this.hints.think("gate6", "무딘 붓으론 안 된다…", { key: KEYS.growth, urgent: true });
-        if (hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8", "불씨가 얕다… 화염선풍을 깨워야 한다.", { key: KEYS.growth, urgent: true });
-        if (hv.kind === "ashboss" && this.questIs("c2q10")) this.hints.think("gate9", "불길이 붓을 밀어낸다… 붓을 더 벼려야 한다.", { key: KEYS.growth, urgent: true });
+        if (hv.kind === "shadelord" && this.questIs("c1q5")) this.hints.think("gate4", t("칼이 미끄러진다…"), { key: KEYS.growth, urgent: true });
+        if (hv.def.boss && this.questIs("c1q10")) this.hints.think("gate6", t("무딘 붓으론 안 된다…"), { key: KEYS.growth, urgent: true });
+        if (hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8", t("불씨가 얕다… 화염선풍을 깨워야 한다."), { key: KEYS.growth, urgent: true });
+        if (hv.kind === "ashboss" && this.questIs("c2q10")) this.hints.think("gate9", t("불길이 붓을 밀어낸다… 붓을 더 벼려야 한다."), { key: KEYS.growth, urgent: true });
       }
       // 8b: the awakened fire gets through the shell (shown once, also to those who never saw gate 8)
-      if (!h.resisted && hv && hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8b", "깨어난 불이 껍데기를 녹인다.", { urgent: true });
+      if (!h.resisted && hv && hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8b", t("깨어난 불이 껍데기를 녹인다."), { urgent: true });
       if (h.kill) {
         this.kills++;
         if (this.zone.def.id === "bamboo" && this.questIs("c1q3")) {
@@ -673,7 +677,7 @@ export class Game {
           if (this.gateKills >= 3 && !this.hints.has("ui:auto")) {
             this.hints.mark("ui:auto");
             this.hud.reveal("auto", true);
-            this.hints.think("gate2", "손에 익었다… 붓이 알아서 움직일 것 같다.", { urgent: true });
+            this.hints.think("gate2", t("손에 익었다… 붓이 알아서 움직일 것 같다."), { urgent: true });
           }
         }
       }
@@ -706,19 +710,19 @@ export class Game {
       if (v.kind === "kilnlord") audio.play(h.resisted ? "armor-clunk" : "glaze-crack", v.x, v.z);
       else audio.play(h.resisted ? "resisted" : h.kill ? "kill-burst" : "hit-ink", v.x, v.z);
       const def = MONSTERS[v.kind] ?? v.def;
-      if (h.resisted) this.hud.number(v.x, def.height + 0.5, v.z, h.dmg > 0 ? `${h.dmg} 먹혀들지 않는다` : "먹혀들지 않는다", "resist");
+      if (h.resisted) this.hud.number(v.x, def.height + 0.5, v.z, h.dmg > 0 ? t("{n} 먹혀들지 않는다", { n: h.dmg }) : t("먹혀들지 않는다"), "resist");
       else this.hud.number(v.x, def.height + 0.5, v.z, String(h.dmg), h.kill ? "kill" : "");
     }
     if (any) hitFeel(heavy, killed);
     this.pickTarget(res.hits);
     const p = this.player;
     let y = 2.6;
-    if (res.exp > 0) { this.hud.number(p.x, y, p.z, `경험 +${res.exp}`, "gain"); y += 0.4; }
-    if (res.pigment > 0) { this.hud.number(p.x, y, p.z, `안료 +${res.pigment}`, "gain"); y += 0.4; }
-    if (res.jade > 0) this.hud.number(p.x, y, p.z, `묵옥 +${res.jade}`, "gain");
+    if (res.exp > 0) { this.hud.number(p.x, y, p.z, t("경험 +{n}", { n: res.exp }), "gain"); y += 0.4; }
+    if (res.pigment > 0) { this.hud.number(p.x, y, p.z, t("안료 +{n}", { n: res.pigment }), "gain"); y += 0.4; }
+    if (res.jade > 0) this.hud.number(p.x, y, p.z, t("묵옥 +{n}", { n: res.jade }), "gain");
     const drops: string[] = [];
-    if (res.stones) drops.push(`먹돌 +${res.stones}`);
-    if (res.shards) drops.push(`색 조각 +${res.shards}`);
+    if (res.stones) drops.push(t("먹돌 +{n}", { n: res.stones }));
+    if (res.shards) drops.push(t("색 조각 +{n}", { n: res.shards }));
     if (drops.length) { toast(drops.join(" / ")); audio.play("pickup"); }
     if (res.levelUp || res.exp > 0 || res.pigment > 0 || res.jade > 0 || res.stones || res.shards) this.profileCheckAt = performance.now() + 700;
   }
@@ -734,7 +738,7 @@ export class Game {
     if (this.dead) return;
     const s = SKILLS[i];
     if (!s) return;
-    if (this.profile.level < s.unlock) { this.hints.think("tease", `이 자리엔 어떤 검법이 들어올까… (Lv ${s.unlock})`, { repeat: true, urgent: true }); return; }
+    if (this.profile.level < s.unlock) { this.hints.think("tease", t("이 자리엔 어떤 검법이 들어올까… (Lv {n})", { n: s.unlock }), { repeat: true, urgent: true }); return; }
     if (this.player.cd[i] > 0) return;
     this.player.input.sk = i;
     this.player.input.skT = BUF;
@@ -752,7 +756,7 @@ export class Game {
     if (p.potions > 0) this.emptyNoted = false;
     if (p.hp / Math.max(1, p.maxHp) >= gameSettings.v.potionAt) return;
     if (p.potions <= 0) {
-      if (!this.emptyNoted) { this.emptyNoted = true; this.hints.think("potion-empty", "물약이 떨어졌다… 단이에게 가 보자", { urgent: true, repeat: true }); }
+      if (!this.emptyNoted) { this.emptyNoted = true; this.hints.think("potion-empty", t("물약이 떨어졌다… 단이에게 가 보자"), { urgent: true, repeat: true }); }
       return;
     }
     const now = performance.now();
@@ -765,14 +769,14 @@ export class Game {
   /** `auto`: drunk by 물약 자동 사용 (said so on screen, and the gourd flashes, so it's clear it happened) */
   private async drinkPotion(auto = false): Promise<void> {
     if (!this.profile || this.dead || this.transitioning) return;
-    if (this.profile.potions <= 0) { toast("물약이 없습니다 · 마을 염색 장인에게서 살 수 있습니다"); return; }
-    if (this.profile.hp >= this.profile.maxHp) { toast("생명이 가득합니다"); return; }
+    if (this.profile.potions <= 0) { toast(t("물약이 없습니다 · 마을 염색 장인에게서 살 수 있습니다")); return; }
+    if (this.profile.hp >= this.profile.maxHp) { toast(t("생명이 가득합니다")); return; }
     const before = this.profile.hp;
     const p = await attempt(this.api.usePotion());
     if (!p) return;
     this.applyProfile(p);
     const healed = p.hp - before;
-    if (healed > 0) this.hud.number(this.player.x, 2.4, this.player.z, auto ? `자동 물약 +${healed}` : `+${healed}`, "gain");
+    if (healed > 0) this.hud.number(this.player.x, 2.4, this.player.z, auto ? t("자동 물약 +{n}", { n: healed }) : `+${healed}`, "gain");
     if (auto) this.hud.potionPing();
     sparkBurst(this.player.x, 1, this.player.z, 14, SKILL_COL[3], 0.5, 1.2);
     audio.play("potion");
@@ -797,7 +801,7 @@ export class Game {
       if (!before.daily.claimed[i] && p.daily.claimed[i]) for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += q.reward[k] ?? 0;
     });
     this.applyProfile(p);
-    this.hud.reward("오늘의 의뢰", sum);
+    this.hud.reward(t("오늘의 의뢰"), sum);
     audio.play("quest-done");
   }
 
@@ -808,18 +812,19 @@ export class Game {
     if (!p || !before) return;
     this.applyProfile(p);
     const said = SUB_STORY[before.q.id];
-    this.hud.reward(`서브 · ${before.q.title}`, before.q.reward, said ? { who: NPC_INFO[before.q.giver]?.name ?? "", text: said.done } : undefined);
+    const giver = NPC_INFO[before.q.giver]?.name;
+    this.hud.reward(t("서브 · {title}", { title: t(before.q.title) }), before.q.reward, said ? { who: giver ? t(giver) : "", text: t(said.done) } : undefined);
     audio.play("quest-done");
   }
 
   /** The 서브 퀘스트 tapped in the tracker: 자동 진행 on it (again: stop). */
   private autoSub(): void {
-    if (this.auto.progress && this.auto.sub) { this.auto.stop(); toast("자동 진행 끔"); return; }
+    if (this.auto.progress && this.auto.sub) { this.auto.stop(); toast(t("자동 진행 끔")); return; }
     if (!this.player || this.dead || this.transitioning || this.dialogue.isOpen() || this.memory) return;
     const why = this.auto.startSub();
     if (why) { this.hints.think("auto-why", why, { urgent: true, repeat: true }); return; }
     const s = subStatus(this.profile);
-    toast(`자동 진행 · ${s?.q.title ?? "서브 의뢰"}`);
+    toast(t("자동 진행 · {title}", { title: s ? t(s.q.title) : t("서브 의뢰") }));
   }
 
   private openAlbum(): void {
@@ -870,7 +875,7 @@ export class Game {
     this.sheets.close();
     this.input.clear();
     if (viaPortal) audio.play("portal");
-    this.loading.show(to, "길을 건너는 중…");
+    this.loading.show(to, t("길을 건너는 중…"));
     let ok = false;
     try {
       const entry = await this.api.enterZone(to, viaPortal);
@@ -900,16 +905,16 @@ export class Game {
     this.auto.stop();
     this.sheets.close();
     this.input.clear();
-    this.loading.show(this.zone.def.id, `${channel}채널로 건너가는 중…`);
+    this.loading.show(this.zone.def.id, t("{n}채널로 건너가는 중…", { n: channel }));
     try {
       const entry = await this.api.changeChannel(channel);
       this.chat.clear();
       this.loading.progress(0.7);
       this.rebuild(entry);
-      toast(`${channel}채널`);
+      toast(t("{n}채널", { n: channel }));
     } catch (e) {
       const code = errorCode(e);
-      toast(code === "room_full" ? "그 채널은 가득 찼다" : code === "on_cooldown" ? "채널은 10초에 한 번 바꿀 수 있다" : code === "dead" ? "쓰러진 채로는 옮길 수 없다" : errorText(e), true);
+      toast(code === "room_full" ? t("그 채널은 가득 찼다") : code === "on_cooldown" ? t("채널은 10초에 한 번 바꿀 수 있다") : code === "dead" ? t("쓰러진 채로는 옮길 수 없다") : errorText(e), true);
     } finally {
       await this.loading.hide();
       this.transitioning = false;
@@ -959,8 +964,8 @@ export class Game {
 
   /** Why the memory can't be opened right now, or null. */
   memoryBlock(): string | null {
-    if (!this.player || this.dead || this.transitioning) return "지금은 펼칠 수 없다";
-    if (!this.zone.def.safe) return "마을에서만 펼칠 수 있다";
+    if (!this.player || this.dead || this.transitioning) return t("지금은 펼칠 수 없다");
+    if (!this.zone.def.safe) return t("마을에서만 펼칠 수 있다");
     return null;
   }
 
@@ -972,7 +977,7 @@ export class Game {
     this.input.clear();
     if (this.auto.on) this.auto.toggle();
     if (this.auto.traveling) this.auto.stop();
-    this.loading.show(page.zone, "기억 속으로…");
+    this.loading.show(page.zone, t("기억 속으로…"));
     this.memory = { page, backX: this.player.x, backZ: this.player.z };
     this.swapZone(page.zone);
     holdColor(page.color ?? null);
@@ -981,7 +986,7 @@ export class Game {
     this.player.teleport(sx, sz);
     this.camX = sx;
     this.camZ = sz;
-    this.hud.setMemory(`${page.chapter} · ${page.title}`, def.name);
+    this.hud.setMemory(`${page.chapter} · ${page.title}`, t(def.name));
     await this.loading.hide();
     this.transitioning = false;
   }
@@ -991,7 +996,7 @@ export class Game {
     if (!m || this.transitioning) return;
     this.transitioning = true;
     this.input.clear();
-    this.loading.show(this.entry.zone, "다시 먹빛 세상으로");
+    this.loading.show(this.entry.zone, t("다시 먹빛 세상으로"));
     holdColor(null);
     this.memory = null;
     this.swapZone(this.entry.zone);
@@ -1009,13 +1014,13 @@ export class Game {
     for (const a of this.zone.anchors) {
       if (a.kind !== "npc" || !a.id) continue;
       const m = npcMark(this.profile, a.id);
-      const mark = m === "offer" ? `<i class="qmark offer">!</i>` : m === "turnin" ? `<i class="qmark turnin">?</i>` : m === "sub" ? `<i class="qmark sub" title="서브 의뢰 완료">?</i>` : m === "wait" ? `<i class="qmark wait">…</i>` : "";
-      this.hud.tag(a, `${mark}${esc(a.text)}`, "npc");
+      const mark = m === "offer" ? `<i class="qmark offer">!</i>` : m === "turnin" ? `<i class="qmark turnin">?</i>` : m === "sub" ? `<i class="qmark sub" title="${esc(t("서브 의뢰 완료"))}">?</i>` : m === "wait" ? `<i class="qmark wait">…</i>` : "";
+      this.hud.tag(a, `${mark}${esc(t(a.text))}`, "npc");
     }
   }
 
   private zoneTags(): void {
-    for (const a of this.zone.anchors) this.hud.tag(a, esc(a.text), a.kind);
+    for (const a of this.zone.anchors) this.hud.tag(a, esc(t(a.text)), a.kind);
   }
 
   private async respawn(): Promise<void> {
@@ -1024,7 +1029,7 @@ export class Game {
     this.hud.death(true, true);
     try {
       this.transitioning = true;
-      this.loading.show("village", "다시 일어나는 중");
+      this.loading.show("village", t("다시 일어나는 중"));
       this.chat.clear();
       const entry = await this.api.respawn();
       this.loading.progress(0.7);
@@ -1039,7 +1044,7 @@ export class Game {
       if (p) this.applyProfile(p);
     } catch (e) {
       const code = errorCode(e);
-      toast(code === "on_cooldown" || code === "not_ready" ? "조금만 더 기다렸다가 일어나세요" : errorText(e), true);
+      toast(code === "on_cooldown" || code === "not_ready" ? t("조금만 더 기다렸다가 일어나세요") : errorText(e), true);
       this.hud.death(true, false);
     } finally {
       this.respawning = false;
@@ -1124,7 +1129,7 @@ export class Game {
     const el = this.monsters.elites;
     for (let i = 0; i < el.length; i++) {
       const v = el[i];
-      if (!this.eliteTagged.includes(v)) { this.eliteTagged.push(v); this.hud.tag(v, esc(v.def.name), "elite"); }
+      if (!this.eliteTagged.includes(v)) { this.eliteTagged.push(v); this.hud.tag(v, esc(t(v.def.name)), "elite"); }
       this.hud.placeTag(v, v.x, v.y + v.def.height * 1.45 + 0.4, v.z);
     }
     for (let i = this.eliteTagged.length - 1; i >= 0; i--) {
@@ -1191,7 +1196,7 @@ export class Game {
     const pick = alive ?? (dead ? { v: dead, hp: 0, from: dead.hp } : null);
     if (!pick) return;
     const v = pick.v;
-    this.tgt = { id: v.id, kind: v.kind, name: `${v.def.name} · Lv ${v.level}`, maxHp: Math.max(1, v.maxHp), named: !!v.def.leash,
+    this.tgt = { id: v.id, kind: v.kind, name: `${t(v.def.name)} · Lv ${v.level}`, maxHp: Math.max(1, v.maxHp), named: !!v.def.leash,
       hp: pick.hp, from: pick.from, at: now, deadAt: pick.hp <= 0 ? now : 0 };
   }
 
@@ -1226,14 +1231,14 @@ export class Game {
     if (this.dead || this.transitioning || this.memory || this.dialogue.isOpen() || this.sheets.isOpen()) return;
     const h = this.hints;
     // a first-timer's controls, once each: walking in the village, the brush once out among monsters
-    if (!h.has("f-move") && this.zone.def.safe && performance.now() - this.begunAt > 2500) { h.think("f-move", "몸이 가볍다… 좀 걸어 볼까.", { key: KEYS.move }); return; }
-    if (!h.has("f-atk") && !this.zone.def.safe && performance.now() - this.begunAt > 1500) { h.think("f-atk", "다가오면 붓으로 벤다.", { key: KEYS.attack, urgent: true }); return; }
-    if (!h.has("f-sub") && mainWall(this.profile)) { h.think("f-sub", "본편은 아직 무리다… 서브 의뢰부터 해 볼까."); return; }
+    if (!h.has("f-move") && this.zone.def.safe && performance.now() - this.begunAt > 2500) { h.think("f-move", t("몸이 가볍다… 좀 걸어 볼까."), { key: KEYS.move }); return; }
+    if (!h.has("f-atk") && !this.zone.def.safe && performance.now() - this.begunAt > 1500) { h.think("f-atk", t("다가오면 붓으로 벤다."), { key: KEYS.attack, urgent: true }); return; }
+    if (!h.has("f-sub") && mainWall(this.profile)) { h.think("f-sub", t("본편은 아직 무리다… 서브 의뢰부터 해 볼까.")); return; }
     if (!h.has("f-quest") && !this.auto.progress && performance.now() - this.begunAt > 12000 && this.hints.has("ui:auto")) {
-      h.think("f-quest", "퀘스트를 누르면 알아서 찾아가겠지.", { key: KEYS.auto });
+      h.think("f-quest", t("퀘스트를 누르면 알아서 찾아가겠지."), { key: KEYS.auto });
       return;
     }
-    if (!h.has("f-channel") && !this.zone.def.safe && this.remotes.size >= 6) h.think("f-channel", "사람이 많다… 이름 아래 채널을 눌러 옮겨 볼까.");
+    if (!h.has("f-channel") && !this.zone.def.safe && this.remotes.size >= 6) h.think("f-channel", t("사람이 많다… 이름 아래 채널을 눌러 옮겨 볼까."));
   }
 
   private questTick(): void {
@@ -1289,7 +1294,7 @@ export class Game {
     // gate 1: the swollen blob gathers itself for the first time (c1q3)
     if (!h.has("gate1") && this.questIs("c1q3")) {
       for (const v of this.monsters.views.values()) {
-        if (v.kind === "bigblob" && v.mode === "wind") { h.think("gate1", "뭔가 온다… 굴러서 피하자.", { key: KEYS.roll, urgent: true }); break; }
+        if (v.kind === "bigblob" && v.mode === "wind") { h.think("gate1", t("뭔가 온다… 굴러서 피하자."), { key: KEYS.roll, urgent: true }); break; }
       }
     }
     // gate 3: the first touch of the ink vines before the pond gate
@@ -1298,8 +1303,8 @@ export class Game {
       for (let i = 0; i < obs.length; i++) {
         const o = obs[i];
         if (Math.hypot(o.x - pl.x, o.z - pl.z) < o.r + 1.1) {
-          if (p.level >= SKILLS[1].unlock) h.think("gate3", "불이라도 있으면… 화염선풍으로 태워 보자", { key: "2", urgent: true });
-          else h.think("gate3", "불이라도 있으면… 바람이에게 가 보자.", { urgent: true });
+          if (p.level >= SKILLS[1].unlock) h.think("gate3", t("불이라도 있으면… 화염선풍으로 태워 보자"), { key: "2", urgent: true });
+          else h.think("gate3", t("불이라도 있으면… 바람이에게 가 보자."), { urgent: true });
           break;
         }
       }
@@ -1326,10 +1331,10 @@ export class Game {
     let prompt: string | null = null;
     if (!this.dead && !this.transitioning && !this.sheets.isOpen() && !this.story.isBusy()) {
       const npc = this.nearNpc();
-      if (npc) prompt = `${npc.name}에게 말 걸기`;
+      if (npc) prompt = t("{name}에게 말 걸기", { name: t(npc.name) });
       else {
         const gate = this.nearPortal(PORTAL_PROMPT);
-        if (gate) prompt = gate.label;
+        if (gate) prompt = t(gate.label);
         // only walking in on purpose counts (not being knocked into the gate)
         const walking = p.state === "move" && Math.hypot(p.input.mx, p.input.mz) > 0.3 && !this.auto.active();
         const inGate = walking ? this.nearPortal(PORTAL_WALK) : null;
@@ -1339,7 +1344,7 @@ export class Game {
     this.hud.prompt(prompt);
     this.npcMarks();
     const boss = this.monsters.boss(p.x, p.z);
-    if (boss) this.hud.target({ id: boss.id, name: `${boss.def.name} · Lv ${boss.level}`, frac: boss.hp / Math.max(1, boss.maxHp), tier: "boss", pic: null, dying: false });
+    if (boss) this.hud.target({ id: boss.id, name: `${t(boss.def.name)} · Lv ${boss.level}`, frac: boss.hp / Math.max(1, boss.maxHp), tier: "boss", pic: null, dying: false });
     else this.hud.target(this.targetFrame());
     // profile fallback: if a reward came back but no profile push followed, fetch it once
     if (this.profileCheckAt && performance.now() > this.profileCheckAt) {
@@ -1384,7 +1389,7 @@ export async function boot(): Promise<void> {
   } catch (e) {
     console.error(e);
     title.busy();
-    title.status("이 브라우저에서 WebGL을 켤 수 없어 화면을 그리지 못했습니다. 하드웨어 가속을 켜고 다시 열어 보세요.");
+    title.status(t("이 브라우저에서 WebGL을 켤 수 없어 화면을 그리지 못했습니다. 하드웨어 가속을 켜고 다시 열어 보세요."));
     return;
   }
   const loading = new Loading(root);
@@ -1396,11 +1401,11 @@ export async function boot(): Promise<void> {
   let game: Game | null = null;
   for (;;) {
     await title.wipeOut();
-    loading.show("village", "먹을 가는 중…");
+    loading.show("village", t("먹을 가는 중…"));
     try {
       await api.connect();
       loading.progress(0.3);
-      loading.status("기록을 펼치는 중…");
+      loading.status(t("기록을 펼치는 중…"));
       let profile = await api.loadProfile();
       loading.setZone(profile.zone);
       loading.progress(0.5);
@@ -1420,20 +1425,20 @@ export async function boot(): Promise<void> {
         creator.close();
         loading.show(profile.zone, "");
       }
-      loading.status("들판으로 나가는 중…");
+      loading.status(t("들판으로 나가는 중…"));
       game ??= new Game(api, root, loading);
       await game.begin(profile);
       title.hide();
       await loading.hide();
-      if (api.mode === "local") toast("오프라인(로컬) 모드로 시작했습니다");
+      if (api.mode === "local") toast(t("오프라인(로컬) 모드로 시작했습니다"));
       void game.afterLoad();
       return;
     } catch (e) {
       console.error(e);
       await loading.hide();
       title.reveal();
-      title.status(`시작하지 못했습니다 · ${errorText(e)}`);
-      await title.waitStart("다시 시도");
+      title.status(t("시작하지 못했습니다 · {err}", { err: errorText(e) }));
+      await title.waitStart(t("다시 시도"));
     }
   }
 }

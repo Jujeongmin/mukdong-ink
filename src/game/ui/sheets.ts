@@ -7,7 +7,7 @@ import {
   AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, type Npc, type QuestDef,
 } from "../../shared/world";
 import {
-  COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, gearBonusText, harmonySkill, HARMONY_BONUS, itemOdds, type Grant, type ItemDef,
+  COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, harmonySkill, HARMONY_BONUS, hatHpBonus, itemOdds, sashCdCut, type Grant, type ItemDef,
 } from "../../shared/items";
 import { atkText, enhancedAtk } from "../../shared/growth";
 import { MONSTERS, POTION_COST, SKILLS } from "../../shared/combat";
@@ -22,6 +22,7 @@ import { enhanceHtml, growthAction, growthLocal, skillsHtml, type GrowthState } 
 import { audio } from "../audio";
 import { SETTINGS_TABS, bindSettings, settingsHtml, type SettingsCtx } from "./settings";
 import { ALBUM_PAGES, album, pageEarned } from "../album";
+import { t } from "../i18n";
 
 export interface SheetCtx {
   api: GameApi;
@@ -42,18 +43,24 @@ export interface SheetCtx {
 
 /** One short line the first time each growth tab is opened. */
 const GROWTH_FIRST: Record<string, string> = {
-  skills: "포인트를 쏟을수록 검법이 깊어진다. 다섯과 열에서 깨어난다.",
-  enhance: "먹돌로 붓을 다듬는다. 너무 욕심내면 붓이 부서질 수도.",
+  skills: t("포인트를 쏟을수록 검법이 깊어진다. 다섯과 열에서 깨어난다."),
+  enhance: t("먹돌로 붓을 다듬는다. 너무 욕심내면 붓이 부서질 수도."),
 };
 
 type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings" | "album" | "rank";
-const SLOT_NAME: Record<SlotId, string> = { weapon: "무기", hat: "머리", sash: "띠" };
+const SLOT_NAME: Record<SlotId, string> = { weapon: t("무기"), hat: t("머리"), sash: t("띠") };
 /** what an item is called in a line of text: 검 / 붓 for weapons, else its slot */
-const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ? "검" : "붓") : SLOT_NAME[it.slot]);
+const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ? t("검") : t("붓")) : SLOT_NAME[it.slot]);
 const RCLS: Record<string, string> = { 전설: "l", 영웅: "e", 희귀: "r", 일반: "c" };
 
+/** gearBonusText (shared/items.ts) built here so it can be translated: same rounding */
+function gearBonus(id: string): string {
+  const hp = hatHpBonus(id), cd = sashCdCut(id);
+  return hp > 0 ? t("생명 +{n}%", { n: Math.round(hp * 100) }) : cd > 0 ? t("재사용 -{n}%", { n: Math.round(cd * 100) }) : "";
+}
+
 function itemStat(it: ItemDef, plus = 0): string {
-  return it.atk ? `공격 ${atkText(enhancedAtk(it.atk, plus))}` : gearBonusText(it.id) || kindName(it);
+  return it.atk ? t("공격 {atk}", { atk: atkText(enhancedAtk(it.atk, plus)) }) : gearBonus(it.id) || kindName(it);
 }
 
 /** 으로 / 로 after a word (로 after a vowel or ㄹ): 파랑으로, 보라로. */
@@ -67,7 +74,7 @@ function withRo(word: string): string {
 /** "먹돌 16" / "색 조각 1" (a gacha bundle or what a duplicate turned into). */
 function grantText(g?: Grant): string {
   if (!g) return "";
-  return [g.stones ? `먹돌 ${g.stones}` : "", g.shards ? `색 조각 ${g.shards}` : ""].filter(Boolean).join(" · ");
+  return [g.stones ? t("먹돌 {n}", { n: g.stones }) : "", g.shards ? t("색 조각 {n}", { n: g.shards }) : ""].filter(Boolean).join(" · ");
 }
 /** The picture for a gacha material bundle (materials2.png cell: 0 먹돌, 1 색 조각, 2 파괴방지권, 3 물약). */
 const MAT_KIND: ResKind[] = ["stone", "shard", "protect", "potion"];
@@ -84,11 +91,11 @@ function rewardChips(q: QuestDef): string {
 }
 
 const TABS: Partial<Record<SheetId, [string, string][]>> = {
-  elder: [["main", "이어지는 의뢰"], ["daily", "오늘의 의뢰"]],
-  dyer: [["dye", "염색"], ["potion", "물약"]],
-  altar: [["pull", "뽑기"], ["odds", "확률표"], ["jade", "묵옥 얻기"]],
-  growth: [["skills", "검법 단련"], ["enhance", "붓 강화"]],
-  album: [["pages", "되찾은 색"], ["book", "먹그림 도감"]],
+  elder: [["main", t("이어지는 의뢰")], ["daily", t("오늘의 의뢰")]],
+  dyer: [["dye", t("염색")], ["potion", t("물약")]],
+  altar: [["pull", t("뽑기")], ["odds", t("확률표")], ["jade", t("묵옥 얻기")]],
+  growth: [["skills", t("검법 단련")], ["enhance", t("붓 강화")]],
+  album: [["pages", t("되찾은 색")], ["book", t("먹그림 도감")]],
   settings: SETTINGS_TABS,
 };
 
@@ -191,15 +198,15 @@ export class Sheets {
     const board: RankBoard = "power";
     this.loadRank(board);
     const v = this.ranks[board];
-    const unit = (n: number) => `전투력 ${fmt(n)}`;
+    const unit = (n: number) => t("전투력 {n}", { n: fmt(n) });
     const line = (r: RankRow) => `<li class="rk-row${r.me ? " me" : ""}${r.rank <= 3 ? ` top${r.rank}` : ""}"><b class="rk-n">${r.rank}</b><span class="rk-name">${esc(r.name)}</span><span class="rk-v">${unit(r.value)}</span></li>`;
     let body: string;
-    if (!v || v === "loading") body = `<p class="cap rk-note">불러오는 중…</p>`;
-    else if (v === "error") body = `<p class="cap rk-note">지금은 순위를 볼 수 없다.</p>`;
-    else if (!v.top.length) body = `<p class="cap rk-note">아직 아무도 없다.</p>`;
+    if (!v || v === "loading") body = `<p class="cap rk-note">${t("불러오는 중…")}</p>`;
+    else if (v === "error") body = `<p class="cap rk-note">${t("지금은 순위를 볼 수 없다.")}</p>`;
+    else if (!v.top.length) body = `<p class="cap rk-note">${t("아직 아무도 없다.")}</p>`;
     else body = `<ol class="rk-list">${v.top.map(line).join("")}</ol>${v.mine && !v.top.some((r) => r.me) ? `<ol class="rk-list rk-mine">${line(v.mine)}</ol>` : ""}`;
-    const say = "전투력이 높은 순. 같으면 먼저 오른 사람이 앞.";
-    return `${this.head("랭킹")}<p class="cap">${say}</p>${body}`;
+    const say = t("전투력이 높은 순. 같으면 먼저 오른 사람이 앞.");
+    return `${this.head(t("랭킹"))}<p class="cap">${say}</p>${body}`;
   }
 
   /** 화첩: the pictures of each recovered color. */
@@ -259,7 +266,7 @@ export class Sheets {
     else if (this.current === "gear") html = this.gear(p);
     else if (this.current === "album") html = this.album(p);
     else if (this.current === "rank") html = this.rank();
-    else if (this.current === "settings" && this.ctx.settings) html = this.head("설정") + settingsHtml(this.tab, this.ctx.settings);
+    else if (this.current === "settings" && this.ctx.settings) html = this.head(t("설정")) + settingsHtml(this.tab, this.ctx.settings);
     else if (this.current === "growth") {
       const first = `growth-${this.tab}`;
       let intro = "";
@@ -270,7 +277,7 @@ export class Sheets {
       } else if (this.firstNote && this.firstTab === this.tab) intro = this.firstNote;
       this.firstTab = this.tab;
       if (!intro) this.firstNote = "";
-      html = this.head("수련") + intro + (this.tab === "enhance" ? enhanceHtml(p, this.growthState, this.busy) : skillsHtml(p, this.busy, this.growthState));
+      html = this.head(t("수련")) + intro + (this.tab === "enhance" ? enhanceHtml(p, this.growthState, this.busy) : skillsHtml(p, this.busy, this.growthState));
       this.growthState.slide = false;
     }
     this.card.dataset.tab = this.tab;
@@ -297,7 +304,7 @@ export class Sheets {
     const nav = tabs
       ? `<nav class="tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${id === this.tab}" data-tab="${id}">${esc(label)}</button>`).join("")}</nav>`
       : "";
-    return `<header><div>${seal ? `<i class="seal-dab" aria-hidden="true"></i>` : ""}<h2>${esc(title)}</h2></div><button class="close btn btn-secondary btn-sm" type="button" data-close aria-label="닫기">닫기</button></header>${nav}`;
+    return `<header><div>${seal ? `<i class="seal-dab" aria-hidden="true"></i>` : ""}<h2>${esc(title)}</h2></div><button class="close btn btn-secondary btn-sm" type="button" data-close aria-label="${t("닫기")}">${t("닫기")}</button></header>${nav}`;
   }
 
   /* ---------- 화첩 ---------- */
@@ -307,8 +314,8 @@ export class Sheets {
     const sel = ALBUM_PAGES.find((pg) => pg.id === this.albumSel && album.has(pg.id));
     if (sel) {
       const pic = album.picture(sel.id)!;
-      return `${this.head("화첩")}<figure class="album-big" style="--hue:${sel.hue}">
-        <button type="button" class="album-pic" data-page="${sel.id}" aria-label="작게 보기"><img src="${pic.url}" alt="${esc(sel.title)}"></button>
+      return `${this.head(t("화첩"))}<figure class="album-big" style="--hue:${sel.hue}">
+        <button type="button" class="album-pic" data-page="${sel.id}" aria-label="${t("작게 보기")}"><img src="${pic.url}" alt="${esc(sel.title)}"></button>
         <figcaption><div><b class="sec">${esc(sel.chapter)} · ${esc(sel.title)}</b><span class="cap">${esc(sel.place)} · ${date(pic.at)}</span></div>${this.walkBtn(sel.id, true)}</figcaption></figure>`;
     }
     const got = ALBUM_PAGES.filter((pg) => album.has(pg.id) || pageEarned(pg, p.main)).length;
@@ -316,14 +323,14 @@ export class Sheets {
       const pic = album.picture(pg.id);
       const earned = !!pic || pageEarned(pg, p.main);
       const body = pic
-        ? `<button type="button" class="album-pic" data-page="${pg.id}" aria-label="${esc(pg.title)} 크게 보기"><img src="${pic.url}" alt="" loading="lazy"></button>`
-        : `<div class="album-pic empty${pg.zone ? " has-art" : ""}"${pg.zone ? ` style="--art:url('./assets/art/loading-${pg.zone}.webp')"` : ""}><span>${earned ? "그림이 비어 있다.<br>다시 베면 이 날이 남는다." : pg.boss ? "아직 되찾지 못한 색" : "아직 이어지지 않은 이야기"}</span></div>`;
+        ? `<button type="button" class="album-pic" data-page="${pg.id}" aria-label="${esc(t("{title} 크게 보기", { title: pg.title }))}"><img src="${pic.url}" alt="" loading="lazy"></button>`
+        : `<div class="album-pic empty${pg.zone ? " has-art" : ""}"${pg.zone ? ` style="--art:url('./assets/art/loading-${pg.zone}.webp')"` : ""}><span>${earned ? t("그림이 비어 있다.<br>다시 베면 이 날이 남는다.") : pg.boss ? t("아직 되찾지 못한 색") : t("아직 이어지지 않은 이야기")}</span></div>`;
       const sub = pic ? `${pg.place} · ${date(pic.at)}` : pg.place;
       return `<li class="album-page${pic ? " has" : earned ? " earned" : " locked"}" style="--hue:${pg.hue}">${body}
-        <div class="album-cap"><div><b class="sec"><i class="al-seal">${esc(pg.chapter)}</i>${esc(earned || pic ? pg.title : pg.boss ? "아직 모르는 색" : pg.title)}</b><span class="cap">${esc(sub)}</span></div>${earned && pg.zone ? this.walkBtn(pg.id, false) : ""}</div></li>`;
+        <div class="album-cap"><div><b class="sec"><i class="al-seal">${esc(pg.chapter)}</i>${esc(earned || pic ? pg.title : pg.boss ? t("아직 모르는 색") : pg.title)}</b><span class="cap">${esc(sub)}</span></div>${earned && pg.zone ? this.walkBtn(pg.id, false) : ""}</div></li>`;
     }).join("");
-    return `${this.head("화첩")}<p class="say">보스를 벤 순간 잠깐 돌아온 색을 그림으로 남긴다. 들어가 보면 그날의 색 속을 혼자 걸어 볼 수 있다.</p>
-      <p class="cap album-count">${got} / ${ALBUM_PAGES.length}장</p><ol class="album-grid">${pages}</ol>`;
+    return `${this.head(t("화첩"))}<p class="say">${t("보스를 벤 순간 잠깐 돌아온 색을 그림으로 남긴다. 들어가 보면 그날의 색 속을 혼자 걸어 볼 수 있다.")}</p>
+      <p class="cap album-count">${t("{got} / {total}장", { got, total: ALBUM_PAGES.length })}</p><ol class="album-grid">${pages}</ol>`;
   }
 
   /**
@@ -339,55 +346,58 @@ export class Sheets {
       const stage = bookStage(b, n);
       const def = MONSTERS[b.kind];
       const pic = this.ctx.monsterPic?.(b.kind);
-      const stat = b.stat === "atk" ? "공격" : "생명";
-      const next = stage === 2 ? "완성" : `${fmt(n)} / ${fmt(b.need[stage])}`;
+      const stat = b.stat === "atk" ? t("공격") : t("생명");
+      const next = stage === 2 ? t("완성") : `${fmt(n)} / ${fmt(b.need[stage])}`;
       const steps = [0, 1].map((k) => `<i class="bk-step${stage > k ? " on" : ""}" aria-hidden="true"></i>`).join("");
-      const tip = tipAttr(n > 0 ? def.name : "?", `밑그림 ${b.need[0]} · 완성 ${b.need[1]}`);
+      const tip = tipAttr(n > 0 ? t(def.name) : "?", t("밑그림 {a} · 완성 {b}", { a: b.need[0], b: b.need[1] }));
       return `<li class="bk-page s${stage}${n > 0 ? "" : " unmet"}"${tip}>
         <div class="bk-pic">${pic ? `<img src="${pic}" alt="" loading="lazy">` : ""}</div>
-        <b class="bk-name">${n > 0 ? esc(def.name) : "?"}</b>
+        <b class="bk-name">${n > 0 ? esc(t(def.name)) : "?"}</b>
         <span class="bk-count">${steps}<small>${next}</small></span>
         <span class="bk-gain${stage > 0 ? " on" : ""}">${stat} +${pct(stage * BOOK_STEP)}<small> / ${pct(2 * BOOK_STEP)}</small></span></li>`;
     }).join("");
-    return `${this.head("화첩")}<p class="say">몬스터를 잡을수록 그림이 채워지고, 공격이나 생명이 오른다.</p>
-      <p class="cap album-count">완성 ${done} / ${BOOK.length}장 · 공격 +${pct(total.atk)} · 생명 +${pct(total.hp)}</p><ol class="bk-grid">${pages}</ol>`;
+    return `${this.head(t("화첩"))}<p class="say">${t("몬스터를 잡을수록 그림이 채워지고, 공격이나 생명이 오른다.")}</p>
+      <p class="cap album-count">${t("완성 {done} / {total}장 · 공격 +{atk} · 생명 +{hp}", { done, total: BOOK.length, atk: pct(total.atk), hp: pct(total.hp) })}</p><ol class="bk-grid">${pages}</ol>`;
   }
 
   /** 들어가 보기: into 추억 속 풍경 (only from a safe place; the reason shows as the tip otherwise) */
   private walkBtn(pageId: string, big: boolean): string {
     const why = this.ctx.memoryBlock?.() ?? null;
-    return `<button type="button" class="btn ${big ? "btn-lg" : "btn-sm"} album-walk" data-do="memory" data-page-go="${pageId}"${tipAttr("들어가 보기", why ?? "그날 되찾은 색 속을 혼자 걸어 본다. 몬스터도 다른 사람도 없다.")} ${why ? "disabled" : ""}>들어가 보기</button>`;
+    return `<button type="button" class="btn ${big ? "btn-lg" : "btn-sm"} album-walk" data-do="memory" data-page-go="${pageId}"${tipAttr(t("들어가 보기"), why ?? t("그날 되찾은 색 속을 혼자 걸어 본다. 몬스터도 다른 사람도 없다."))} ${why ? "disabled" : ""}>${t("들어가 보기")}</button>`;
   }
 
   /* ---------- 먹노인 ---------- */
   private elder(p: ProfileView): string {
     const s = mainStatus(p);
-    let say = "먹이 번지는 곳마다 먹귀신이 깨어난다. 붓을 들 수 있는 자가 필요하구나.";
-    if (s?.done) say = "잘 해냈구나. 이 보상을 받아 가거라.";
-    else if (s && s.q.goal.type === "kill") say = `${ZONES[s.q.goal.zone ?? ""]?.name ?? "들판"}으로 가 보거라. 먹이 짙어지고 있다.`;
-    else if (s && s.q.goal.type === "dye") say = "염색 장인을 찾아가 보거라. 색을 입은 붓잡이는 멀리서도 보인단다.";
-    else if (!s) say = "이제 내가 가르칠 것은 없구나. 날마다 들러 일을 도와다오.";
+    let say = t("먹이 번지는 곳마다 먹귀신이 깨어난다. 붓을 들 수 있는 자가 필요하구나.");
+    if (s?.done) say = t("잘 해냈구나. 이 보상을 받아 가거라.");
+    else if (s && s.q.goal.type === "kill") {
+      const zone = ZONES[s.q.goal.zone ?? ""]?.name;
+      say = t("{zone}으로 가 보거라. 먹이 짙어지고 있다.", { zone: zone ? t(zone) : t("들판") });
+    }
+    else if (s && s.q.goal.type === "dye") say = t("염색 장인을 찾아가 보거라. 색을 입은 붓잡이는 멀리서도 보인단다.");
+    else if (!s) say = t("이제 내가 가르칠 것은 없구나. 날마다 들러 일을 도와다오.");
     const bar = resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]]);
     if (this.tab === "daily") {
       const daily = DAILY_QUESTS.map((_, i) => {
         const d = dailyStatus(p, i);
         const f = d.target > 0 ? Math.min(1, d.prog / d.target) : 0;
-        const btn = d.claimed ? `<span class="qdone">받음</span>`
-          : d.done ? `<button class="btn btn-sm" type="button" data-do="claimDaily" data-i="${i}" ${this.busy ? "disabled" : ""}>보상 받기</button>` : `<span class="qdone">진행 중</span>`;
+        const btn = d.claimed ? `<span class="qdone">${t("받음")}</span>`
+          : d.done ? `<button class="btn btn-sm" type="button" data-do="claimDaily" data-i="${i}" ${this.busy ? "disabled" : ""}>${t("보상 받기")}</button>` : `<span class="qdone">${t("진행 중")}</span>`;
         return `<li class="qrow${d.claimed ? " claimed" : d.done ? " ready" : ""}">
-          <div class="qmain"><b class="sec">${esc(d.q.title)}</b><span class="qprog"><i class="bar" style="--f:${f.toFixed(3)}" aria-hidden="true"></i><small>${d.prog} / ${d.target}</small></span>${rewardChips(d.q)}</div>${btn}</li>`;
+          <div class="qmain"><b class="sec">${esc(t(d.q.title))}</b><span class="qprog"><i class="bar" style="--f:${f.toFixed(3)}" aria-hidden="true"></i><small>${d.prog} / ${d.target}</small></span>${rewardChips(d.q)}</div>${btn}</li>`;
       }).join("");
       const ready = DAILY_QUESTS.filter((_, k) => { const d = dailyStatus(p, k); return d.done && !d.claimed; }).length;
-      const all = ready > 1 ? `<button class="btn btn-lg daily-all" type="button" data-do="claimDailyAll" ${this.busy ? "disabled" : ""}>모두 받기 (${ready})</button>` : "";
-      return `${this.head("먹노인")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], "하루에 한 번씩 새로 맡긴다.\n다 하면 여기서, 또는 오른쪽 의뢰 칸에서 바로 받는다.")}<ol class="qrows">${daily}</ol>${all}`;
+      const all = ready > 1 ? `<button class="btn btn-lg daily-all" type="button" data-do="claimDailyAll" ${this.busy ? "disabled" : ""}>${t("모두 받기 ({n})", { n: ready })}</button>` : "";
+      return `${this.head(t("먹노인"))}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], t("하루에 한 번씩 새로 맡긴다.\n다 하면 여기서, 또는 오른쪽 의뢰 칸에서 바로 받는다."))}<ol class="qrows">${daily}</ol>${all}`;
     }
-    let main = `<p class="cap">이어지는 의뢰가 없다.</p>`;
+    let main = `<p class="cap">${t("이어지는 의뢰가 없다.")}</p>`;
     if (s) {
-      const state = !s.accepted ? "아직 받지 않음" : s.done ? `${npcName(s.q.turnIn)}에게 알리기` : "진행 중";
-      main = `<div class="qrow big${s.done ? " ready" : ""}"><div class="qmain"><b class="sec">${esc(s.q.title)}</b><p class="body">${esc(s.q.text)}</p>
-        <span class="cap">진행 ${esc(progressText(s))} · ${esc(state)}</span>${rewardChips(s.q)}</div></div>`;
+      const state = !s.accepted ? t("아직 받지 않음") : s.done ? t("{name}에게 알리기", { name: npcName(s.q.turnIn) }) : t("진행 중");
+      main = `<div class="qrow big${s.done ? " ready" : ""}"><div class="qmain"><b class="sec">${esc(t(s.q.title))}</b><p class="body">${esc(t(s.q.text))}</p>
+        <span class="cap">${esc(t("진행 {p} · {state}", { p: progressText(s), state }))}</span>${rewardChips(s.q)}</div></div>`;
     }
-    return `${this.head("먹노인")}${bar}<p class="say">${esc(say)}</p>${main}`;
+    return `${this.head(t("먹노인"))}${bar}<p class="say">${esc(say)}</p>${main}`;
   }
 
   /* ---------- 염색 장인 ---------- */
@@ -396,55 +406,55 @@ export class Sheets {
       const pot = [1, 5, 10].map((n) => {
         const cost = n * POTION_COST;
         return `<button type="button" class="shop-tile" data-do="potion" data-n="${n}" ${p.pigment < cost || this.busy ? "disabled" : ""}>
-          <span class="pic">${resIcon("potion", "xl")}${n > 1 ? `<b class="count">×${n}</b>` : ""}</span><b class="sec">물약 ${n}개</b>${resChip("pigment", cost, { need: true, short: p.pigment < cost })}</button>`;
+          <span class="pic">${resIcon("potion", "xl")}${n > 1 ? `<b class="count">×${n}</b>` : ""}</span><b class="sec">${t("물약 {n}개", { n })}</b>${resChip("pigment", cost, { need: true, short: p.pigment < cost })}</button>`;
       }).join("");
-      return `${this.head("염색 장인")}${resBar([["potion", p.potions], ["pigment", p.pigment]], "물약은 생명을 크게 채운다.\nQ 키나 박 그림을 눌러 마신다.")}<div class="shop-tiles">${pot}</div>`;
+      return `${this.head(t("염색 장인"))}${resBar([["potion", p.potions], ["pigment", p.pigment]], t("물약은 생명을 크게 채운다.\nQ 키나 박 그림을 눌러 마신다."))}<div class="shop-tiles">${pot}</div>`;
     }
     const harmony = harmonySkill(p.dye);
     const sw = (key: "sash" | "scarf") =>
       DYES.map((d, k) => {
         const on = p.dye[key] === d.hex;
         const poor = d.hex != null && p.pigment < DYE_COST;
-        const sk = d.skill != null ? SKILLS[d.skill].label : "";
-        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}"${tipAttr(sk ? `${d.name} · ${SKILLS[d.skill!].name}` : d.name, on ? "지금 색" : d.hex == null ? "먹빛으로 되돌린다" : `안료 ${DYE_COST}`)} aria-label="${esc(d.name)}${on ? " (지금 색)" : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(d.name)}${sk ? `<small>${esc(sk)}</small>` : ""}</span></button>`;
+        const sk = d.skill != null ? t(SKILLS[d.skill].label) : "";
+        return `<button type="button" class="sw${on ? " on" : ""}" data-do="dye" data-t="${key}" data-k="${k}"${tipAttr(sk ? `${t(d.name)} · ${t(SKILLS[d.skill!].name)}` : t(d.name), on ? t("지금 색") : d.hex == null ? t("먹빛으로 되돌린다") : t("안료 {n}", { n: DYE_COST }))} aria-label="${esc(t(d.name))}${on ? ` (${t("지금 색")})` : ""}" style="--c:${d.hex == null ? "#3d3a36" : hexCss(d.hex)}" ${on || poor || this.busy ? "disabled" : ""}><span>${esc(t(d.name))}${sk ? `<small>${esc(sk)}</small>` : ""}</span></button>`;
       }).join("");
-    return `${this.head("염색 장인")}${resBar([["pigment", p.pigment]], "색을 들이면 먹빛 세상에서도 네 색이 남는다.\n같이 싸우는 이들 눈에도 보인다.")}
-      <div class="dye-cost"><span class="cap">한 번 물들이는 데</span>${resChip("pigment", DYE_COST, { need: true, short: p.pigment < DYE_COST })}</div>
-      <div class="dye-row"><span class="sec">허리띠</span><div class="swatches">${sw("sash")}</div></div>
-      <div class="dye-row"><span class="sec">목도리</span><div class="swatches">${sw("scarf")}</div></div>
-      ${harmony >= 0 ? `<p class="dye-harmony on">염색 조화 · ${esc(SKILLS[harmony].name)} 피해 +${Math.round(HARMONY_BONUS * 100)}%</p>` : `<p class="dye-harmony">허리띠와 목도리가 같은 색이면 그 색 검법 피해 +${Math.round(HARMONY_BONUS * 100)}%</p>`}`;
+    return `${this.head(t("염색 장인"))}${resBar([["pigment", p.pigment]], t("색을 들이면 먹빛 세상에서도 네 색이 남는다.\n같이 싸우는 이들 눈에도 보인다."))}
+      <div class="dye-cost"><span class="cap">${t("한 번 물들이는 데")}</span>${resChip("pigment", DYE_COST, { need: true, short: p.pigment < DYE_COST })}</div>
+      <div class="dye-row"><span class="sec">${t("허리띠")}</span><div class="swatches">${sw("sash")}</div></div>
+      <div class="dye-row"><span class="sec">${t("목도리")}</span><div class="swatches">${sw("scarf")}</div></div>
+      ${harmony >= 0 ? `<p class="dye-harmony on">${esc(t("염색 조화 · {skill} 피해 +{n}%", { skill: t(SKILLS[harmony].name), n: Math.round(HARMONY_BONUS * 100) }))}</p>` : `<p class="dye-harmony">${t("허리띠와 목도리가 같은 색이면 그 색 검법 피해 +{n}%", { n: Math.round(HARMONY_BONUS * 100) })}</p>`}`;
   }
 
   /* ---------- 병기 제단 ---------- */
   private altar(p: ProfileView): string {
     const local = this.ctx.api.mode === "local";
-    const head = this.head("오방 병기전", true);
-    const help = "50번째 뽑기까지 전설이 없으면 전설을 준다. 10회 뽑기엔 희귀 이상이 하나.\n가진 장비가 또 나오면 먹돌(무기)이나 색 조각(머리·띠)으로 바뀐다.";
+    const head = this.head(t("오방 병기전"), true);
+    const help = t("50번째 뽑기까지 전설이 없으면 전설을 준다. 10회 뽑기엔 희귀 이상이 하나.\n가진 장비가 또 나오면 먹돌(무기)이나 색 조각(머리·띠)으로 바뀐다.");
     const bar = resBar([["jade", p.jade], ["stone", p.stones ?? 0], ["shard", p.shards ?? 0]], help);
     if (this.tab === "odds") {
-      const rates = RARITY_RATES.map((r) => `<span class="rate ${RCLS[r.r]}"><b>${r.r}</b> ${+(r.p * 100).toFixed(2)}%</span>`).join("");
+      const rates = RARITY_RATES.map((r) => `<span class="rate ${RCLS[r.r]}"><b>${t(r.r)}</b> ${+(r.p * 100).toFixed(2)}%</span>`).join("");
       const odds = itemOdds();
       const rows = odds.map((o) => {
         const it = ITEM[o.id];
         const pic = o.kind === "material" ? bundleIcon(o.id, "s") : it ? itemIcon(it, "s") : "";
-        const kind = o.kind === "material" ? `재료 · ${grantText(GACHA_EXTRA_BY_ID[o.id]?.grant)}` : it ? kindName(it) : "";
-        return `<tr data-r="${o.r}"><td><span class="tcell">${pic}${esc(o.name)}</span></td><td class="${RCLS[o.r]}">${o.r}</td><td>${esc(kind)}</td><td>${(o.p * 100).toFixed(3)}%</td></tr>`;
+        const kind = o.kind === "material" ? t("재료 · {what}", { what: grantText(GACHA_EXTRA_BY_ID[o.id]?.grant) }) : it ? kindName(it) : "";
+        return `<tr data-r="${o.r}"><td><span class="tcell">${pic}${esc(t(o.name))}</span></td><td class="${RCLS[o.r]}">${t(o.r)}</td><td>${esc(kind)}</td><td>${(o.p * 100).toFixed(3)}%</td></tr>`;
       }).join("");
       const gear = odds.filter((o) => o.kind === "item").length;
-      return `${head}${bar}<div class="rates">${rates}</div><p class="cap">${odds.length}종 · 장비 ${gear}, 재료 ${odds.length - gear}. 전설은 50번째 뽑기에 반드시.</p>
-        <div class="rate-table"><table><thead><tr><th>나오는 것</th><th>등급</th><th>종류</th><th>확률</th></tr></thead><tbody>${rows}</tbody></table></div>
-        <p class="cap">중복 장비는 무기면 먹돌, 머리·띠면 색 조각으로 바뀐다.</p>`;
+      return `${head}${bar}<div class="rates">${rates}</div><p class="cap">${t("{n}종 · 장비 {gear}, 재료 {mat}. 전설은 50번째 뽑기에 반드시.", { n: odds.length, gear, mat: odds.length - gear })}</p>
+        <div class="rate-table"><table><thead><tr><th>${t("나오는 것")}</th><th>${t("등급")}</th><th>${t("종류")}</th><th>${t("확률")}</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="cap">${t("중복 장비는 무기면 먹돌, 머리·띠면 색 조각으로 바뀐다.")}</p>`;
     }
     if (this.tab === "jade") {
       const shop = JADE_PRODUCTS.map((j, k) => `<button type="button" class="shop-tile" data-do="buy" data-id="${esc(j.productId)}" ${this.busy ? "disabled" : ""}>
-        <span class="pic jade-pile n${k + 1}">${resIcon("jade", "xl")}</span><b class="sec">${esc(j.label)}</b><small class="cap price">${fmt(this.prices[j.productId] ?? j.vx)}VX${local ? " · 모의" : ""}</small></button>`).join("");
+        <span class="pic jade-pile n${k + 1}">${resIcon("jade", "xl")}</span><b class="sec">${esc(t(j.label))}</b><small class="cap price">${fmt(this.prices[j.productId] ?? j.vx)}VX${local ? ` · ${t("모의")}` : ""}</small></button>`).join("");
       return `${head}${bar}
-        <div class="ad-row"><button class="btn btn-secondary" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>광고 보고 ${resIcon("jade")} ${AD_REWARD_JADE}</button><span class="cap">오늘 ${Math.max(0, p.adsLeft)} / ${AD_DAILY}</span></div>
+        <div class="ad-row"><button class="btn btn-secondary" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>${t("광고 보고")} ${resIcon("jade")} ${AD_REWARD_JADE}</button><span class="cap">${t("오늘 {n} / {max}", { n: Math.max(0, p.adsLeft), max: AD_DAILY })}</span></div>
         <div class="shop-tiles">${shop}</div>
-        <p class="mock">${local ? "오프라인(로컬) 모드: 충전은 <b>모의 결제</b>로 바로 지급, 실제 돈은 나가지 않는다. 광고도 모의 화면." : "충전은 Verse8 결제 창에서 진행된다."} 광고는 버튼을 누를 때만. 경지와 진행은 팔지 않는다.</p>`;
+        <p class="mock">${local ? t("오프라인(로컬) 모드: 충전은 <b>모의 결제</b>로 바로 지급, 실제 돈은 나가지 않는다. 광고도 모의 화면.") : t("충전은 Verse8 결제 창에서 진행된다.")} ${t("광고는 버튼을 누를 때만. 경지와 진행은 팔지 않는다.")}</p>`;
     }
     const left = Math.max(0, PITY - p.pity);
-    const showcase = ["w_gold", "h_goldgat", "s_gold"].map((id) => ITEM[id]).filter(Boolean).map((it) => `<span class="show"${tipAttr(it.name, `전설 ${kindName(it)}`)}>${itemIcon(it, "l")}</span>`).join("");
+    const showcase = ["w_gold", "h_goldgat", "s_gold"].map((id) => ITEM[id]).filter(Boolean).map((it) => `<span class="show"${tipAttr(t(it.name), `${t("전설")} ${kindName(it)}`)}>${itemIcon(it, "l")}</span>`).join("");
     const pull = this.pull;
     const age = pull ? (performance.now() - pull.at) / 1000 : 99;
     const results = pull ? pull.pulls.map((d, k) => {
@@ -452,21 +462,21 @@ export class Sheets {
       const delay = `--d:${(k * 0.12 - age).toFixed(2)}s`;
       if (d.kind === "material") {
         const what = grantText(d.grant ?? GACHA_EXTRA_BY_ID[d.id]?.grant);
-        return `<div class="rv mat${fresh}" data-r="${d.r}" style="${delay}"${tipAttr(d.name, `재료 · ${what}`)}>
-          <span class="face"><span class="pic">${bundleIcon(d.id, "l")}</span><b>${esc(d.name)}</b><small>${esc(what)}</small></span><i class="back" aria-hidden="true"></i></div>`;
+        return `<div class="rv mat${fresh}" data-r="${d.r}" style="${delay}"${tipAttr(t(d.name), t("재료 · {what}", { what }))}>
+          <span class="face"><span class="pic">${bundleIcon(d.id, "l")}</span><b>${esc(t(d.name))}</b><small>${esc(what)}</small></span><i class="back" aria-hidden="true"></i></div>`;
       }
       const it = ITEM[d.id];
       if (!it) return "";
       const got = d.dupe ? grantText(d.grant ?? dupeGrant(it)) : "";
-      return `<div class="rv${d.dupe ? " dupe" : ""}${fresh}" data-r="${it.r}" style="${delay}"${tipAttr(it.name, `${it.r} ${kindName(it)}${d.dupe ? ` · 이미 가진 장비라 ${got}(으)로 바뀌었다` : ""}`)}>
-        <span class="face">${itemIcon(it, "l")}<b>${esc(it.name)}</b><small>${d.dupe ? "이미 가짐" : "새 장비"}</small></span>${d.dupe ? `<span class="ribbon">중복 → ${esc(got)}</span>` : ""}<i class="back" aria-hidden="true"></i></div>`;
+      return `<div class="rv${d.dupe ? " dupe" : ""}${fresh}" data-r="${it.r}" style="${delay}"${tipAttr(t(it.name), `${t(it.r)} ${kindName(it)}${d.dupe ? ` · ${t("이미 가진 장비라 {got}(으)로 바뀌었다", { got })}` : ""}`)}>
+        <span class="face">${itemIcon(it, "l")}<b>${esc(t(it.name))}</b><small>${d.dupe ? t("이미 가짐") : t("새 장비")}</small></span>${d.dupe ? `<span class="ribbon">${esc(t("중복 → {got}", { got }))}</span>` : ""}<i class="back" aria-hidden="true"></i></div>`;
     }).join("") : "";
     return `${head}${bar}
       <div class="banner"><div class="showcase">${showcase}</div>
-        <div class="pity"><span class="cap">전설까지</span><b>${left}</b><span class="cap">번</span><i class="bar" style="--f:${(p.pity / PITY).toFixed(3)}" aria-hidden="true"></i></div></div>
+        <div class="pity"><span class="cap">${t("전설까지")}</span><b>${left}</b><span class="cap">${t("번")}</span><i class="bar" style="--f:${(p.pity / PITY).toFixed(3)}" aria-hidden="true"></i></div></div>
       <div class="pull-row">
-        <button class="pull btn btn-lg" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>1회 뽑기</b><span class="cost">${resIcon("jade")}${fmt(COST1)}</span></button>
-        <button class="pull btn btn-lg" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>10회 뽑기</b><span class="cost">${resIcon("jade")}${fmt(COST10)}</span></button>
+        <button class="pull btn btn-lg" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>${t("1회 뽑기")}</b><span class="cost">${resIcon("jade")}${fmt(COST1)}</span></button>
+        <button class="pull btn btn-lg" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>${t("10회 뽑기")}</b><span class="cost">${resIcon("jade")}${fmt(COST10)}</span></button>
       </div>
       <div class="results${pull && pull.pulls.length > 1 ? " ten" : ""}" aria-live="polite">${results}</div>`;
   }
@@ -476,9 +486,9 @@ export class Sheets {
     const plusOf = (it: ItemDef) => (it.slot === "weapon" ? p.enh?.[it.id] ?? 0 : 0);
     const slots = (["weapon", "hat", "sash"] as SlotId[]).map((s) => {
       const it = ITEM[p.equip[s]];
-      if (!it) return `<div class="eqslot empty"><span class="cap">${SLOT_NAME[s]}</span><b>없음</b></div>`;
+      if (!it) return `<div class="eqslot empty"><span class="cap">${SLOT_NAME[s]}</span><b>${t("없음")}</b></div>`;
       const plus = plusOf(it);
-      return `<button type="button" class="eqslot" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"><span class="pic">${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}</span><span class="cap">${SLOT_NAME[s]}</span><b>${esc(it.name)}</b><small class="${RCLS[it.r]}">${it.r} · ${itemStat(it, plus)}</small></button>`;
+      return `<button type="button" class="eqslot" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"><span class="pic">${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}</span><span class="cap">${SLOT_NAME[s]}</span><b>${esc(t(it.name))}</b><small class="${RCLS[it.r]}">${t(it.r)} · ${itemStat(it, plus)}</small></button>`;
     }).join("");
     const owned = new Set(p.owned);
     const mine = ITEMS.filter((i) => owned.has(i.id));
@@ -487,22 +497,22 @@ export class Sheets {
     const tiles = list.map((it) => {
       const on = p.equip[it.slot] === it.id;
       const plus = plusOf(it);
-      return `<button type="button" class="tile${on ? " eq" : ""}${it.id === this.gearSel ? " on" : ""}" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${it.name}${plus ? ` +${plus}` : ""}`, `${it.r} ${kindName(it)} · ${itemStat(it, plus)}${on ? " · 착용 중" : ""}`)}>
-        ${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}<span class="nm">${esc(it.name)}</span></button>`;
+      return `<button type="button" class="tile${on ? " eq" : ""}${it.id === this.gearSel ? " on" : ""}" data-do="pickGear" data-id="${it.id}" data-r="${it.r}"${tipAttr(`${t(it.name)}${plus ? ` +${plus}` : ""}`, `${t(it.r)} ${kindName(it)} · ${itemStat(it, plus)}${on ? ` · ${t("착용 중")}` : ""}`)}>
+        ${itemIcon(it, "l")}${plus ? `<b class="plus">+${plus}</b>` : ""}<span class="nm">${esc(t(it.name))}</span></button>`;
     }).join("");
     const sel = ITEM[this.gearSel];
     const selOn = sel && p.equip[sel.slot] === sel.id;
-    const detail = sel ? `<div class="gear-detail" data-r="${sel.r}">${itemIcon(sel, "l")}<div><b class="sec">${esc(sel.name)}${plusOf(sel) ? ` +${plusOf(sel)}` : ""}</b><span class="cap"><em class="${RCLS[sel.r]}">${sel.r}</em> ${kindName(sel)} · ${itemStat(sel, plusOf(sel))}</span></div>
-      ${selOn ? `<span class="qdone">착용 중</span>` : `<button class="btn" type="button" data-do="equip" data-id="${sel.id}" ${this.busy ? "disabled" : ""}>착용</button>`}</div>` : "";
-    const filters = ([["", "전체"], ["weapon", "무기"], ["hat", "머리"], ["sash", "띠"]] as [SlotId | "", string][]).map(([v, l]) =>
+    const detail = sel ? `<div class="gear-detail" data-r="${sel.r}">${itemIcon(sel, "l")}<div><b class="sec">${esc(t(sel.name))}${plusOf(sel) ? ` +${plusOf(sel)}` : ""}</b><span class="cap"><em class="${RCLS[sel.r]}">${t(sel.r)}</em> ${kindName(sel)} · ${itemStat(sel, plusOf(sel))}</span></div>
+      ${selOn ? `<span class="qdone">${t("착용 중")}</span>` : `<button class="btn" type="button" data-do="equip" data-id="${sel.id}" ${this.busy ? "disabled" : ""}>${t("착용")}</button>`}</div>` : "";
+    const filters = ([["", t("전체")], ["weapon", t("무기")], ["hat", t("머리")], ["sash", t("띠")]] as [SlotId | "", string][]).map(([v, l]) =>
       `<button type="button" role="radio" class="seg-b" aria-checked="${this.gearFilter === v}" data-do="gearFilter" data-v="${v}">${l}</button>`).join("");
     const nextSkill = SKILLS.find((s) => s.unlock > p.level);
-    return `${this.head("장비")}${resBar([["pigment", p.pigment], ["jade", p.jade], ["stone", p.stones ?? 0]], "새 장비는 병기 제단에서, 띠와 목도리 염색은 염색 장인에게.\n붓은 수련 › 붓 강화에서 다듬는다.")}
+    return `${this.head(t("장비"))}${resBar([["pigment", p.pigment], ["jade", p.jade], ["stone", p.stones ?? 0]], t("새 장비는 병기 제단에서, 띠와 목도리 염색은 염색 장인에게.\n붓은 수련 › 붓 강화에서 다듬는다."))}
       <div class="gear2">
-        <div class="gear2-eq"><h4 class="sec">착용</h4><div class="eqslots">${slots}</div>
-          <p class="stats"><span class="pow"${tipAttr("전투력", "공격, 생명, 검법, 도감, 염색 조화를 모두 합친 힘. 랭킹은 이 순서다.")}><small>전투력</small><b>${fmt(p.power ?? 0)}</b></span><span${tipAttr("공격력", "붓과 경지로 오른다.")}><small>공격</small><b>${atkText(p.atk)}</b></span><span${tipAttr("생명", "경지가 오를수록 늘어난다. 머리 장비가 더 올려 준다.")}><small>생명</small><b>${p.maxHp}</b></span></p>
-          ${nextSkill ? `<p class="cap">${esc(nextSkill.name)} · Lv ${nextSkill.unlock}에 열림</p>` : ""}</div>
-        <div class="gear2-inv"><div class="inv-head"><h4 class="sec">가진 장비 <small>${owned.size} / ${ITEMS.length}</small></h4><div class="seg" role="radiogroup" aria-label="부위">${filters}</div></div>
+        <div class="gear2-eq"><h4 class="sec">${t("착용")}</h4><div class="eqslots">${slots}</div>
+          <p class="stats"><span class="pow"${tipAttr(t("전투력"), t("공격, 생명, 검법, 도감, 염색 조화를 모두 합친 힘. 랭킹은 이 순서다."))}><small>${t("전투력")}</small><b>${fmt(p.power ?? 0)}</b></span><span${tipAttr(t("공격력"), t("붓과 경지로 오른다."))}><small>${t("공격")}</small><b>${atkText(p.atk)}</b></span><span${tipAttr(t("생명"), t("경지가 오를수록 늘어난다. 머리 장비가 더 올려 준다."))}><small>${t("생명")}</small><b>${p.maxHp}</b></span></p>
+          ${nextSkill ? `<p class="cap">${esc(t("{name} · Lv {lv}에 열림", { name: t(nextSkill.name), lv: nextSkill.unlock }))}</p>` : ""}</div>
+        <div class="gear2-inv"><div class="inv-head"><h4 class="sec">${t("가진 장비")} <small>${owned.size} / ${ITEMS.length}</small></h4><div class="seg" role="radiogroup" aria-label="${t("부위")}">${filters}</div></div>
           <div class="tiles">${tiles}</div>${detail}</div>
       </div>`;
   }
@@ -523,22 +533,22 @@ export class Sheets {
       if (what && (await growthAction(what, b, api, this.ctx.profile(), this.growthState, this.ctx.apply, () => { if (this.current) this.render(); }))) {
         // handled by the growth sheet; gate 9b: the first failure while 잿불귀 waits teaches that only stones are lost
         const ms = mainStatus(this.ctx.profile());
-        if (what === "enhance" && this.growthState.stage === "fail" && ms?.accepted && ms.q.id === "c2q10") this.ctx.hint?.("gate9b", "먹돌만 날아갔다. 붓은 멀쩡하다.");
+        if (what === "enhance" && this.growthState.stage === "fail" && ms?.accepted && ms.q.id === "c2q10") this.ctx.hint?.("gate9b", t("먹돌만 날아갔다. 붓은 멀쩡하다."));
       } else if (what === "claimDaily") {
         const i = Number(b.dataset.i);
         const p = await attempt(api.claimDaily(i));
-        if (p) { this.ctx.apply(p); toast(`오늘의 의뢰 완료 · ${rewardText(DAILY_QUESTS[i])}`); audio.play("quest-done"); }
+        if (p) { this.ctx.apply(p); toast(t("오늘의 의뢰 완료 · {reward}", { reward: rewardText(DAILY_QUESTS[i]) })); audio.play("quest-done"); }
       } else if (what === "claimDailyAll") {
         const p = await attempt(api.claimDailyAll());
-        if (p) { this.ctx.apply(p); toast("오늘의 의뢰 보상을 모두 받았다"); audio.play("quest-done"); }
+        if (p) { this.ctx.apply(p); toast(t("오늘의 의뢰 보상을 모두 받았다")); audio.play("quest-done"); }
       } else if (what === "dye") {
         const d = DYES[Number(b.dataset.k)];
         const p = await attempt(api.dye(b.dataset.t === "scarf" ? "scarf" : "sash", d.hex));
-        if (p) { this.ctx.apply(p); toast(d.hex == null ? "검정으로 되돌렸다" : `${d.name}${withRo(d.name)} 물들였다`); }
+        if (p) { this.ctx.apply(p); toast(d.hex == null ? t("검정으로 되돌렸다") : withRo(d.name) === "로" ? t("{dye}로 물들였다", { dye: t(d.name) }) : t("{dye}으로 물들였다", { dye: t(d.name) })); }
       } else if (what === "potion") {
         const n = Number(b.dataset.n);
         const p = await attempt(api.buyPotions(n));
-        if (p) { this.ctx.apply(p); toast(`물약 ${n}개를 샀다`); }
+        if (p) { this.ctx.apply(p); toast(t("물약 {n}개를 샀다", { n })); }
       } else if (what === "pull") {
         const n = b.dataset.n === "10" ? 10 : 1;
         const r = await attempt(api.pullGacha(n));
@@ -552,11 +562,11 @@ export class Sheets {
           });
           this.pull = { pulls, at: performance.now() };
           this.ctx.apply(r.profile);
-          if (r.ids.some((id) => ITEM[id]?.r === "전설")) toast("전설 장비를 얻었다!");
+          if (r.ids.some((id) => ITEM[id]?.r === "전설")) toast(t("전설 장비를 얻었다!"));
         }
       } else if (what === "ad") {
         const p = await attempt(api.watchAdForJade());
-        if (p) { this.ctx.apply(p); toast(`묵옥 +${AD_REWARD_JADE}`); }
+        if (p) { this.ctx.apply(p); toast(t("묵옥 +{n}", { n: AD_REWARD_JADE })); }
       } else if (what === "buy") {
         const id = b.dataset.id ?? "";
         const prod = JADE_PRODUCTS.find((j) => j.productId === id);
@@ -564,12 +574,12 @@ export class Sheets {
         if (ok) {
           const p = await attempt(api.loadProfile());
           if (p) this.ctx.apply(p);
-          if (prod) toast(`${prod.label} 충전${api.mode === "local" ? " (모의)" : ""}`);
+          if (prod) toast(`${t("{label} 충전", { label: t(prod.label) })}${api.mode === "local" ? ` (${t("모의")})` : ""}`);
         }
       } else if (what === "equip") {
         const id = b.dataset.id ?? "";
         const p = await attempt(api.equip(id));
-        if (p) { this.ctx.apply(p); toast(`${ITEM[id]?.name ?? "장비"} 착용`); }
+        if (p) { this.ctx.apply(p); toast(t("{name} 착용", { name: ITEM[id] ? t(ITEM[id].name) : t("장비") })); }
       }
     } finally {
       this.busy = false;

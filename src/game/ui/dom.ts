@@ -3,6 +3,7 @@
 import type { ItemDef } from "../../shared/items";
 import type { RuleCode } from "../../shared/types";
 import { installTooltips } from "./tooltip";
+import { t } from "../i18n";
 
 export function el<T extends HTMLElement = HTMLElement>(sel: string, root: ParentNode = document): T {
   const e = root.querySelector<T>(sel);
@@ -77,14 +78,14 @@ function weapons2Cell(it: ItemDef): number {
 /* ---------- resources: one picture, name and how-to-get line per currency / material ---------- */
 export type ResKind = "pigment" | "jade" | "stone" | "shard" | "protect" | "potion" | "points" | "exp";
 export const RES: Record<ResKind, { name: string; tip: string }> = {
-  pigment: { name: "안료", tip: "사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다." },
-  jade: { name: "묵옥", tip: "뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다." },
-  stone: { name: "먹돌", tip: "먹귀신이 떨군다. 붓을 강화할 때 쓴다." },
-  shard: { name: "색 조각", tip: "먹귀신이 드물게, 우두머리가 꼭 떨군다. 검법을 깨울 때(5·10단계) 쓴다." },
-  protect: { name: "파괴방지권", tip: "강화가 실패해도 붓이 부서지지 않게 지킨다. 묵옥으로 산다." },
-  potion: { name: "물약", tip: "생명을 크게 채운다. 염색 장인에게 안료로 산다." },
-  points: { name: "수련 포인트", tip: "경지가 오를 때마다 하나, 의뢰로도 얻는다. 검법 단련에 쓴다." },
-  exp: { name: "경험", tip: "쌓이면 경지가 오른다." },
+  pigment: { name: t("안료"), tip: t("사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다.") },
+  jade: { name: t("묵옥"), tip: t("뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다.") },
+  stone: { name: t("먹돌"), tip: t("먹귀신이 떨군다. 붓을 강화할 때 쓴다.") },
+  shard: { name: t("색 조각"), tip: t("먹귀신이 드물게, 우두머리가 꼭 떨군다. 검법을 깨울 때(5·10단계) 쓴다.") },
+  protect: { name: t("파괴방지권"), tip: t("강화가 실패해도 붓이 부서지지 않게 지킨다. 묵옥으로 산다.") },
+  potion: { name: t("물약"), tip: t("생명을 크게 채운다. 염색 장인에게 안료로 산다.") },
+  points: { name: t("수련 포인트"), tip: t("경지가 오를 때마다 하나, 의뢰로도 얻는다. 검법 단련에 쓴다.") },
+  exp: { name: t("경험"), tip: t("쌓이면 경지가 오른다.") },
 };
 
 /** The picture for a resource (`.ic-res` sizes it; pigment / jade come from the skills sheet, the rest from materials2.png). */
@@ -110,7 +111,7 @@ export function resChip(k: ResKind, n: number, opt: { need?: boolean; short?: bo
 
 /** The resource bar at the top of a sheet, with an optional "?" tablet holding a two-line tip. */
 export function resBar(items: [ResKind, number][], help = ""): string {
-  const q = help ? `<button type="button" class="tipq" data-tip-click${tipAttr("도움말", help)} aria-label="도움말">?</button>` : "";
+  const q = help ? `<button type="button" class="tipq" data-tip-click${tipAttr(t("도움말"), help)} aria-label="${t("도움말")}">?</button>` : "";
   return `<div class="resbar">${items.map(([k, n]) => resChip(k, n)).join("")}${q}</div>`;
 }
 
@@ -202,23 +203,23 @@ export function toast(msg: string, err = false): void {
 }
 
 const RULE_TEXT: Record<RuleCode, string> = {
-  bad_args: "지금은 그렇게 할 수 없다.",
-  not_ready: "잠깐, 아직 준비가 덜 됐다. 조금 뒤에 다시.",
-  no_profile: "기록을 불러오지 못했다. 다시 들어와 보자.",
-  too_far: "너무 멀다. 조금 더 다가가자.",
-  on_cooldown: "아직이다. 조금 기다리자.",
-  locked: "아직 쓸 수 없다. 경지를 더 올리자.",
-  dead: "먹에 잠긴 채로는 할 수 없다.",
-  not_owned: "가지고 있지 않은 장비다.",
-  no_currency: "재화가 모자라다.",
-  no_ads_left: "오늘 볼 수 있는 광고는 다 봤다.",
-  room_full: "이 채널은 가득 찼다.",
-  wrong_room: "여기서 할 일이 아니다.",
-  quest_not_done: "아직 의뢰를 다 하지 못했다.",
-  already_claimed: "이미 받은 보상이다.",
-  name_taken: "이미 누가 쓰는 이름이다.",
-  bad_name: "쓸 수 없는 이름이다. 한글·영문·숫자 2~8자, 거친 말은 안 된다.",
-  rate_limited: "조금 천천히 하자.",
+  bad_args: t("지금은 그렇게 할 수 없다."),
+  not_ready: t("잠깐, 아직 준비가 덜 됐다. 조금 뒤에 다시."),
+  no_profile: t("기록을 불러오지 못했다. 다시 들어와 보자."),
+  too_far: t("너무 멀다. 조금 더 다가가자."),
+  on_cooldown: t("아직이다. 조금 기다리자."),
+  locked: t("아직 쓸 수 없다. 경지를 더 올리자."),
+  dead: t("먹에 잠긴 채로는 할 수 없다."),
+  not_owned: t("가지고 있지 않은 장비다."),
+  no_currency: t("재화가 모자라다."),
+  no_ads_left: t("오늘 볼 수 있는 광고는 다 봤다."),
+  room_full: t("이 채널은 가득 찼다."),
+  wrong_room: t("여기서 할 일이 아니다."),
+  quest_not_done: t("아직 의뢰를 다 하지 못했다."),
+  already_claimed: t("이미 받은 보상이다."),
+  name_taken: t("이미 누가 쓰는 이름이다."),
+  bad_name: t("쓸 수 없는 이름이다. 한글·영문·숫자 2~8자, 거친 말은 안 된다."),
+  rate_limited: t("조금 천천히 하자."),
 };
 
 export function errorCode(e: unknown): string | null {
@@ -230,7 +231,7 @@ export function errorCode(e: unknown): string | null {
 export function errorText(e: unknown): string {
   const code = errorCode(e);
   if (code && code in RULE_TEXT) return RULE_TEXT[code as RuleCode];
-  return "연결이 고르지 않다. 잠시 뒤에 다시 해 보자.";
+  return t("연결이 고르지 않다. 잠시 뒤에 다시 해 보자.");
 }
 
 /** Run an api call; show a readable toast on failure and return null. */

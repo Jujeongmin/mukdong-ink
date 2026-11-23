@@ -13,6 +13,7 @@ import { dailyStatus, mainStatus, mainWall, nextDaily, readyByTalk, subStatus } 
 import { overlay } from "./render/gfx";
 import { gameSettings } from "./ui/settings";
 import { attackingMe, targetable } from "./targeting";
+import { t } from "./i18n";
 
 export interface AutoSettings {
   skills: boolean[];
@@ -219,19 +220,19 @@ export class AutoPlay {
   startDaily(i: number, walled = false): string | null {
     const p = this.ctx.profile();
     const d = dailyStatus(p, i);
-    if (d.claimed) return "오늘은 이미 마친 의뢰다.";
+    if (d.claimed) return t("오늘은 이미 마친 의뢰다.");
     this.stop();
     this.progress = true;
     this.daily = i;
     if (d.done) { void this.ctx.claimDailies().then(() => this.carryOn()); this.ctx.changed(); return null; }
     const zone = huntZone(DAILY_QUESTS[i].goal.type === "kill" ? DAILY_QUESTS[i].goal.kind : "any", p.level, this.ctx.zone());
-    if (!zone) { this.stop(); return "먹귀신이 있는 곳을 모르겠다."; }
+    if (!zone) { this.stop(); return t("먹귀신이 있는 곳을 모르겠다."); }
     this.goal = { kind: "hunt", zone, monster: DAILY_QUESTS[i].goal.type === "kill" ? DAILY_QUESTS[i].goal.kind : "any", daily: i };
     this.traveling = true;
     this.fails = 0;
     this.stuckT = 0;
     this.hasWp = false;
-    if (walled) this.ctx.think("auto-wall", `경지 ${mainWall(p)}이 모자라다… 오늘의 의뢰로 먼저 강해지자.`);
+    if (walled) this.ctx.think("auto-wall", t("경지 {n}이 모자라다… 오늘의 의뢰로 먼저 강해지자.", { n: mainWall(p) }));
     this.ctx.changed();
     return null;
   }
@@ -243,7 +244,7 @@ export class AutoPlay {
   startSub(walled = false): string | null {
     const p = this.ctx.profile();
     const s = subStatus(p);
-    if (!s) return "지금은 맡을 서브 의뢰가 없다.";
+    if (!s) return t("지금은 맡을 서브 의뢰가 없다.");
     this.stop();
     this.progress = true;
     this.sub = true;
@@ -254,7 +255,7 @@ export class AutoPlay {
     this.fails = 0;
     this.stuckT = 0;
     this.hasWp = false;
-    if (walled) this.ctx.think("auto-wall", `경지 ${mainWall(p)}이 모자라다… 서브 의뢰로 더 강해지자.`);
+    if (walled) this.ctx.think("auto-wall", t("경지 {n}이 모자라다… 서브 의뢰로 더 강해지자.", { n: mainWall(p) }));
     this.ctx.changed();
     return null;
   }
@@ -289,7 +290,7 @@ export class AutoPlay {
   startTravel(): string | null {
     const p = this.ctx.profile();
     const s = mainStatus(p);
-    if (!s) return "이어지는 의뢰가 없다.";
+    if (!s) return t("이어지는 의뢰가 없다.");
     const q = s.q;
     let goal: Goal | null = null;
     const npcGoal = (id: string): Goal | null => {
@@ -308,8 +309,8 @@ export class AutoPlay {
     } else if (q.goal.type === "reach") goal = { kind: "zone", zone: q.goal.zone };
     else if (q.goal.type === "talk") goal = npcGoal(q.goal.npc);
     else if (q.goal.type === "dye") goal = npcGoal("dyer");
-    else if (q.goal.type === "level") return "더 강해져야 한다… 사냥하며 경지를 올리자.";
-    if (!goal) return "어디로 가야 할지 모르겠다.";
+    else if (q.goal.type === "level") return t("더 강해져야 한다… 사냥하며 경지를 올리자.");
+    if (!goal) return t("어디로 가야 할지 모르겠다.");
     this.goal = goal;
     this.traveling = true;
     this.fails = 0;
@@ -357,7 +358,7 @@ export class AutoPlay {
     if (zone.id !== g.zone) {
       const hop = this.nextHop(zone.id, g.zone);
       const gate = hop ? zone.portals.find((p) => p.to === hop) : null;
-      if (!gate) { this.giveUp("길을 모르겠다…"); return; }
+      if (!gate) { this.giveUp(t("길을 모르겠다…")); return; }
       if (this.clearVines(pl, gate.x, gate.z)) return;
       this.setWp(gate.x, gate.z);
       this.gateTo = gate.to;
@@ -517,7 +518,7 @@ export class AutoPlay {
     if (!block) return false;
     const weak = block.def.weakTo ?? [];
     const canBurn = weak.some((i) => this.settings.skills[i] && this.ctx.profile().level >= SKILLS[i].unlock);
-    if (!canBurn) { this.giveUp("불이라도 있으면… 바람이에게 가 보자."); return true; }
+    if (!canBurn) { this.giveUp(t("불이라도 있으면… 바람이에게 가 보자.")); return true; }
     const d = Math.hypot(block.x - pl.x, block.z - pl.z) - block.def.radius;
     this.target = block;
     if (d > 2.6) this.setWp(block.x - dx * (block.def.radius + 2), block.z - dz * (block.def.radius + 2));
@@ -586,7 +587,7 @@ export class AutoPlay {
     if (this.stuckT > 2) {
       if (Math.hypot(pl.x - this.stuckX, pl.z - this.stuckZ) < 0.5 && dist > 1) {
         this.fails++;
-        if (this.fails >= 3) { this.giveUp("길이 막혔다…"); return false; }
+        if (this.fails >= 3) { this.giveUp(t("길이 막혔다…")); return false; }
         this.sideT = 0.8;
         this.sideSign = Math.random() < 0.5 ? -1 : 1;
       } else this.fails = 0;

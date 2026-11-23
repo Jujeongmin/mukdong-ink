@@ -7,6 +7,7 @@ import { ZONES, type Portal } from "../shared/world";
 import type { ProfileView } from "../net/api";
 import type { MView } from "./monsters";
 import { mainStatus, npcName, readyByTalk } from "./quests";
+import { t } from "./i18n";
 
 /** next[from][to] = the portal in `from` that starts the shortest way to `to` */
 const NEXT: Record<string, Record<string, Portal>> = {};
@@ -74,10 +75,10 @@ export function questNav(p: ProfileView, here: string, px: number, pz: number, v
   if (!s.accepted) { if (!npcAt(s.q.giver, out)) return; }
   else if (s.done || readyByTalk(s)) { if (!npcAt(s.q.turnIn, out)) return; }
   else if (g.type === "talk") { if (!npcAt(g.npc, out)) return; }
-  else if (g.type === "reach") { out.zone = g.zone; out.who = ZONES[g.zone]?.name ?? g.zone; }
+  else if (g.type === "reach") { out.zone = g.zone; out.who = ZONES[g.zone] ? t(ZONES[g.zone].name) : g.zone; }
   else if (g.type === "kill" && g.zone) {
     out.zone = g.zone;
-    out.who = g.kind === "any" ? "먹귀신" : MONSTERS[g.kind]?.name ?? "먹귀신";
+    out.who = t(g.kind === "any" ? "먹귀신" : MONSTERS[g.kind]?.name ?? "먹귀신");
     if (g.zone === here) {
       let bd = 1e9;
       for (const v of views.values()) {
@@ -94,7 +95,7 @@ export function questNav(p: ProfileView, here: string, px: number, pz: number, v
     const portal = NEXT[zone]?.[out.zone];
     if (!portal) return;
     if (hops === 0) { out.stepX = portal.x; out.stepZ = portal.z; out.stepIsPortal = true; }
-    else if (hops === 1) out.via = ZONES[zone]?.name ?? "";
+    else if (hops === 1) out.via = ZONES[zone] ? t(ZONES[zone].name) : "";
     dist += Math.hypot(portal.x - x, portal.z - z);
     zone = portal.to;
     x = portal.arriveX; z = portal.arriveZ;

@@ -3,6 +3,8 @@
 // I gear, K training, P 화첩, H help, Esc closes. Skills fire on their own (their rings can be clicked to fire early).
 // Mouse users aim at the cursor on the ground; touch keeps the joystick and on-screen buttons.
 
+import { t } from "../i18n";
+
 /** "dash" is the roll (sent to the server as the dash action) */
 export type Act = "atk" | "dash";
 export interface InputHandlers {
@@ -32,7 +34,7 @@ export interface InputHandlers {
 
 /** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
 export const KEYS = {
-  move: "WASD", attack: "클릭", auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", album: "P", rank: "R", shop: "B", help: "H", mute: "M", chat: "Enter",
+  move: "WASD", attack: t("클릭"), auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", album: "P", rank: "R", shop: "B", help: "H", mute: "M", chat: "Enter",
 } as const;
 
 const MOVE: Record<string, "up" | "down" | "left" | "right"> = {

@@ -4,8 +4,12 @@ Verse8 web multiplayer RPG. Vite + TypeScript + three.js (vanilla DOM UI, no Rea
 (@agent8/gameserver-node). Client and server share `src/shared/`. Read `docs/DESIGN.md` and `docs/API.md` first.
 
 - Talk to the user in Korean.
-- **Never** put hanja / Chinese characters anywhere (UI, textures, seals, icons, fonts). Use hangul or drawn shapes.
+- **Never** mix hanja into the Korean game (UI text, textures, seals, icons, fonts): use hangul or drawn shapes. The
+  Japanese and Chinese (Traditional/Simplified) translations are written in their own scripts, kanji/hanzi included.
 - HUD gauges (HP, EXP, boss HP, skill cooldown rings) are colored and must stand out (HP cinnabar red, EXP gold, skills in their own colors). The "color only in skills and dyed gear" rule is about the 3D world, not these gauges.
+- Languages: ko (source), en, ja, zh-Hant, zh-Hans. Every displayed string goes through `t()` (src/game/i18n.ts), keyed
+  by the Korean text; shared data stays Korean and is wrapped where shown. After adding text run `npm run i18n:keys`
+  and add the new keys to all four `src/game/i18n/*.json`; `npm run i18n:check` must pass. See docs/I18N.md.
 - **Never** show the browser's default scrollbar. Scrollbars are hidden globally in `src/style.css`; scrollable panels keep scrolling and hint overflow with a fade or a drawn ink bar.
 - **Never** add interstitial ads. Rewarded ads only, only from a button press.
 - The world is ink-wash; color appears only in skills and dyed/colored gear.

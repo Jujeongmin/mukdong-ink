@@ -7,6 +7,7 @@
 import { IDLE_LINES, NPC_INFO } from "../../shared/story";
 import { ZONES } from "../../shared/world";
 import { el, esc } from "./dom";
+import { t } from "../i18n";
 
 // In-engine stills per zone; a missing file just leaves the paper-and-ink wash.
 const ART: Record<string, string> = {
@@ -21,27 +22,27 @@ const ART: Record<string, string> = {
 
 /** One line about each place, under its name. */
 const FLAVOR: Record<string, string> = {
-  village: "등불이 먹빛 골목을 지킨다.",
-  bamboo: "바람이 댓잎마다 먹을 털어 낸다.",
-  pond: "물빛이 남은 마지막 연못.",
-  peak: "먹구름이 봉우리를 삼켰다.",
-  kiln: "식은 가마마다 재가 아직 숨을 쉰다.",
-  temple: "꺼진 등 사이에 하나가 서른 해를 버텼다.",
-  censer: "깨진 향로가 아직도 뜨겁다.",
+  village: t("등불이 먹빛 골목을 지킨다."),
+  bamboo: t("바람이 댓잎마다 먹을 털어 낸다."),
+  pond: t("물빛이 남은 마지막 연못."),
+  peak: t("먹구름이 봉우리를 삼켰다."),
+  kiln: t("식은 가마마다 재가 아직 숨을 쉰다."),
+  temple: t("꺼진 등 사이에 하나가 서른 해를 버텼다."),
+  censer: t("깨진 향로가 아직도 뜨겁다."),
 };
 
 const TIPS = [
-  "클릭을 누른 채로 있으면 세 번째 한 수는 회전베기가 된다.",
-  "구르는 동안은 먹귀신의 공격이 닿지 않는다. 붉은 먹 자국이 보이면 굴러서 피하자.",
-  "수련(K)에서 검법을 단련하면 5단계와 10단계에 각성한다.",
-  "+12부터는 강화가 실패하면 붓이 부서질 수 있다. 파괴방지권을 챙기자.",
-  "물들인 목도리와 허리띠는 같은 채널의 다른 이들 눈에도 보인다.",
-  "먹귀신을 베면 안료와 먹돌이, 드물게 색 조각이 나온다.",
-  "물약은 Q. 마을의 단이에게서 살 수 있다. 설정에서 자동으로 마시게 할 수도 있다.",
-  "베기와 오방 검법은 가까운 적을 스스로 찾는다. 나를 노리는 적이 먼저다. 너는 움직이고 피하기만 하면 된다.",
-  "오방 검법은 1–5 또는 고리를 눌러 쓴다. 자동 사냥 중에는 저절로 나간다.",
-  "Space, Shift, 오른쪽 클릭 어느 것으로도 구를 수 있다.",
-  "머리 위의 붉은 표식은 맡길 일이 있다는 뜻이다.",
+  t("클릭을 누른 채로 있으면 세 번째 한 수는 회전베기가 된다."),
+  t("구르는 동안은 먹귀신의 공격이 닿지 않는다. 붉은 먹 자국이 보이면 굴러서 피하자."),
+  t("수련(K)에서 검법을 단련하면 5단계와 10단계에 각성한다."),
+  t("+12부터는 강화가 실패하면 붓이 부서질 수 있다. 파괴방지권을 챙기자."),
+  t("물들인 목도리와 허리띠는 같은 채널의 다른 이들 눈에도 보인다."),
+  t("먹귀신을 베면 안료와 먹돌이, 드물게 색 조각이 나온다."),
+  t("물약은 Q. 마을의 단이에게서 살 수 있다. 설정에서 자동으로 마시게 할 수도 있다."),
+  t("베기와 오방 검법은 가까운 적을 스스로 찾는다. 나를 노리는 적이 먼저다. 너는 움직이고 피하기만 하면 된다."),
+  t("오방 검법은 1–5 또는 고리를 눌러 쓴다. 자동 사냥 중에는 저절로 나간다."),
+  t("Space, Shift, 오른쪽 클릭 어느 것으로도 구를 수 있다."),
+  t("머리 위의 붉은 표식은 맡길 일이 있다는 뜻이다."),
 ];
 
 const MIN_MS = 900;
@@ -54,7 +55,7 @@ function pickLine(): string {
   const id = ids[Math.floor(Math.random() * ids.length)];
   const sets = IDLE_LINES[id];
   const line = sets[Math.floor(Math.random() * sets.length)][0];
-  return `<b>${esc(NPC_INFO[id]?.name ?? "")}</b> ${esc(line.text)}`;
+  return `<b>${esc(t(NPC_INFO[id]?.name ?? ""))}</b> ${esc(t(line.text))}`;
 }
 
 export class Loading {
@@ -75,7 +76,7 @@ export class Loading {
         <div class="loading-veil"></div>
         <div class="loading-stage">
           <div class="loading-mark">
-            <div class="enso-load" data-enso role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="불러오는 중">
+            <div class="enso-load" data-enso role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="${t("불러오는 중")}">
               <i class="bloom" aria-hidden="true"></i>
               <i class="ring-track" aria-hidden="true"></i>
               <i class="ring" aria-hidden="true"></i>
@@ -123,7 +124,7 @@ export class Loading {
   }
 
   setZone(zone: string): void {
-    el("[data-zname]", this.box).textContent = ZONES[zone]?.name ?? "";
+    el("[data-zname]", this.box).textContent = t(ZONES[zone]?.name ?? "");
     el("[data-zflavor]", this.box).textContent = FLAVOR[zone] ?? "";
     const src = ART[zone] ?? ART.village;
     if (this.src === src) return;
@@ -135,7 +136,7 @@ export class Loading {
   /** The channel, once the server has placed us. */
   channel(n: number): void {
     const c = el("[data-zchan]", this.box);
-    c.textContent = `${n}채널`;
+    c.textContent = t("{n}채널", { n });
     c.hidden = !(n > 0);
   }
 

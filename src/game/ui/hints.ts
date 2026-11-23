@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { camera } from "../render/gfx";
 import { el, esc } from "./dom";
 import { KEYS } from "./input";
+import { t } from "../i18n";
 
 const GAP_MS = 20000;
 const SHOW_MS = 4200;
@@ -15,7 +16,7 @@ const coarse = typeof window !== "undefined" && window.matchMedia?.("(pointer: c
 /** Key glyph → the on-screen control that does it (glows on touch screens instead of a key label). */
 const TARGET: Record<string, string> = {
   [KEYS.attack]: '[data-act="atk"]',
-  "클릭 클릭 클릭": '[data-act="atk"]',
+  [t("클릭 클릭 클릭")]: '[data-act="atk"]',
   [KEYS.roll]: '[data-act="dash"]',
   [KEYS.potion]: "[data-potion]",
   // 화염선풍's ring (gate 3: burn the vines)

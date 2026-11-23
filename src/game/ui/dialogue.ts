@@ -5,6 +5,7 @@
 import { NPC_INFO, fillName, type Line } from "../../shared/story";
 import { el, esc } from "./dom";
 import { audio } from "../audio";
+import { t } from "../i18n";
 
 export interface Choice {
   label: string;
@@ -23,8 +24,8 @@ export type PortraitFor = (who: string) => { neutral: string; speak: string } | 
 /** A short, stable id for a line (seen-line memory for 건너뛰기). */
 function lineId(l: Line): string {
   let h = 5381;
-  const t = l.who + "|" + l.text;
-  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  const s = l.who + "|" + l.text;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36);
 }
 
@@ -74,7 +75,7 @@ export class Dialogue {
         <div class="dlg-stage">
         <div class="dlg-face" aria-hidden="true"><img class="f0" alt=""><img class="f1" alt=""><b class="dlg-face-name"></b></div>
         <div class="dlg-box" role="dialog" aria-live="polite">
-          <button type="button" class="dlg-skip btn btn-secondary btn-sm" hidden>건너뛰기</button>
+          <button type="button" class="dlg-skip btn btn-secondary btn-sm" hidden>${t("건너뛰기")}</button>
           <div class="dlg-who"><b class="dlg-name"></b><span class="dlg-title"></span></div>
           <p class="dlg-text"></p>
           <div class="dlg-choices"></div>
@@ -183,12 +184,12 @@ export class Dialogue {
     if (line.who === "voice") audio.play("voice-bleed");
     // 홍매 speaks through 해담's lantern: it flares the first time she does
     if (line.who === "hongmae" && !this.flared) { this.flared = true; audio.play("lantern-ignite"); }
-    this.nameEl.textContent = narration ? "" : me ? this.myName() : info?.name ?? line.who;
+    this.nameEl.textContent = narration ? "" : me ? this.myName() : t(info?.name ?? line.who);
     this.showFace(line.who, this.nameEl.textContent ?? "");
     this.showArt(line.art ?? "");
-    this.titleEl.textContent = narration || me || !info ? "" : info.title;
+    this.titleEl.textContent = narration || me || !info ? "" : t(info.title);
     this.choiceEl.innerHTML = "";
-    this.full = fillName(line.text, this.myName());
+    this.full = fillName(t(line.text), this.myName());
     this.shown = 0;
     this.textEl.textContent = "";
     this.box.classList.add("typing");
@@ -198,7 +199,7 @@ export class Dialogue {
     return new Promise((resolve) => {
       const showChoices = () => {
         if (!choices) return;
-        this.choiceEl.innerHTML = choices.map((c, k) => `<button type="button" class="dlg-choice btn${k === 0 ? " main" : " btn-secondary"}" data-v="${esc(c.value)}">${esc(c.label)}</button>`).join("");
+        this.choiceEl.innerHTML = choices.map((c, k) => `<button type="button" class="dlg-choice btn${k === 0 ? " main" : " btn-secondary"}" data-v="${esc(c.value)}">${esc(t(c.label))}</button>`).join("");
         this.choiceEl.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.addEventListener("click", (e) => {
           e.stopPropagation();
           resolve(b.dataset.v ?? "");

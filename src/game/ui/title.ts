@@ -1,6 +1,7 @@
 // Title screen (press to start, connection status, first-time name) and the mock rewarded-ad overlay.
 
 import { el, esc } from "./dom";
+import { getLang, LANGS, setLang, t, type Lang } from "../i18n";
 import { TitleScene } from "../titleScene";
 
 /** Mock rewarded ad: a clearly labeled 3-second countdown that always counts as watched. */
@@ -9,7 +10,7 @@ export function mockAdPresenter(): Promise<boolean> {
     const box = document.createElement("div");
     box.className = "adplay";
     box.setAttribute("role", "dialog");
-    box.innerHTML = `<div><b data-n>3</b>광고 재생 중 (모의 광고)</div>`;
+    box.innerHTML = `<div><b data-n>3</b>${t("광고 재생 중 (모의 광고)")}</div>`;
     document.body.appendChild(box);
     let n = 3;
     const iv = window.setInterval(() => {
@@ -37,24 +38,30 @@ export class Title {
         <div class="title-drift" aria-hidden="true">${"<i></i>".repeat(9)}</div>
         <div class="title-inner">
           <div class="logo">
-            <h1>채묵</h1>
+            <h1>${t("채묵")}</h1>
             <i class="logo-stroke" aria-hidden="true"></i>
-            <p class="subtitle">잃어버린 색</p>
+            <p class="subtitle">${t("잃어버린 색")}</p>
           </div>
-          <p class="title-lead">먹으로 그린 세상, 색은 검법과 물들인 천에만 남았다</p>
-          <div class="title-cta" data-slot><button class="start title-start" type="button" data-start><span>눌러서 시작</span></button></div>
+          <p class="title-lead">${t("먹으로 그린 세상, 색은 검법과 물들인 천에만 남았다")}</p>
+          <div class="title-cta" data-slot><button class="start title-start" type="button" data-start><span>${t("눌러서 시작")}</span></button></div>
           <div class="status" data-status aria-live="polite"></div>
+        </div>
+        <div class="title-lang" data-lang>
+          <button type="button" class="title-lang-btn" data-lang-open aria-haspopup="listbox" aria-expanded="false" aria-label="${t("언어")}">${esc(LANGS.find((l) => l.id === getLang())?.label ?? "")} ▾</button>
+          <ul class="title-lang-list" data-lang-list role="listbox" hidden>${LANGS.map((l) =>
+            `<li><button type="button" role="option" lang="${l.id}" data-lang-id="${l.id}" aria-selected="${l.id === getLang()}"${l.id === getLang() ? ' class="on"' : ""}>${esc(l.label)}</button></li>`).join("")}</ul>
         </div>
         <i class="ink-wipe" data-wipe aria-hidden="true"></i>
       </section>`);
     this.box = el("[data-title]", root);
+    this.bindLang();
   }
 
   /** Where the player tapped to start; the ink wipe spreads from there. */
   private tapAt: { x: number; y: number } | null = null;
 
   /** Resolves when the player taps/clicks anywhere on the title, or presses Enter/Space. */
-  waitStart(label = "눌러서 시작"): Promise<void> {
+  waitStart(label = t("눌러서 시작")): Promise<void> {
     const slot = el("[data-slot]", this.box);
     slot.innerHTML = `<button class="start title-start" type="button" data-start><span>${esc(label)}</span></button>`;
     const btn = el<HTMLButtonElement>("[data-start]", slot);
@@ -77,6 +84,22 @@ export class Title {
       this.box.addEventListener("click", tap);
       window.addEventListener("keydown", key);
     });
+  }
+
+  /** The corner language picker: its clicks never reach the title's "tap anywhere to start". */
+  private bindLang(): void {
+    const wrap = el("[data-lang]", this.box);
+    const open = el<HTMLButtonElement>("[data-lang-open]", wrap);
+    const list = el("[data-lang-list]", wrap);
+    const show = (on: boolean) => { list.hidden = !on; open.setAttribute("aria-expanded", String(on)); };
+    wrap.addEventListener("click", (e) => e.stopPropagation());
+    wrap.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape") show(false); });
+    open.addEventListener("click", () => show(list.hidden !== false));
+    list.querySelectorAll<HTMLButtonElement>("[data-lang-id]").forEach((b) => b.addEventListener("click", () => {
+      show(false);
+      setLang(b.dataset.langId as Lang);
+    }));
+    this.box.addEventListener("click", () => show(false));
   }
 
   /** Ink washes over the screen from the start button, then the title steps aside. */

@@ -13,7 +13,9 @@
     "server:install": "npm --prefix server install",
     "server:test": "npm --prefix server test",
     "server:build": "npm --prefix server run build",
-    "server:typecheck": "npm --prefix server run typecheck"
+    "server:typecheck": "npm --prefix server run typecheck",
+    "i18n:keys": "node tools/i18n-keys.mjs",
+    "i18n:check": "node tools/i18n-keys.mjs --check"
   },
   "dependencies": {
     "@agent8/gameserver": "^2.0.1",

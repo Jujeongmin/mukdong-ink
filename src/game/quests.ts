@@ -6,6 +6,7 @@ import { NPC_INFO } from "../shared/story";
 import { MONSTERS } from "../shared/combat";
 import { mainDone } from "../shared/profile";
 import type { ProfileView } from "../net/api";
+import { t } from "./i18n";
 
 export function goalTarget(g: QuestGoal): number {
   if (g.type === "kill") return g.count;
@@ -42,34 +43,35 @@ export function dailyStatus(p: ProfileView, i: number): QuestStatus & { claimed:
 
 export function progressText(s: QuestStatus): string {
   const g = s.q.goal;
-  if (g.type === "level") return `경지 ${s.prog} / ${s.target}`;
+  if (g.type === "level") return t("경지 {n} / {max}", { n: s.prog, max: s.target });
   if (g.type === "kill") return `${s.prog} / ${s.target}`;
-  return s.done ? "마침" : "아직";
+  return s.done ? t("마침") : t("아직");
 }
 
 export function rewardText(q: QuestDef): string {
   const r = q.reward;
-  const parts = [`경험 ${r.exp}`, `안료 ${r.pigment}`];
-  if (r.jade) parts.push(`묵옥 ${r.jade}`);
-  if (r.potions) parts.push(`물약 ${r.potions}`);
+  const parts = [t("경험 {n}", { n: r.exp }), t("안료 {n}", { n: r.pigment })];
+  if (r.jade) parts.push(t("묵옥 {n}", { n: r.jade }));
+  if (r.potions) parts.push(t("물약 {n}", { n: r.potions }));
   return parts.join(" · ");
 }
 
 export function npcName(id: string): string {
-  return NPC_INFO[id]?.name ?? id;
+  const n = NPC_INFO[id]?.name;
+  return n ? t(n) : id;
 }
 
 /** The one objective line of the quest tracker: what to do, and a count when there is one. */
 export function objective(s: QuestStatus): { text: string; count: string } {
   const g = s.q.goal;
-  if (!s.accepted) return { text: `${npcName(s.q.giver)}에게 의뢰 받기`, count: "" };
+  if (!s.accepted) return { text: t("{name}에게 의뢰 받기", { name: npcName(s.q.giver) }), count: "" };
   switch (g.type) {
-    case "kill": return { text: `${g.kind === "any" ? "먹귀신" : MONSTERS[g.kind]?.name ?? "먹귀신"} 베기`, count: `${s.prog}/${s.target}` };
-    case "level": return { text: `${s.target}단계까지 수련`, count: `${s.prog}/${s.target}` };
-    case "reach": return { text: `${ZONES[g.zone]?.name ?? g.zone}에 닿기`, count: "" };
-    case "talk": return { text: `${npcName(g.npc)}에게 말 걸기`, count: "" };
-    case "dye": return { text: "염색통에서 물들이기", count: "" };
-    case "equip": return { text: "새 장비 갖추기", count: "" };
+    case "kill": return { text: t("{name} 베기", { name: t(g.kind === "any" ? "먹귀신" : MONSTERS[g.kind]?.name ?? "먹귀신") }), count: `${s.prog}/${s.target}` };
+    case "level": return { text: t("{n}단계까지 수련", { n: s.target }), count: `${s.prog}/${s.target}` };
+    case "reach": return { text: t("{zone}에 닿기", { zone: ZONES[g.zone] ? t(ZONES[g.zone].name) : g.zone }), count: "" };
+    case "talk": return { text: t("{name}에게 말 걸기", { name: npcName(g.npc) }), count: "" };
+    case "dye": return { text: t("염색통에서 물들이기"), count: "" };
+    case "equip": return { text: t("새 장비 갖추기"), count: "" };
   }
 }
 
@@ -88,8 +90,9 @@ export function nextStep(p: ProfileView, here: string): string | null {
   const who = !s.accepted ? s.q.giver : s.done || readyByTalk(s) ? s.q.turnIn : null;
   if (!who) return null;
   const z = npcZone(who);
-  const where = z && z !== here ? ` (${ZONES[z].name})` : "";
-  return `${npcName(who)}에게 말 걸기${where}`;
+  return z && z !== here
+    ? t("{name}에게 말 걸기 ({zone})", { name: npcName(who), zone: t(ZONES[z].name) })
+    : t("{name}에게 말 걸기", { name: npcName(who) });
 }
 
 /** A "talk" goal is finished by the conversation itself, so it is ready as soon as it is accepted. */

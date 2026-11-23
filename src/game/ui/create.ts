@@ -11,6 +11,7 @@ import { MOODS } from "../render/ambient";
 import { updateFx } from "../render/fx";
 import { hexCss } from "../util";
 import { el, esc } from "./dom";
+import { t } from "../i18n";
 
 export interface Creation {
   name: string;
@@ -82,13 +83,13 @@ export class CharacterCreator {
       <section class="create" data-create>
         <div class="create-wrap">
         <form class="create-panel" data-form>
-          <h2>나를 그리다</h2>
-          <p class="sub">목도리와 허리띠 색을 고른다.</p>
-          <label class="create-name"><span>이름</span><input data-name maxlength="8" autocomplete="off" placeholder="2~8자 · 한글, 영문, 숫자" aria-label="이름"></label>
-          <div class="create-row"><span>목도리</span><div class="swatches" data-sw="scarf"></div></div>
-          <div class="create-row"><span>허리띠</span><div class="swatches" data-sw="sash"></div></div>
+          <h2>${t("나를 그리다")}</h2>
+          <p class="sub">${t("목도리와 허리띠 색을 고른다.")}</p>
+          <label class="create-name"><span>${t("이름")}</span><input data-name maxlength="8" autocomplete="off" placeholder="${t("2~8자 · 한글, 영문, 숫자")}" aria-label="${t("이름")}"></label>
+          <div class="create-row"><span>${t("목도리")}</span><div class="swatches" data-sw="scarf"></div></div>
+          <div class="create-row"><span>${t("허리띠")}</span><div class="swatches" data-sw="sash"></div></div>
           <p class="create-err" data-err aria-live="polite"></p>
-          <button class="start btn btn-lg" type="submit">이대로 시작</button>
+          <button class="start btn btn-lg" type="submit">${t("이대로 시작")}</button>
         </form>
         <i class="panel-frame" aria-hidden="true"></i>
         </div>
@@ -102,7 +103,7 @@ export class CharacterCreator {
   private paint(key: "scarf" | "sash"): void {
     const box = el(`[data-sw="${key}"]`, this.box);
     const cur = key === "scarf" ? this.scarf : this.sash;
-    box.innerHTML = DYES.map((d, k) => `<button type="button" class="sw${cur === d.hex ? " on" : ""}" data-k="${k}" aria-pressed="${cur === d.hex}" aria-label="${esc(d.name)}" style="--c:${d.hex == null ? "#2b2926" : hexCss(d.hex)}"><span>${esc(d.name)}</span></button>`).join("");
+    box.innerHTML = DYES.map((d, k) => `<button type="button" class="sw${cur === d.hex ? " on" : ""}" data-k="${k}" aria-pressed="${cur === d.hex}" aria-label="${esc(t(d.name))}" style="--c:${d.hex == null ? "#2b2926" : hexCss(d.hex)}"><span>${esc(t(d.name))}</span></button>`).join("");
     box.querySelectorAll<HTMLButtonElement>(".sw").forEach((b) => b.addEventListener("click", () => {
       const hex = DYES[Number(b.dataset.k)].hex;
       if (key === "scarf") this.scarf = hex; else this.sash = hex;
@@ -127,7 +128,7 @@ export class CharacterCreator {
       const form = el<HTMLFormElement>("[data-form]", this.box);
       const go = (e: Event) => {
         e.preventDefault();
-        if (!input.value.trim()) { this.error("이름부터 적어 주자."); input.focus(); return; }
+        if (!input.value.trim()) { this.error(t("이름부터 적어 주자.")); input.focus(); return; }
         form.removeEventListener("submit", go);
         resolve({ name: input.value.trim(), scarf: this.scarf, sash: this.sash });
       };

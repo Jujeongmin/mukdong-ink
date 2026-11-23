@@ -1421,7 +1421,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 @media (prefers-reduced-motion: reduce) { .dlg-face.talk .f0, .dlg-face.swap .f0 { animation: none; } }
 
 /* 물약 자동 사용 on: a small 자동 mark on the gourd */
-.gourd.auto-on::after { content: "자동"; position: absolute; left: 50%; top: -9px; transform: translateX(-50%); padding: 0 4px 1px; border-radius: 2px; font-family: var(--f-brush); font-weight: 700; font-size: 10px; line-height: 1.3; color: #efe5d1; background: #2b2622; box-shadow: inset 0 0 0 0.5px rgba(239, 229, 209, 0.5); pointer-events: none; }
+.gourd.auto-on::after { content: var(--tx-auto, "자동"); position: absolute; left: 50%; top: -9px; transform: translateX(-50%); padding: 0 4px 1px; border-radius: 2px; font-family: var(--f-brush); font-weight: 700; font-size: 10px; line-height: 1.3; color: #efe5d1; background: #2b2622; box-shadow: inset 0 0 0 0.5px rgba(239, 229, 209, 0.5); pointer-events: none; }
 .gourd { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 
 /* ---------- top-left ensō: your own face (the in-engine cutout), clipped to the circle ---------- */
@@ -1862,7 +1862,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* a window open in the middle: the quest list steps back instead of peeking out from under its edge */
 #ui:has(.sheet:not([hidden])) .jokja { opacity: 0; pointer-events: none; transition: opacity 0.15s; }
 /* worn gear: the word, not a red dot (a red dot reads as "something new here") */
-#ui .sheet .tile.eq::after { content: "착용"; top: 3px; right: 4px; width: auto; height: auto; background: none; -webkit-mask: none; mask: none; color: var(--cinnabar); font-family: var(--f-brush); font-size: 11px; font-weight: 700; line-height: 1; }
+#ui .sheet .tile.eq::after { content: var(--tx-worn, "착용"); top: 3px; right: 4px; width: auto; height: auto; background: none; -webkit-mask: none; mask: none; color: var(--cinnabar); font-family: var(--f-brush); font-size: 11px; font-weight: 700; line-height: 1; }
 /* the potion count sits on the gourd's outer side, away from 베기 */
 #ui .gourd b { right: auto; left: -8px; }
 /* touch screens: no key labels on the thumb buttons (ui-sheets.css gives them display:grid after the hide above) */
@@ -1875,7 +1875,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .create .start.start.start:hover, .create .start.start.start:focus-visible { background: none; color: #7d1c14; }
 /* not on 자동 진행: if a finished line sits unread for a while, a faint word says how to go on (no arrow) */
 .dlg-box > .dlg-next.dlg-next { display: block; right: 18px; bottom: 10px; width: auto; height: auto; border: 0; transform: none; animation: next-hint 0.6s ease 2.4s both; font-family: var(--f-brush); font-size: 12px; color: var(--ink-soft); pointer-events: none; }
-.dlg-box > .dlg-next.dlg-next::after { content: "눌러서 넘기기"; }
+.dlg-box > .dlg-next.dlg-next::after { content: var(--tx-next, "눌러서 넘기기"); }
 .dlg.narration .dlg-box > .dlg-next { color: rgba(239, 229, 209, 0.7); }
 .dlg.typing .dlg-box > .dlg-next, .dlg.auto-next .dlg-box > .dlg-next, .dlg-box:has(.dlg-choices:not(:empty)) > .dlg-next { display: none; }
 @keyframes next-hint { from { opacity: 0; } to { opacity: 0.7; } }
@@ -2127,10 +2127,10 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .sheet .tabs button:not([aria-selected="true"]) { color: rgba(43, 38, 34, 0.52); }
 #ui .sheet .btn.btn.btn:disabled, #ui .sheet .pull:disabled { opacity: 0.62; }
 /* 물약 자동 사용 state is always written on the gourd: 자동 (green) or 수동 (pale ink), so it's never a guess */
-#ui .gourd::after { content: "수동"; position: absolute; left: 50%; top: -21px; transform: translateX(-50%); padding: 0 5px 1px; border-radius: 2px;
+#ui .gourd::after { content: var(--tx-manual, "수동"); position: absolute; left: 50%; top: -21px; transform: translateX(-50%); padding: 0 5px 1px; border-radius: 2px;
   font-family: var(--f-brush); font-weight: 700; font-size: 12px; line-height: 1.35; white-space: nowrap; pointer-events: none;
   color: #efe5d1; background: rgba(43, 38, 34, 0.62); box-shadow: inset 0 0 0 0.5px rgba(239, 229, 209, 0.45); }
-#ui .gourd.auto-on::after { content: "자동"; background: #4b6b26; box-shadow: inset 0 0 0 0.5px rgba(222, 240, 190, 0.7), 0 0 6px rgba(111, 154, 58, 0.55); }
+#ui .gourd.auto-on::after { content: var(--tx-auto, "자동"); background: #4b6b26; box-shadow: inset 0 0 0 0.5px rgba(222, 240, 190, 0.7), 0 0 6px rgba(111, 154, 58, 0.55); }
 /* the panel's bottom line sat right under the big button's own brush line (two lines under 단련 / +N 강화): one is enough */
 #ui .sheet .gr2-detail::after, #ui .sheet .enh2-main::after { content: none; }
 
@@ -2156,3 +2156,26 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   #ui .bossbar > b, #ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 12px; line-height: 1.1; }
   #ui .bossbar .gauge.boss, #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(230px, 31vw); height: 14px; }
 }
+/* at 100% the enso stays open like the painted one (its gap is part of the art); the straight closing flick sat
+   off the ring's line beside the gap and read as a stray mark, so it's gone */
+.enso-load .seam { display: none; }
+
+/* ---------- languages: fonts and line breaking ---------- */
+:root[data-lang="ja"] { --f-brush: "Shippori Mincho", "Yu Mincho", "Hiragino Mincho ProN", serif; --f-body: "Zen Kaku Gothic New", "Yu Gothic", "Hiragino Sans", sans-serif; }
+:root[data-lang="zh-Hant"] { --f-brush: "Noto Serif TC", "PMingLiU", serif; --f-body: "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+:root[data-lang="zh-Hans"] { --f-brush: "Noto Serif SC", "SimSun", serif; --f-body: "Noto Sans SC", "Microsoft YaHei", sans-serif; }
+/* keep-all keeps Korean words whole; Chinese and Japanese have no spaces, so it would never break a line there */
+:root[data-lang="ja"] *, :root[data-lang="zh-Hant"] *, :root[data-lang="zh-Hans"] * { word-break: normal !important; line-break: strict; }
+:root[data-lang="en"] * { overflow-wrap: break-word; }
+/* the wide Korean letter-spacing reads as gaps in latin and CJK text */
+:root:not([data-lang="ko"]) body { letter-spacing: 0; }
+
+/* title language picker: top-left on the pale sky (the bottom-left sits on the dark rock), no underline */
+.title .title-lang { position: absolute; left: calc(16px + var(--safe-l, 0px)); top: calc(12px + var(--safe-t, 0px)); z-index: 3; font-size: 15px; font-weight: 700; color: #24232a; text-shadow: 0 0 8px rgba(232, 236, 242, 0.95); }
+.title .title-lang button { border: 0; background: none; box-shadow: none; padding: 4px 2px; font: inherit; color: inherit; letter-spacing: 0.02em; cursor: pointer; opacity: 0.85; }
+.title .title-lang button:hover, .title .title-lang button:focus-visible { outline: none; opacity: 1; }
+.title .title-lang-list { position: absolute; left: 0; top: 100%; margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 1px; white-space: nowrap; }
+.title .title-lang-list[hidden] { display: none; }
+.title .title-lang-list button.on { opacity: 1; font-weight: 700; }
+/* the loading screen's place name stays on one line; fit.ts scales a long translated one down */
+:root:not([data-lang="ko"]) .loading-place h2 { white-space: nowrap; overflow: hidden; max-width: min(360px, 60vw); }

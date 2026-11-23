@@ -6,6 +6,7 @@ import { audio } from "../audio";
 import { getQuality } from "../render/gfx";
 import { bindSliders, esc, sliderHtml } from "./dom";
 import { KEYS } from "./input";
+import { getLang, LANGS, setLang, t, type Lang } from "../i18n";
 
 export type Quality = "low" | "mid" | "high" | "auto";
 export type NameMode = "all" | "mine" | "off";
@@ -68,7 +69,7 @@ class SettingsStore {
 
 export const gameSettings = new SettingsStore();
 
-export const SETTINGS_TABS: [string, string][] = [["sound", "소리"], ["gfx", "그래픽"], ["keys", "조작"], ["game", "게임"], ["info", "정보"]];
+export const SETTINGS_TABS: [string, string][] = [["sound", t("소리")], ["gfx", t("그래픽")], ["keys", t("조작")], ["game", t("게임")], ["info", t("정보")]];
 
 export interface SettingsCtx {
   /** the player's nickname (never the account id) */
@@ -80,12 +81,20 @@ export interface SettingsCtx {
 const toggle = (key: keyof GameSettings, label: string, sub = "", disabled = false) =>
   `<label class="set-row ink-toggle${disabled ? " off" : ""}"><span>${label}${sub ? `<small>${sub}</small>` : ""}</span><input type="checkbox" data-set="${key}" ${gameSettings.v[key] && !disabled ? "checked" : ""} ${disabled ? "disabled" : ""}><i aria-hidden="true"></i></label>`;
 
-const LEVEL_NAME: Record<string, string> = { low: "낮음", mid: "보통", high: "높음" };
+const LEVEL_NAME: Record<string, string> = { low: t("낮음"), mid: t("보통"), high: t("높음") };
 
 function choice<T extends string>(key: keyof GameSettings, label: string, opts: [T, string][]): string {
   const cur = gameSettings.v[key];
   return `<div class="set-row"><span>${label}</span><div class="seg" role="radiogroup" aria-label="${label}">${opts.map(([v, l]) =>
     `<button type="button" role="radio" class="seg-b" aria-checked="${cur === v}" data-choice="${key}" data-v="${v}">${l}</button>`).join("")}</div></div>`;
+}
+
+/** The language row (game tab): each language labelled in itself; picking one saves it and reloads. */
+function langRow(): string {
+  const cur = getLang();
+  const label = t("언어");
+  return `<div class="set-row"><span>${label}</span><div class="seg" role="radiogroup" aria-label="${label}">${LANGS.map((l) =>
+    `<button type="button" role="radio" class="seg-b" aria-checked="${cur === l.id}" data-lang="${l.id}" lang="${l.id}">${l.label}</button>`).join("")}</div></div>`;
 }
 
 function slider(k: "master" | "music" | "sfx", label: string): string {
@@ -94,7 +103,7 @@ function slider(k: "master" | "music" | "sfx", label: string): string {
 
 /** The auto-potion threshold (also in the auto-battle popover): 20–70 % of max HP, in 5 % steps. */
 export function potionSlider(): string {
-  return sliderHtml({ key: "potion-at", label: "물약 기준", value: Math.round(gameSettings.v.potionAt * 100), min: 20, max: 70, step: 5, unit: "%" });
+  return sliderHtml({ key: "potion-at", label: t("물약 기준"), value: Math.round(gameSettings.v.potionAt * 100), min: 20, max: 70, step: 5, unit: "%" });
 }
 
 /** Slider keys shared by the settings sheet and the auto-battle popover. */
@@ -104,66 +113,67 @@ export function onSlider(key: string, v: number): void {
 }
 
 const KEY_ROWS: [string, string][] = [
-  [KEYS.move, "걷기"],
-  ["Space · Shift · 우클릭", "구르기 (구르는 동안은 맞지 않는다)"],
-  ["좌클릭 · J", "베기 (가까운 적에게), 누르고 있으면 이어 베기"],
-  ["1 · 2 · 3 · 4 · 5", "오방 검법 (물결·화염·대지·바람·먹), 가까운 적에게. 고리를 눌러도 된다. 자동 사냥 중엔 저절로"],
-  [KEYS.auto, "자동 진행"],
-  [KEYS.potion, "물약"],
-  [KEYS.talk, "말 걸기"],
-  [KEYS.gear, "장비"],
-  [KEYS.growth, "수련"],
-  [KEYS.album, "화첩"],
-  [KEYS.shop, "상점 (뽑기)"],
-  [KEYS.rank, "랭킹"],
-  [KEYS.help, "조작 안내"],
-  [KEYS.mute, "소리 끄기·켜기"],
-  ["Enter", "채팅"],
-  ["Esc", "설정 · 창 닫기"],
+  [KEYS.move, t("걷기")],
+  [t("Space · Shift · 우클릭"), t("구르기 (구르는 동안은 맞지 않는다)")],
+  [t("좌클릭 · J"), t("베기 (가까운 적에게), 누르고 있으면 이어 베기")],
+  ["1 · 2 · 3 · 4 · 5", t("오방 검법 (물결·화염·대지·바람·먹), 가까운 적에게. 고리를 눌러도 된다. 자동 사냥 중엔 저절로")],
+  [KEYS.auto, t("자동 진행")],
+  [KEYS.potion, t("물약")],
+  [KEYS.talk, t("말 걸기")],
+  [KEYS.gear, t("장비")],
+  [KEYS.growth, t("수련")],
+  [KEYS.album, t("화첩")],
+  [KEYS.shop, t("상점 (뽑기)")],
+  [KEYS.rank, t("랭킹")],
+  [KEYS.help, t("조작 안내")],
+  [KEYS.mute, t("소리 끄기·켜기")],
+  ["Enter", t("채팅")],
+  ["Esc", t("설정 · 창 닫기")],
 ];
 
 export function settingsHtml(tab: string, ctx: SettingsCtx): string {
   if (tab === "sound") {
     return `<div class="set-list">
-      ${slider("master", "전체")}${slider("music", "음악")}${slider("sfx", "효과음")}
-      <label class="set-row ink-toggle"><span>음소거<small>${KEYS.mute} 키로도 켜고 끈다</small></span><input type="checkbox" data-mute ${audio.settings.muted ? "checked" : ""}><i aria-hidden="true"></i></label>
+      ${slider("master", t("전체"))}${slider("music", t("음악"))}${slider("sfx", t("효과음"))}
+      <label class="set-row ink-toggle"><span>${t("음소거")}<small>${t("{key} 키로도 켜고 끈다", { key: KEYS.mute })}</small></span><input type="checkbox" data-mute ${audio.settings.muted ? "checked" : ""}><i aria-hidden="true"></i></label>
     </div>`;
   }
   if (tab === "gfx") {
     const q = getQuality();
     return `<div class="set-list">
-      ${choice<Quality>("quality", "품질", [["low", "낮음"], ["mid", "보통"], ["high", "높음"], ["auto", `자동 (${LEVEL_NAME[q.level] ?? q.level})`]])}
-      ${toggle("shake", "화면 흔들림", "벨 때 화면이 떨린다")}
-      ${toggle("dmgNumbers", "데미지 숫자")}
-      ${toggle("lowRemote", "다른 유저 효과 줄이기", "다른 이들의 검법 효과와 소리를 줄인다")}
+      ${choice<Quality>("quality", t("품질"), [["low", t("낮음")], ["mid", t("보통")], ["high", t("높음")], ["auto", t("자동 ({level})", { level: LEVEL_NAME[q.level] ?? q.level })]])}
+      ${toggle("shake", t("화면 흔들림"), t("벨 때 화면이 떨린다"))}
+      ${toggle("dmgNumbers", t("데미지 숫자"))}
+      ${toggle("lowRemote", t("다른 유저 효과 줄이기"), t("다른 이들의 검법 효과와 소리를 줄인다"))}
     </div>`;
   }
   if (tab === "keys") {
     return `<table class="key-table"><tbody>${KEY_ROWS.map(([k, d]) => `<tr><th><kbd>${esc(k)}</kbd></th><td>${esc(d)}</td></tr>`).join("")}</tbody></table>
-      <p class="sub">모바일: 왼쪽 원으로 걷고, 오른쪽 고리로 베고 구른다. 채팅 버튼으로 이야기한다.</p>
-      <button type="button" class="btn btn-secondary btn-sm" data-open-auto>자동 사냥 설정 열기</button>`;
+      <p class="sub">${t("모바일: 왼쪽 원으로 걷고, 오른쪽 고리로 베고 구른다. 채팅 버튼으로 이야기한다.")}</p>
+      <button type="button" class="btn btn-secondary btn-sm" data-open-auto>${t("자동 사냥 설정 열기")}</button>`;
   }
   if (tab === "game") {
     return `<div class="set-list">
-      ${choice<NameMode>("names", "이름표", [["all", "모두"], ["mine", "나와 NPC"], ["off", "끄기"]])}
-      ${toggle("chat", "채팅 표시")}
-      ${toggle("chatFilter", "채팅 거르기", "가려진 말은 아예 보이지 않게")}
-      ${toggle("autoPotion", "물약 자동 사용", "사냥터에서 생명이 기준 아래로 떨어지면 저절로 마신다")}
+      ${langRow()}
+      ${choice<NameMode>("names", t("이름표"), [["all", t("모두")], ["mine", t("나와 NPC")], ["off", t("끄기")]])}
+      ${toggle("chat", t("채팅 표시"))}
+      ${toggle("chatFilter", t("채팅 거르기"), t("가려진 말은 아예 보이지 않게"))}
+      ${toggle("autoPotion", t("물약 자동 사용"), t("사냥터에서 생명이 기준 아래로 떨어지면 저절로 마신다"))}
       ${potionSlider()}
-      <div class="set-row"><span>힌트 다시 보기<small>이 계정의 안내 혼잣말을 처음부터</small></span><button type="button" class="btn btn-secondary btn-sm" data-reset-hints>다시 보기</button></div>
-      <p class="set-confirm" data-confirm hidden>정말 처음부터 다시 볼까? <button type="button" class="btn btn-sm btn-danger" data-reset-yes>그래</button> <button type="button" class="btn btn-secondary btn-sm" data-reset-no>아니</button></p>
+      <div class="set-row"><span>${t("힌트 다시 보기")}<small>${t("이 계정의 안내 혼잣말을 처음부터")}</small></span><button type="button" class="btn btn-secondary btn-sm" data-reset-hints>${t("다시 보기")}</button></div>
+      <p class="set-confirm" data-confirm hidden>${t("정말 처음부터 다시 볼까?")} <button type="button" class="btn btn-sm btn-danger" data-reset-yes>${t("그래")}</button> <button type="button" class="btn btn-secondary btn-sm" data-reset-no>${t("아니")}</button></p>
     </div>`;
   }
   // 정보
   return `<dl class="info-list">
-      <dt>이름</dt><dd>${esc(ctx.name() || "나그네")}</dd>
-      <dt>판</dt><dd>${esc(version)}</dd>
+      <dt>${t("이름")}</dt><dd>${esc(ctx.name() || t("나그네"))}</dd>
+      <dt>${t("판")}</dt><dd>${esc(version)}</dd>
     </dl>
-    <h3>만든 것들</h3>
+    <h3>${t("만든 것들")}</h3>
     <ul class="credits">
-      <li><b>움직임</b> Quaternius, Universal Animation Library 2 (CC0)</li>
-      <li><b>음악과 효과음</b> 이 게임을 위해 PixelLab(pixellab.ai)으로 만들었다</li>
-      <li><b>그림</b> 먹 도구, 표지와 불러오기 그림, 검법과 장비 그림: 이 게임을 위해 Codex로 만들었다</li>
+      <li><b>${t("움직임")}</b> Quaternius, Universal Animation Library 2 (CC0)</li>
+      <li><b>${t("음악과 효과음")}</b> ${t("이 게임을 위해 PixelLab(pixellab.ai)으로 만들었다")}</li>
+      <li><b>${t("그림")}</b> ${t("먹 도구, 표지와 불러오기 그림, 검법과 장비 그림: 이 게임을 위해 Codex로 만들었다")}</li>
     </ul>`;
 }
 
@@ -176,6 +186,7 @@ export function bindSettings(card: HTMLElement, rerender: () => void, ctx: Setti
     gameSettings.set({ [b.dataset.choice as keyof GameSettings]: b.dataset.v } as Partial<GameSettings>);
     rerender();
   }));
+  card.querySelectorAll<HTMLElement>("[data-lang]").forEach((b) => b.addEventListener("click", () => setLang(b.dataset.lang as Lang)));
   bindSliders(card, onSlider);
   card.querySelector<HTMLInputElement>("[data-mute]")?.addEventListener("change", (e) => audio.set({ muted: (e.target as HTMLInputElement).checked }));
   card.querySelector("[data-open-auto]")?.addEventListener("click", () => ctx.openAuto());

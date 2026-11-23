@@ -30,11 +30,14 @@ describe("profile", () => {
     expect(await errorOf(server.equip("w_brush"))).toContain("no_profile");
   });
 
-  test("a name is 2–8 hangul, latin letters or digits, never hanja, and unique", async (server) => {
+  test("a name is 2–8 hangul, latin letters, digits, kana or ideographs (never hanja in a hangul name), and unique", async (server) => {
     await newPlayer(server, "test-a");
     for (const bad of ["가", "가나다라마바사아자", String.fromCharCode(0x58a8) + "동이", "먹 동", "ㄱㄴ", "", 42, null]) {
       expect(await errorOf(server.setName(bad))).toContain("bad_name");
     }
+    // the Japanese and Chinese versions: kana and ideographs on their own
+    expect((await server.setName("すずめ")).name).toBe("すずめ");
+    expect((await server.setName(String.fromCharCode(0x58a8, 0x67d3))).name).toBe(String.fromCharCode(0x58a8, 0x67d3));
     expect((await server.setName("  붓잡이  ")).name).toBe("붓잡이");
     await newPlayer(server, "test-b");
     expect(await errorOf(server.setName("붓잡이"))).toContain("name_taken");

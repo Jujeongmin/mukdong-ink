@@ -72,13 +72,17 @@ export async function updateProfile(account: string, change: (p: Profile) => Pro
 
 // ---------- names ----------
 
-export const NAME_PATTERN = /^[가-힣a-zA-Z0-9]{2,8}$/;
+// hangul, latin letters, digits; for the Japanese and Chinese versions also kana (with the long-vowel mark) and
+// CJK ideographs, but never hangul and ideographs in one name (no hanja in a Korean name)
+export const NAME_PATTERN = /^[가-힣a-zA-Z0-9ぁ-ゖァ-ヺー一-鿿]{2,8}$/;
+const HANGUL = /[가-힣]/;
+const IDEOGRAPH = /[一-鿿]/;
 
-/** A requested name tidied and checked: 2–8 hangul syllables, latin letters or digits. */
+/** A requested name tidied and checked: 2–8 hangul syllables, latin letters, digits, kana or CJK ideographs. */
 export function parseName(raw: unknown): { name: string; key: string } | null {
   if (typeof raw !== "string") return null;
   const name = raw.normalize("NFC").trim();
-  if (!NAME_PATTERN.test(name) || isBannedName(name)) return null;
+  if (!NAME_PATTERN.test(name) || (HANGUL.test(name) && IDEOGRAPH.test(name)) || isBannedName(name)) return null;
   return { name, key: name.toLowerCase() };
 }
 

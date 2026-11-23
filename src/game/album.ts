@@ -8,6 +8,7 @@
 // Blobs are read once into object URLs held here; a replaced or cleared picture's URL is revoked.
 
 import { MAIN_QUESTS } from "../shared/world";
+import { t } from "./i18n";
 
 export interface AlbumPage {
   id: string;
@@ -26,11 +27,11 @@ export interface AlbumPage {
 }
 
 export const ALBUM_PAGES: AlbumPage[] = [
-  { id: "c1", chapter: "1장", title: "물빛을 되찾은 날", place: "먹봉우리", boss: "boss", quest: "c1q10", hue: "#4f86c6", zone: "peak", color: [0.42, 0.74, 1.0] },
-  { id: "c2", chapter: "2장", title: "불빛을 되찾은 날", place: "향로 마당", boss: "ashboss", quest: "c2q10", hue: "#c8503a", zone: "censer", color: [1.0, 0.46, 0.24] },
-  { id: "c3", chapter: "3장", title: "흙빛", place: "아직 찾지 못한 조각", hue: "#c9a13e" },
-  { id: "c4", chapter: "4장", title: "바람빛", place: "아직 찾지 못한 조각", hue: "#d9d6cc" },
-  { id: "c5", chapter: "5장", title: "먹빛", place: "아직 찾지 못한 조각", hue: "#2a2622" },
+  { id: "c1", chapter: t("1장"), title: t("물빛을 되찾은 날"), place: t("먹봉우리"), boss: "boss", quest: "c1q10", hue: "#4f86c6", zone: "peak", color: [0.42, 0.74, 1.0] },
+  { id: "c2", chapter: t("2장"), title: t("불빛을 되찾은 날"), place: t("향로 마당"), boss: "ashboss", quest: "c2q10", hue: "#c8503a", zone: "censer", color: [1.0, 0.46, 0.24] },
+  { id: "c3", chapter: t("3장"), title: t("흙빛"), place: t("아직 찾지 못한 조각"), hue: "#c9a13e" },
+  { id: "c4", chapter: t("4장"), title: t("바람빛"), place: t("아직 찾지 못한 조각"), hue: "#d9d6cc" },
+  { id: "c5", chapter: t("5장"), title: t("먹빛"), place: t("아직 찾지 못한 조각"), hue: "#2a2622" },
 ];
 export const PAGE_FOR_BOSS: Record<string, AlbumPage> = Object.fromEntries(ALBUM_PAGES.filter((p) => p.boss).map((p) => [p.boss!, p]));
 

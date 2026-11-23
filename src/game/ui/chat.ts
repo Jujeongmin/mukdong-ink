@@ -5,6 +5,24 @@
 
 import { CHAT_MAX } from "../../shared/chat";
 import { el, esc } from "./dom";
+import { t } from "../i18n";
+
+/** The server's one system line when a boss falls (server.ts, Korean): rebuilt in the current language. */
+function sysText(text: string): string {
+  let m = /^(.+) 님이 대먹귀를 쓰러뜨렸다$/.exec(text);
+  if (m) return t("{name} 님이 대먹귀를 쓰러뜨렸다", { name: m[1] });
+  m = /^(.+) 님이 잿불귀를 잠재웠다$/.exec(text);
+  if (m) return t("{name} 님이 잿불귀를 잠재웠다", { name: m[1] });
+  m = /^(.+) 님이 (.+)를 쓰러뜨렸다$/.exec(text);
+  if (m) return t("{name} 님이 {monster}를 쓰러뜨렸다", { name: m[1], monster: t(m[2]) });
+  return t(text);
+}
+
+/** The room label built by the game ("— 죽림 1채널 —"): the zone name and the word around the number translated. */
+function labelText(text: string): string {
+  const m = /^— (.+) (\d+)채널 —$/.exec(text);
+  return m ? t("— {zone} {n}채널 —", { zone: t(m[1]), n: m[2] }) : t(text);
+}
 
 export interface ChatLine {
   id: string;
@@ -42,9 +60,9 @@ export class Chat {
     root.insertAdjacentHTML("beforeend", `
       <div class="chat-log passive idle" data-chatlog aria-live="polite"></div>
       <form class="chat-in" data-chatform hidden autocomplete="off">
-        <input type="text" maxlength="${CHAT_LIMIT}" enterkeyhint="send" placeholder="할 말 (Enter 보내기, Esc 닫기)" aria-label="채팅 입력" data-chatinput>
+        <input type="text" maxlength="${CHAT_LIMIT}" enterkeyhint="send" placeholder="${t("할 말 (Enter 보내기, Esc 닫기)")}" aria-label="${t("채팅 입력")}" data-chatinput>
         <small data-chatcount>0/${CHAT_LIMIT}</small>
-        <button type="submit" class="btn btn-sm">보내기</button>
+        <button type="submit" class="btn btn-sm">${t("보내기")}</button>
       </form>`);
     this.log = el("[data-chatlog]", root);
     this.form = el<HTMLFormElement>("[data-chatform]", root);
@@ -90,7 +108,7 @@ export class Chat {
     const p = document.createElement("p");
     p.dataset.id = m.id;
     p.className = m.sys ? "sys" : "";
-    p.innerHTML = m.sys ? esc(m.text) : `<b>${esc(m.name || "나그네")}</b> ${esc(m.text)}`;
+    p.innerHTML = m.sys ? esc(sysText(m.text)) : `<b>${esc(m.name || t("나그네"))}</b> ${esc(m.text)}`;
     this.log.appendChild(p);
     while (this.log.childElementCount > KEEP) this.log.firstElementChild?.remove();
     this.wake();
@@ -104,7 +122,7 @@ export class Chat {
   label(text: string): void {
     const p = document.createElement("p");
     p.className = "room";
-    p.textContent = text;
+    p.textContent = labelText(text);
     this.log.prepend(p);
     while (this.log.childElementCount > KEEP) this.log.firstElementChild?.remove();
     this.wake(this.log.querySelector("p:not(.room)") ? FADE_MS : LABEL_FADE_MS);

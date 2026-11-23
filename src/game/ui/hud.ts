@@ -19,6 +19,7 @@ import { audio } from "../audio";
 import { roundDist, type QuestNav } from "../questnav";
 import { gameSettings, onSlider, potionSlider } from "./settings";
 import { toast as toastLine } from "./dom";
+import { t } from "../i18n";
 
 export interface HudHandlers {
   potion(): void;
@@ -57,79 +58,84 @@ export interface HudHandlers {
 // Bottom-right thumb arc: the basic attack is the big ring at the pivot; skills sit on an arc around it
 // (물결 at the left end, 먹 at the top), touch-only jump/dash and the potion gourd on the outer arc.
 const SKILL_ANGLE = [180, 157.5, 135, 112.5, 90];
-const QSTATE = { "": "", fight: "전투 중", travel: "이동 중", auto: "자동 사냥 중" } as const;
+const QSTATE: Record<"" | "fight" | "travel" | "auto", string> = { "": "", fight: t("전투 중"), travel: t("이동 중"), auto: t("자동 사냥 중") };
 /** HUD color per skill (물결 indigo, 화염 vermilion, 대지 ochre, 바람 pale cyan, 먹 violet-black) */
 const SKILL_COLOR = ["#2f4f9e", "#d4462a", "#c08a2a", "#8fc7cf", "#3b2a48"];
 
+/** The death inscription written one letter at a time (a space leaves a gap). */
+function inscription(text: string): string {
+  return [...text].map((c, i) => (c === " " ? `<span class="gap" style="--i:${i}"></span>` : `<span style="--i:${i}">${esc(c)}</span>`)).join("");
+}
+
 const MARKUP = `
-<div class="portrait passive" aria-label="나" data-portrait data-tip-title="나" data-tip="">
+<div class="portrait passive" aria-label="${t("나")}" data-portrait data-tip-title="${t("나")}" data-tip="">
   <i class="face" data-face aria-hidden="true"></i>
   <div class="ring spr-enso"><i class="head"></i><i class="scarf" data-scarf></i></div>
   <div class="vitals">
-    <span class="who"><span data-name>나그네</span><b class="lv-seal" data-lv title="레벨">1</b></span>
-    <div class="hp gauge" title="생명" data-hpbar><i class="track"></i><i class="chip" data-hpchip></i><i class="fill" data-hp></i><span data-hpt></span></div>
-    <div class="exp gauge" title="경험" data-expbar><i class="track"></i><i class="fill" data-exp></i></div>
-    <button type="button" class="zone-mini" data-zone data-tip-title="채널" data-tip="눌러서 채널을 고른다. 서 있던 자리 그대로 옮긴다."></button>
+    <span class="who"><span data-name>${t("나그네")}</span><b class="lv-seal" data-lv title="${t("레벨")}">1</b></span>
+    <div class="hp gauge" title="${t("생명")}" data-hpbar><i class="track"></i><i class="chip" data-hpchip></i><i class="fill" data-hp></i><span data-hpt></span></div>
+    <div class="exp gauge" title="${t("경험")}" data-expbar><i class="track"></i><i class="fill" data-exp></i></div>
+    <button type="button" class="zone-mini" data-zone data-tip-title="${t("채널")}" data-tip="${t("눌러서 채널을 고른다. 서 있던 자리 그대로 옮긴다.")}"></button>
     <span class="brush-name" data-brush></span>
-    <span class="power" data-power><small>전투력</small><b data-powv>0</b><i class="power-up" data-powup aria-hidden="true"></i></span>
+    <span class="power" data-power><small>${t("전투력")}</small><b data-powv>0</b><i class="power-up" data-powup aria-hidden="true"></i></span>
   </div>
 </div>
-<div class="power-pop passive" data-powpop aria-hidden="true"><small>전투력</small><b data-powpopv></b><i data-powpopd></i>
+<div class="power-pop passive" data-powpop aria-hidden="true"><small>${t("전투력")}</small><b data-powpopv></b><i data-powpopd></i>
 </div>
 <div class="purse">
-  <span class="ui-later" data-ui="gear" data-tip-title="안료" data-tip="사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다."><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
-  <span class="ui-later" data-ui="gear" data-tip-title="묵옥" data-tip="뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다."><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
-  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="소리 설정 (${KEYS.mute} 음소거)" data-tip-title="소리" data-tip="음량 조절. ${KEYS.mute} 키로 끄고 켠다."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-  <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="설정 (Esc)" data-tip-title="설정 (Esc)" data-tip="소리, 그래픽, 조작, 게임 설정."><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
+  <span class="ui-later" data-ui="gear" data-tip-title="${t("안료")}" data-tip="${t("사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다.")}"><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
+  <span class="ui-later" data-ui="gear" data-tip-title="${t("묵옥")}" data-tip="${t("뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다.")}"><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="${t("소리 설정 ({key} 음소거)", { key: KEYS.mute })}" data-tip-title="${t("소리")}" data-tip="${t("음량 조절. {key} 키로 끄고 켠다.", { key: KEYS.mute })}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="${t("설정")} (Esc)" data-tip-title="${t("설정")} (Esc)" data-tip="${t("소리, 그래픽, 조작, 게임 설정.")}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <i class="purse-break" aria-hidden="true"></i>
   <div class="menu open" data-menu>
-  <button class="menu-rod-l" type="button" data-menu-close aria-label="메뉴 접기" tabindex="-1"></button>
+  <button class="menu-rod-l" type="button" data-menu-close aria-label="${t("메뉴 접기")}" tabindex="-1"></button>
   <div class="menu-items" data-menu-items>
-  <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="수련 (${KEYS.growth})" data-tip="검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트."><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>수련</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
-  <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="장비 (${KEYS.gear})" data-tip="붓, 머리, 띠를 바꿔 낀다."><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>장비</span><kbd>${KEYS.gear}</kbd></button>
-  <button class="brush-label btn btn-sm" type="button" data-shop data-tip-title="상점 (${KEYS.shop})" data-tip="오방 병기전: 어디서든 뽑기, 확률표, 묵옥 얻기."><i class="hud-ic" style="--c:4" aria-hidden="true"></i><span>상점</span><kbd>${KEYS.shop}</kbd></button>
-  <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="화첩 (${KEYS.album})" data-tip="벤 몬스터와 보스를 벤 순간 돌아온 색을 그림으로 모아 둔다."><i class="hud-ic" style="--c:2" aria-hidden="true"></i><span>화첩</span><kbd>${KEYS.album}</kbd></button>
-  <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="랭킹 (${KEYS.rank})" data-tip="전투력 순위."><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>랭킹</span><kbd>${KEYS.rank}</kbd></button>
+  <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="${t("수련")} (${KEYS.growth})" data-tip="${t("검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트.")}"><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>${t("수련")}</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
+  <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="${t("장비")} (${KEYS.gear})" data-tip="${t("붓, 머리, 띠를 바꿔 낀다.")}"><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>${t("장비")}</span><kbd>${KEYS.gear}</kbd></button>
+  <button class="brush-label btn btn-sm" type="button" data-shop data-tip-title="${t("상점")} (${KEYS.shop})" data-tip="${t("오방 병기전: 어디서든 뽑기, 확률표, 묵옥 얻기.")}"><i class="hud-ic" style="--c:4" aria-hidden="true"></i><span>${t("상점")}</span><kbd>${KEYS.shop}</kbd></button>
+  <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="${t("화첩")} (${KEYS.album})" data-tip="${t("벤 몬스터와 보스를 벤 순간 돌아온 색을 그림으로 모아 둔다.")}"><i class="hud-ic" style="--c:2" aria-hidden="true"></i><span>${t("화첩")}</span><kbd>${KEYS.album}</kbd></button>
+  <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="${t("랭킹")} (${KEYS.rank})" data-tip="${t("전투력 순위.")}"><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>${t("랭킹")}</span><kbd>${KEYS.rank}</kbd></button>
   </div>
-  <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="true" aria-label="메뉴 접기" data-tip-title="메뉴" data-tip="수련·장비·상점·화첩·랭킹을 접고 편다."><i aria-hidden="true"></i><b class="menu-dot" data-menu-dot hidden></b></button>
+  <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="true" aria-label="${t("메뉴 접기")}" data-tip-title="${t("메뉴")}" data-tip="${t("수련·장비·상점·화첩·랭킹을 접고 편다.")}"><i aria-hidden="true"></i><b class="menu-dot" data-menu-dot hidden></b></button>
   </div>
 </div>
 <aside class="jokja" data-quest hidden></aside>
-<div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>돌아가기<kbd>Esc</kbd></button></div>
+<div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>${t("돌아가기")}<kbd>Esc</kbd></button></div>
 <div class="zone-paint passive" data-zonepaint hidden><b data-zpname></b><span class="seal" data-zpch></span></div>
 <div class="bossbar passive" data-boss hidden><span class="tg-pic" data-tgpic aria-hidden="true"></span><b data-bossname></b><div class="hp gauge boss"><i class="track"></i><i class="chip" data-bosschip></i><i class="fill" data-bosshp></i></div></div>
 <div class="tags passive" data-tags></div>
 <div class="tags passive" data-dmg></div>
 <div class="arc" data-arc>
-  <button class="ring-btn atk" type="button" data-act="atk" aria-label="베기 (클릭, J)" data-tip-title="베기 (클릭 · J)" data-tip="누르고 있으면 이어 벤다."><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>베기</b><kbd>${KEYS.attack}</kbd></button>
-  <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="구르기" data-tip-title="구르기 (Space)" data-tip="구르는 동안은 맞지 않는다."><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>구르기</b></button>
-  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="자동 진행 (Z)" aria-pressed="false" data-tip-title="자동 진행 (Z)" data-tip="의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 갈 곳이 없으면 그 자리에서 사냥한다. 검법도 저절로 쓴다."><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>자동</b></button>
-  <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="자동 사냥 설정" data-tip-title="자동 사냥 설정" data-tip="쓸 검법, 물약 기준, 의뢰 대상 먼저.">설정</button>
-  <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="물약 마시기 (${KEYS.potion})" data-tip-title="물약 마시기 (${KEYS.potion})" data-tip="길게 누르거나 우클릭: 자동 사용 켜기/끄기" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
+  <button class="ring-btn atk" type="button" data-act="atk" aria-label="${t("베기 (클릭, J)")}" data-tip-title="${t("베기 (클릭 · J)")}" data-tip="${t("누르고 있으면 이어 벤다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>${t("베기")}</b><kbd>${KEYS.attack}</kbd></button>
+  <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="${t("구르기")}" data-tip-title="${t("구르기")} (Space)" data-tip="${t("구르는 동안은 맞지 않는다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>${t("구르기")}</b></button>
+  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="${t("자동 진행")} (Z)" aria-pressed="false" data-tip-title="${t("자동 진행")} (Z)" data-tip="${t("의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 갈 곳이 없으면 그 자리에서 사냥한다. 검법도 저절로 쓴다.")}"><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>${t("자동")}</b></button>
+  <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="${t("자동 사냥 설정")}" data-tip-title="${t("자동 사냥 설정")}" data-tip="${t("쓸 검법, 물약 기준, 의뢰 대상 먼저.")}">${t("설정")}</button>
+  <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip-title="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip="${t("길게 누르거나 우클릭: 자동 사용 켜기/끄기")}" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
 </div>
 <div class="keyhelp passive" data-help hidden>
-  <p><kbd>WASD</kbd> 걷기 <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>우클릭</kbd> 구르기, 구르는 동안은 맞지 않는다</p>
-  <p><kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기. <kbd>1</kbd>–<kbd>5</kbd> 오방 검법 (가까운 적에게), 자동 사냥 중엔 저절로</p>
-  <p><kbd>Z</kbd> 자동 진행 <kbd>Q</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기</p>
-  <p><kbd>Enter</kbd> 채팅 <kbd>M</kbd> 소리 끄기 <kbd>Esc</kbd> 설정</p>
+  <p>${t("<kbd>WASD</kbd> 걷기 <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>우클릭</kbd> 구르기, 구르는 동안은 맞지 않는다")}</p>
+  <p>${t("<kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기. <kbd>1</kbd>–<kbd>5</kbd> 오방 검법 (가까운 적에게), 자동 사냥 중엔 저절로")}</p>
+  <p>${t("<kbd>Z</kbd> 자동 진행 <kbd>Q</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기")}</p>
+  <p>${t("<kbd>Enter</kbd> 채팅 <kbd>M</kbd> 소리 끄기 <kbd>Esc</kbd> 설정")}</p>
 </div>
 <button class="prompt btn" type="button" data-prompt hidden></button>
-<div class="auto-pop" data-autopop hidden role="dialog" aria-label="자동 사냥 설정"></div>
-<div class="auto-pop channel-pop" data-chpop hidden role="dialog" aria-label="채널"></div>
+<div class="auto-pop" data-autopop hidden role="dialog" aria-label="${t("자동 사냥 설정")}"></div>
+<div class="auto-pop channel-pop" data-chpop hidden role="dialog" aria-label="${t("채널")}"></div>
 <div class="reward-show passive" data-reward hidden aria-live="polite"></div>
-<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="채팅" data-tip-title="채팅 (Enter)" data-tip="같은 채널 사람들과 말한다.">채팅</button>
+<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="${t("채팅")}" data-tip-title="${t("채팅")} (Enter)" data-tip="${t("같은 채널 사람들과 말한다.")}">${t("채팅")}</button>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
-<div class="levelup passive" data-lvup hidden><i class="spr-enso"></i><b>경지 상승</b><small data-lvtext></small></div>
+<div class="levelup passive" data-lvup hidden><i class="spr-enso"></i><b>${t("경지 상승")}</b><small data-lvtext></small></div>
 <div class="ink-death" data-death hidden aria-live="assertive">
   <i class="ink-death-bleed" aria-hidden="true"></i>
   <div class="ink-death-words">
-    <h2 class="ink-death-ins" aria-label="먹에 잠겼다"><span style="--i:0">먹</span><span style="--i:1">에</span><span class="gap" style="--i:2"></span><span style="--i:3">잠</span><span style="--i:4">겼</span><span style="--i:5">다</span></h2>
+    <h2 class="ink-death-ins" aria-label="${t("먹에 잠겼다")}">${inscription(t("먹에 잠겼다"))}</h2>
     <div class="ink-death-side"><p class="ink-death-cause" data-death-cause></p><p class="ink-death-thought" data-death-thought hidden></p></div>
   </div>
-  <div class="ink-death-rise" data-respawn role="button" tabindex="0" aria-label="다시 일어나기: 누르고 있기">
+  <div class="ink-death-rise" data-respawn role="button" tabindex="0" aria-label="${t("다시 일어나기: 누르고 있기")}">
     <div class="enso-load" data-rise-enso><i class="bloom" aria-hidden="true"></i><i class="ring-track" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i><i class="seam" aria-hidden="true"></i><i class="head" aria-hidden="true"></i></div>
-    <small>누르고 있으면 다시 일어난다</small>
+    <small>${t("누르고 있으면 다시 일어난다")}</small>
   </div>
 </div>
 <div class="fade" data-fade><span data-fadetext></span></div>
@@ -212,9 +218,9 @@ export class Hud {
       b.dataset.i = String(i);
       b.style.setProperty("--a", `${SKILL_ANGLE[i]}deg`);
       b.style.setProperty("--skc", SKILL_COLOR[i]);
-      b.setAttribute("aria-label", `${s.name} (${i + 1})`);
-      b.dataset.tipTitle = `${s.name} (${i + 1})`;
-      b.innerHTML = `<i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(i)}"></i><i class="cd"></i><span class="cds" aria-hidden="true"></span><b>${s.label}</b><kbd>${i + 1}</kbd><span class="sklv" data-sklv>1</span><span class="lock" hidden>Lv ${s.unlock}</span>`;
+      b.setAttribute("aria-label", `${t(s.name)} (${i + 1})`);
+      b.dataset.tipTitle = `${t(s.name)} (${i + 1})`;
+      b.innerHTML = `<i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(i)}"></i><i class="cd"></i><span class="cds" aria-hidden="true"></span><b>${t(s.label)}</b><kbd>${i + 1}</kbd><span class="sklv" data-sklv>1</span><span class="lock" hidden>Lv ${s.unlock}</span>`;
       b.addEventListener("pointerdown", (e) => { e.preventDefault(); this.h.skill(i); });
       arc.appendChild(b);
       this.skillBtns.push(b);
@@ -314,7 +320,7 @@ export class Hud {
     this.root.classList.toggle("in-memory", title !== null);
     if (title === null) return;
     el("[data-memory-t]", bar).textContent = title;
-    el("[data-memory-p]", bar).textContent = `${place} · 기억 속 풍경`;
+    el("[data-memory-p]", bar).textContent = t("{place} · 기억 속 풍경", { place });
   }
 
   /** Your own figure in the ensō (replaces the drawn head once the in-engine cutout exists). */
@@ -339,7 +345,7 @@ export class Hud {
       open = v;
       menu.classList.toggle("open", v);
       toggle.setAttribute("aria-expanded", String(v));
-      toggle.setAttribute("aria-label", v ? "메뉴 접기" : "메뉴 펼치기");
+      toggle.setAttribute("aria-label", v ? t("메뉴 접기") : t("메뉴 펼치기"));
       this.syncMenuDot();
       if (save) { try { window.localStorage.setItem("ink.menu", v ? "1" : "0"); } catch { /* not kept */ } }
     };
@@ -391,7 +397,7 @@ export class Hud {
   }
 
   setProfile(p: ProfileView): void {
-    el("[data-name]", this.root).textContent = p.name || "나그네";
+    el("[data-name]", this.root).textContent = p.name || t("나그네");
     if (typeof p.power === "number" && p.power !== this.powerShown) this.setPower(p.power);
     el("[data-lv]", this.root).textContent = String(p.level);
     el("[data-scarf]", this.root).style.background = p.dye.scarf != null ? hexCss(p.dye.scarf) : "";
@@ -423,16 +429,16 @@ export class Hud {
       lvEl.toggleAttribute("data-lv1", lv <= 1); // a level-1 badge says nothing; show it once trained
       const sk = SKILLS[i];
       const aw = lv >= 10 ? AWAKENINGS[i][10] : lv >= 5 ? AWAKENINGS[i][5] : null;
-      b.dataset.tip = locked ? `Lv ${sk.unlock}에 열림 · 재사용 ${sk.cd}초`
-        : `Lv ${lv} · 재사용 ${+(sk.cd * skillCdMul(lv) * cdMulOf(p)).toFixed(1)}초 · 자동 사냥 중엔 저절로 쓴다${aw ? `
-각성: ${aw.text}` : ""}`;
+      b.dataset.tip = locked ? t("Lv {lv}에 열림 · 재사용 {cd}초", { lv: sk.unlock, cd: sk.cd })
+        : t("Lv {lv} · 재사용 {cd}초 · 자동 사냥 중엔 저절로 쓴다", { lv, cd: +(sk.cd * skillCdMul(lv) * cdMulOf(p)).toFixed(1) }) + (aw ? `
+${t("각성: {text}", { text: t(aw.text) })}` : "");
     }
     this.last = p;
     this.gourdTip();
     this.portraitTip();
     const w = ITEM[p.equip.weapon];
     const plus = p.enh?.[p.equip.weapon] ?? 0;
-    el("[data-brush]", this.root).textContent = w ? `${w.name}${plus > 0 ? ` +${plus}` : ""}` : "";
+    el("[data-brush]", this.root).textContent = w ? `${t(w.name)}${plus > 0 ? ` +${plus}` : ""}` : "";
     const pts = p.points ?? pointsEarned(p.level, p.bonusPoints ?? 0) - pointsSpent(p.skills ?? []);
     const ptsEl = el("[data-pts]", this.root);
     ptsEl.hidden = pts <= 0;
@@ -468,16 +474,16 @@ export class Hud {
     const p = this.last;
     const box = this.root.querySelector<HTMLElement>("[data-portrait]");
     if (!box || !p) return;
-    box.dataset.tipTitle = `${p.name || "나그네"} · Lv ${p.level}`;
-    box.dataset.tip = `생명 ${this.tipHp} / ${this.tipMax || p.maxHp}
-경험 ${p.exp.toLocaleString("ko-KR")} / ${p.expToNext.toLocaleString("ko-KR")}`;
+    box.dataset.tipTitle = `${p.name || t("나그네")} · Lv ${p.level}`;
+    box.dataset.tip = `${t("생명 {hp} / {max}", { hp: this.tipHp, max: this.tipMax || p.maxHp })}
+${t("경험 {exp} / {next}", { exp: p.exp.toLocaleString("ko-KR"), next: p.expToNext.toLocaleString("ko-KR") })}`;
   }
   private gourdTip(): void {
     const g = this.root.querySelector<HTMLElement>("[data-potion]");
     if (!g || !this.last) return;
     const s = gameSettings.v;
-    g.dataset.tip = `길게 누르거나 우클릭: 자동 사용 켜기/끄기
-남은 물약 ${this.last.potions}개 · 자동 사용 ${s.autoPotion ? `켜짐 (생명 ${Math.round(s.potionAt * 100)}% 아래)` : "꺼짐"}`;
+    g.dataset.tip = `${t("길게 누르거나 우클릭: 자동 사용 켜기/끄기")}
+${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 아래)", { n: this.last.potions, pct: Math.round(s.potionAt * 100) }) : t("남은 물약 {n}개 · 자동 사용 꺼짐", { n: this.last.potions })}`;
   }
 
   /**
@@ -500,22 +506,22 @@ export class Hud {
     const wall = mainWall(p);
     let main: string;
     if (!s) {
-      main = `<div class="qcard qmain"><header><span class="qch">본편</span><h4>이야기를 다 따라왔다</h4><button type="button" class="qfold" data-qfold aria-label="접기/펴기"></button></header><div class="qbody"><p class="qobj"><span>다음 장을 기다리는 동안 오늘의 의뢰를</span></p></div></div>`;
+      main = `<div class="qcard qmain"><header><span class="qch">${t("본편")}</span><h4>${t("이야기를 다 따라왔다")}</h4><button type="button" class="qfold" data-qfold aria-label="${t("접기/펴기")}"></button></header><div class="qbody"><p class="qobj"><span>${t("다음 장을 기다리는 동안 오늘의 의뢰를")}</span></p></div></div>`;
     } else {
       const o = objective(s);
       const ratio = s.target > 0 ? s.prog / s.target : 0;
       const bar = o.count ? `<i class="qbar" aria-hidden="true"><i class="qfill" style="--f:${ratio.toFixed(3)}"></i></i>` : "";
       let tag: string;
-      if (!s.accepted) tag = `<span class="qtag new">새 의뢰</span>`;
+      if (!s.accepted) tag = `<span class="qtag new">${t("새 의뢰")}</span>`;
       else if (s.done || s.q.goal.type === "talk") {
         const z = npcZone(s.q.turnIn);
-        tag = `<span class="qtag done">${s.done ? "완료" : "진행 중"} · ${esc(npcName(s.q.turnIn))}${z && z !== this.zoneId ? ` (${esc(ZONES[z].name)})` : ""}</span>`;
-      } else tag = `<span class="qtag">진행 중</span>`;
+        tag = `<span class="qtag done">${s.done ? t("완료") : t("진행 중")} · ${esc(t(npcName(s.q.turnIn)))}${z && z !== this.zoneId ? ` (${esc(t(ZONES[z].name))})` : ""}</span>`;
+      } else tag = `<span class="qtag">${t("진행 중")}</span>`;
       const state = s.done ? "done" : !s.accepted ? "fresh" : "";
       const going = this.travelling && this.autoFocus === -1;
-      const wallLine = wall ? `<p class="qwall"><b>막힘</b> 경지 ${wall}이 필요하다 · 아래 서브·오늘의 의뢰로 강해지자</p>` : "";
-      main = `<div class="qcard qmain ${state}${going ? " going" : ""}${wall ? " walled" : ""}" data-go role="button" tabindex="0" aria-pressed="${going}" data-tip-title="${going ? "자동 진행 중 · 누르면 멈춘다" : "본편 · 누르면 자동 진행 (Z)"}" data-tip="${esc(s.q.text)}">
-      <header><span class="qch">본편 ${chapterOf(s.q.id)}장</span><h4>${esc(s.q.title)}${s.done ? `<i class="qcheck" aria-label="완료"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small><button type="button" class="qfold" data-qfold aria-label="접기/펴기"></button></header>
+      const wallLine = wall ? `<p class="qwall"><b>${t("막힘")}</b> ${t("경지 {n}이 필요하다 · 아래 서브·오늘의 의뢰로 강해지자", { n: wall })}</p>` : "";
+      main = `<div class="qcard qmain ${state}${going ? " going" : ""}${wall ? " walled" : ""}" data-go role="button" tabindex="0" aria-pressed="${going}" data-tip-title="${going ? t("자동 진행 중 · 누르면 멈춘다") : t("본편 · 누르면 자동 진행 (Z)")}" data-tip="${esc(t(s.q.text))}">
+      <header><span class="qch">${t("본편 {n}장", { n: chapterOf(s.q.id) })}</span><h4>${esc(t(s.q.title))}${s.done ? `<i class="qcheck" aria-label="${t("완료")}"></i>` : ""}</h4>${o.count ? `<small class="qmini">${o.count}</small>` : ""}<small class="qmini qdist-mini" data-qdist>${esc(this.qdist)}</small><button type="button" class="qfold" data-qfold aria-label="${t("접기/펴기")}"></button></header>
       <div class="qbody">
         <p class="qobj" aria-label="${esc(progressText(s))}"><span>${esc(o.text)}</span>${o.count ? `<b>${o.count}</b>` : ""}</p>${bar}
         ${wallLine}<small class="qdist" data-qdist>${esc(this.qdist)}</small>
@@ -559,8 +565,8 @@ export class Hud {
     if (d === this.navD && nav.who === this.navWho && nav.via === this.navVia && nav.zone === this.navZone) return;
     this.navD = d; this.navWho = nav.who; this.navVia = nav.via; this.navZone = nav.zone;
     if (d < 0) this.qdist = "";
-    else if (nav.zone === this.zoneId) this.qdist = `${nav.who} · ${d}m`;
-    else this.qdist = `${nav.via ? `${nav.via} 경유` : ZONES[nav.zone]?.name ?? nav.zone} · 약 ${d}m`;
+    else if (nav.zone === this.zoneId) this.qdist = `${t(nav.who)} · ${d}m`;
+    else this.qdist = t("{where} · 약 {d}m", { where: nav.via ? t("{via} 경유", { via: t(nav.via) }) : t(ZONES[nav.zone]?.name ?? nav.zone), d });
     this.root.querySelectorAll("[data-qdist]").forEach((e) => { e.textContent = this.qdist; });
   }
 
@@ -570,8 +576,8 @@ export class Hud {
     this.qState = s;
     const box = el("[data-quest]", this.root);
     box.dataset.state = s;
-    const t = box.querySelector("[data-qstate]");
-    if (t) t.textContent = QSTATE[s];
+    const st = box.querySelector("[data-qstate]");
+    if (st) st.textContent = QSTATE[s];
   }
 
   /** The day's quests that are still open, under the main card: title + progress, or who to report to. */
@@ -580,8 +586,8 @@ export class Hud {
     const s = subStatus(p);
     if (!s) return "";
     const going = this.travelling && this.autoFocus === -3;
-    const tip = s.done ? `data-tip-title="보상 받기" data-tip="보상 · ${esc(rewardText(s.q))}"` : `data-tip-title="${going ? "자동 진행 중 · 누르면 멈춘다" : "서브 · 누르면 자동 진행"}" data-tip="${esc(s.q.text)}\n${esc(npcName(s.q.giver))}의 의뢰 · 끝내면 다음 의뢰가 이어진다."`;
-    return `<ul class="qcard daily qdaily qsub${walled ? " lit" : ""}"><li class="${s.done ? "done" : ""}${going ? " going" : ""}" data-sub="${s.done ? "done" : "go"}" role="button" tabindex="0" ${tip}><i class="qd-tag sub">서브</i><span>${esc(s.q.title)}</span>${s.done ? `<b class="qd-get">받기</b>` : `<b>${s.prog}/${s.target}</b>`}</li></ul>`;
+    const tip = s.done ? `data-tip-title="${t("보상 받기")}" data-tip="${esc(t("보상 · {reward}", { reward: rewardText(s.q) }))}"` : `data-tip-title="${going ? t("자동 진행 중 · 누르면 멈춘다") : t("서브 · 누르면 자동 진행")}" data-tip="${esc(t(s.q.text))}\n${esc(t("{name}의 의뢰 · 끝내면 다음 의뢰가 이어진다.", { name: t(npcName(s.q.giver)) }))}"`;
+    return `<ul class="qcard daily qdaily qsub${walled ? " lit" : ""}"><li class="${s.done ? "done" : ""}${going ? " going" : ""}" data-sub="${s.done ? "done" : "go"}" role="button" tabindex="0" ${tip}><i class="qd-tag sub">${t("서브")}</i><span>${esc(t(s.q.title))}</span>${s.done ? `<b class="qd-get">${t("받기")}</b>` : `<b>${s.prog}/${s.target}</b>`}</li></ul>`;
   }
 
   /**
@@ -596,7 +602,7 @@ export class Hud {
     const items = map.filter(([k]) => (r[k] ?? 0) > 0).map(([k, kind], i) => `<span class="rw-item" style="--i:${i}">${resIcon(kind, "l")}<b>+${(r[k] ?? 0).toLocaleString("ko-KR")}</b><small>${esc(RES[kind].name)}</small></span>`).join("");
     if (!items) return;
     const box = el("[data-reward]", this.root);
-    box.innerHTML = `<p class="rw-title">${esc(title)}</p><div class="rw-items">${items}</div>${quote ? `<p class="rw-quote"><b>${esc(quote.who)}</b> ${esc(quote.text)}</p>` : ""}`;
+    box.innerHTML = `<p class="rw-title">${esc(title)}</p><div class="rw-items">${items}</div>${quote ? `<p class="rw-quote"><b>${esc(t(quote.who))}</b> ${esc(t(quote.text))}</p>` : ""}`;
     box.hidden = false;
     box.classList.remove("go");
     void box.offsetWidth;
@@ -611,14 +617,14 @@ export class Hud {
    * title, the count. A finished one turns into 받기 and is paid on a tap; an unfinished one starts 자동 진행 on it.
    */
   private dailyCard(p: ProfileView, walled = false): string {
-    const rewardLine = (q: (typeof DAILY_QUESTS)[number]) => `보상 · ${rewardText(q)}`;
+    const rewardLine = (q: (typeof DAILY_QUESTS)[number]) => t("보상 · {reward}", { reward: rewardText(q) });
     let rows = "";
     for (let i = 0; i < DAILY_QUESTS.length; i++) {
       const d = dailyStatus(p, i);
       if (d.claimed) continue;
       const going = this.travelling && this.autoFocus === i;
-      const tip = d.done ? `data-tip-title="보상 받기" data-tip="${esc(rewardLine(d.q))}"` : `data-tip-title="${going ? "자동 진행 중 · 누르면 멈춘다" : "누르면 자동 진행"}" data-tip="${esc(d.q.text)}"`;
-      rows += `<li class="${d.done ? "done" : ""}${going ? " going" : ""}" ${d.done ? "data-claim-daily" : `data-daily="${i}"`} role="button" tabindex="0" ${tip}><i class="qd-tag">일일</i><span>${esc(d.q.title)}</span>${d.done ? `<b class="qd-get">받기</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
+      const tip = d.done ? `data-tip-title="${t("보상 받기")}" data-tip="${esc(rewardLine(d.q))}"` : `data-tip-title="${going ? t("자동 진행 중 · 누르면 멈춘다") : t("누르면 자동 진행")}" data-tip="${esc(t(d.q.text))}"`;
+      rows += `<li class="${d.done ? "done" : ""}${going ? " going" : ""}" ${d.done ? "data-claim-daily" : `data-daily="${i}"`} role="button" tabindex="0" ${tip}><i class="qd-tag">${t("일일")}</i><span>${esc(t(d.q.title))}</span>${d.done ? `<b class="qd-get">${t("받기")}</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
     }
     return rows ? `<ul class="qcard daily qdaily${walled ? " lit" : ""}">${rows}</ul>` : "";
   }
@@ -633,15 +639,15 @@ export class Hud {
   /** Small persistent label; on a new zone the name is painted large down the left side for a moment. */
   setZone(zone: string, channel: number): void {
     const z = ZONES[zone];
-    const name = z?.name ?? zone;
-    el("[data-zone]", this.root).innerHTML = `${esc(name)} <small>${channel}채널</small>`;
+    const name = t(z?.name ?? zone);
+    el("[data-zone]", this.root).innerHTML = `${esc(name)} <small>${t("{n}채널", { n: channel })}</small>`;
     if (zone !== this.zoneId) { this.zoneId = zone; if (this.last) this.setQuest(this.last); }
     const key = `${zone}:${channel}`;
     if (key === this.zoneKey) return;
     this.zoneKey = key;
     const paint = el("[data-zonepaint]", this.root);
     el("[data-zpname]", this.root).textContent = name;
-    el("[data-zpch]", this.root).textContent = `${channel}채널`;
+    el("[data-zpch]", this.root).textContent = t("{n}채널", { n: channel });
     paint.hidden = false;
     paint.classList.remove("go");
     void paint.offsetWidth;
@@ -685,30 +691,30 @@ export class Hud {
    * The frame at the top: the boss nearby, else the monster I last struck. Its life drops at once; a white band
    * keeps the part just cut off, holds 1 s, then runs down to it (each new blow restarts the hold).
    */
-  target(t: TargetInfo | null): void {
+  target(tg: TargetInfo | null): void {
     const b = el("[data-boss]", this.root);
-    if (!t) {
+    if (!tg) {
       if (this.bossShown) { b.hidden = true; this.bossShown = false; this.tgId = ""; }
       return;
     }
     const fill = el("[data-bosshp]", this.root), chip = el("[data-bosschip]", this.root);
-    const f = Math.max(0, Math.min(1, t.frac));
-    if (!this.bossShown || t.id !== this.tgId) {
+    const f = Math.max(0, Math.min(1, tg.frac));
+    if (!this.bossShown || tg.id !== this.tgId) {
       b.hidden = false;
       this.bossShown = true;
-      this.tgId = t.id;
-      el("[data-bossname]", this.root).textContent = t.name;
-      b.dataset.tier = t.tier;
+      this.tgId = tg.id;
+      el("[data-bossname]", this.root).textContent = t(tg.name);
+      b.dataset.tier = tg.tier;
       const pic = el("[data-tgpic]", this.root);
-      pic.hidden = !t.pic;
-      if (t.pic && pic.dataset.src !== t.pic) { pic.dataset.src = t.pic; pic.style.backgroundImage = `url("${t.pic}")`; }
+      pic.hidden = !tg.pic;
+      if (tg.pic && pic.dataset.src !== tg.pic) { pic.dataset.src = tg.pic; pic.style.backgroundImage = `url("${tg.pic}")`; }
       this.bossFrac = -1;
-      this.snapChip(chip, Math.max(f, Math.min(1, t.from ?? f)));
+      this.snapChip(chip, Math.max(f, Math.min(1, tg.from ?? f)));
       fill.style.setProperty("--f", f.toFixed(3));
       chip.style.setProperty("--f", f.toFixed(3));
       this.bossFrac = f;
     }
-    b.classList.toggle("dying", t.dying);
+    b.classList.toggle("dying", tg.dying);
     if (Math.abs(f - this.bossFrac) > 1e-3) {
       if (f > this.bossFrac) this.snapChip(chip, f); // healed or reset: no white band
       else chip.style.setProperty("--f", f.toFixed(3));
@@ -845,7 +851,7 @@ export class Hud {
     this.levelUntil = performance.now() + 2200;
     this.flashClass("[data-expbar]", "burst", 1200);
     const box = el("[data-lvup]", this.root);
-    el("[data-lvtext]", this.root).textContent = unlocked ? `${level}경지, ${unlocked}을 익혔다` : `${level}경지`;
+    el("[data-lvtext]", this.root).textContent = unlocked ? t("{n}경지, {skill}을 익혔다", { n: level, skill: t(unlocked) }) : t("{n}경지", { n: level });
     box.hidden = false;
     box.style.animation = "none";
     void box.offsetWidth;
@@ -892,7 +898,7 @@ export class Hud {
     const flip = () => {
       const on = !gameSettings.v.autoPotion;
       gameSettings.set({ autoPotion: on });
-      toastLine(on ? "물약 자동 사용: 켬" : "물약 자동 사용: 끔");
+      toastLine(on ? t("물약 자동 사용: 켬") : t("물약 자동 사용: 끔"));
       this.gourdTip();
     };
     g.addEventListener("pointerdown", () => {
@@ -940,17 +946,19 @@ export class Hud {
     const pop = el("[data-chpop]", this.root);
     if (!pop.hidden) { this.closeChannels(); return; }
     pop.hidden = false;
-    pop.innerHTML = `<h4>채널</h4><p class="ch-note">불러오는 중…</p>`;
+    pop.innerHTML = `<h4>${t("채널")}</h4><p class="ch-note">${t("불러오는 중…")}</p>`;
     const list = await this.h.channels();
     if (pop.hidden) return;
-    if (!list) { pop.innerHTML = `<h4>채널</h4><p class="ch-note">지금은 채널을 볼 수 없다.</p><button type="button" class="btn btn-sm close" data-chclose>닫기</button>`; return; }
+    if (!list) { pop.innerHTML = `<h4>${t("채널")}</h4><p class="ch-note">${t("지금은 채널을 볼 수 없다.")}</p><button type="button" class="btn btn-sm close" data-chclose>${t("닫기")}</button>`; return; }
     const cap = CHANNEL_CAPACITY;
     const rows = list.players.map((n, i) => {
       const ch = i + 1, mine = ch === list.current, full = n >= cap && !mine;
       const f = n / cap, word = full ? "가득" : f >= 0.75 ? "혼잡" : f >= 0.4 ? "보통" : "여유";
-      return `<button type="button" class="ch-row${mine ? " mine" : ""}" data-ch="${ch}" data-load="${word}" ${mine || full ? "disabled" : ""}><b>${ch}채널</b><i class="ch-bar" style="--f:${Math.min(1, f).toFixed(2)}"></i><span>${mine ? "지금 여기" : word}</span></button>`;
+      // data-load keeps the Korean word (style.css colours by it); the shown word is translated
+      const shown = full ? t("가득") : f >= 0.75 ? t("혼잡") : f >= 0.4 ? t("보통") : t("여유");
+      return `<button type="button" class="ch-row${mine ? " mine" : ""}" data-ch="${ch}" data-load="${word}" ${mine || full ? "disabled" : ""}><b>${t("{n}채널", { n: ch })}</b><i class="ch-bar" style="--f:${Math.min(1, f).toFixed(2)}"></i><span>${mine ? t("지금 여기") : shown}</span></button>`;
     }).join("");
-    pop.innerHTML = `<h4>채널 <small>${esc(ZONES[this.zoneId]?.name ?? "")}</small></h4><div class="ch-list">${rows}</div><small class="ch-note">서 있던 자리 그대로 옮긴다 · 10초에 한 번</small><button type="button" class="btn btn-sm close" data-chclose>닫기</button>`;
+    pop.innerHTML = `<h4>${t("채널")} <small>${esc(t(ZONES[this.zoneId]?.name ?? ""))}</small></h4><div class="ch-list">${rows}</div><small class="ch-note">${t("서 있던 자리 그대로 옮긴다 · 10초에 한 번")}</small><button type="button" class="btn btn-sm close" data-chclose>${t("닫기")}</button>`;
   }
   private closeChannels(): void {
     el("[data-chpop]", this.root).hidden = true;
@@ -960,13 +968,13 @@ export class Hud {
     const pop = el("[data-autopop]", this.root);
     if (!pop.hidden) { pop.hidden = true; return; }
     const st = this.h.autoSettings();
-    pop.innerHTML = `<h4>자동 사냥</h4>
-      <small class="auto-note">자동 사냥에서 쓸 검법</small>
-      <div class="auto-skills">${SKILLS.map((sk, i) => `<label><input type="checkbox" data-sk="${i}" ${st.skills[i] ? "checked" : ""}> ${esc(sk.name)}</label>`).join("")}</div>
-      <label><input type="checkbox" data-potion-auto ${gameSettings.v.autoPotion ? "checked" : ""}> 생명이 낮으면 물약 (어디서나)</label>
+    pop.innerHTML = `<h4>${t("자동 사냥")}</h4>
+      <small class="auto-note">${t("자동 사냥에서 쓸 검법")}</small>
+      <div class="auto-skills">${SKILLS.map((sk, i) => `<label><input type="checkbox" data-sk="${i}" ${st.skills[i] ? "checked" : ""}> ${esc(t(sk.name))}</label>`).join("")}</div>
+      <label><input type="checkbox" data-potion-auto ${gameSettings.v.autoPotion ? "checked" : ""}> ${t("생명이 낮으면 물약 (어디서나)")}</label>
       ${potionSlider()}
-      <label><input type="checkbox" data-quest-first ${st.questFirst ? "checked" : ""}> 의뢰 대상 먼저</label>
-      <button type="button" class="close btn btn-secondary btn-sm" data-popclose>닫기</button>`;
+      <label><input type="checkbox" data-quest-first ${st.questFirst ? "checked" : ""}> ${t("의뢰 대상 먼저")}</label>
+      <button type="button" class="close btn btn-secondary btn-sm" data-popclose>${t("닫기")}</button>`;
     pop.hidden = false;
     pop.querySelectorAll<HTMLInputElement>("[data-sk]").forEach((c) => c.addEventListener("change", () => { st.skills[Number(c.dataset.sk)] = c.checked; this.h.saveAutoSettings(); }));
     el<HTMLInputElement>("[data-potion-auto]", pop).addEventListener("change", (e) => gameSettings.set({ autoPotion: (e.target as HTMLInputElement).checked }));
@@ -987,9 +995,9 @@ export class Hud {
 
   /** One thought beside the inscription (first death only). */
   deathThought(text: string | null): void {
-    const t = el("[data-death-thought]", this.root);
-    t.hidden = !text;
-    t.textContent = text ?? "";
+    const th = el("[data-death-thought]", this.root);
+    th.hidden = !text;
+    th.textContent = text ?? "";
   }
 
   /** What took you, in 먹동이's own words. */
