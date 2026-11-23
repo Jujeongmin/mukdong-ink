@@ -170,6 +170,7 @@ kbd { font-family: var(--f-brush); font-weight: 700; }
 .zone-paint { position: fixed; left: calc(34px + var(--safe-l)); top: 28%; writing-mode: vertical-rl; display: flex; align-items: center; gap: 10px; }
 .zone-paint b { font-family: var(--f-brush); font-weight: 700; font-size: clamp(46px, 9vh, 76px); letter-spacing: 0.16em; line-height: 1; text-shadow: var(--halo); }
 .zone-paint .seal { background: var(--cinnabar); color: var(--paper); font-family: var(--f-brush); font-weight: 700; font-size: 13px; padding: 7px 3px; border-radius: 2px 3px 2px 4px; }
+.zone-paint .tcy { text-combine-upright: all; }
 .zone-paint.go b { animation: paint-in 0.9s cubic-bezier(0.4, 0, 0.2, 1) both; }
 .zone-paint.go .seal { animation: stamp-v 0.3s 0.85s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
 .zone-paint.go { animation: fade-out 0.6s 2.05s both; }

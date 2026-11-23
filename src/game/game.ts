@@ -297,6 +297,7 @@ export class Game {
       setShake(s.shake);
       actorFx.remoteLow = s.lowRemote;
       actorFx.onCast = (i) => this.hud.skillWash(i);
+      growthFx.holdPower = (on) => this.hud.holdPower(on);
       growthFx.onAwaken = (i) => {
         const pl = this.player;
         if (!pl) return;

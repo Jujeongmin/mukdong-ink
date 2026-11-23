@@ -188,7 +188,11 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
 }
 
 /** The game's hook for an awakening reached here (a surge of the skill's color round the player). */
-export const growthFx: { onAwaken: ((skill: number) => void) | null } = { onAwaken: null };
+/**
+ * Hooks into the game. `holdPower(true)` keeps the HUD's 전투력 where it is while an enhancement is still
+ * charging (the server answer, and the profile push, arrive before the result is shown); false lets it rise.
+ */
+export const growthFx: { onAwaken: ((skill: number) => void) | null; holdPower: ((on: boolean) => void) | null } = { onAwaken: null, holdPower: null };
 
 /* ---------- actions ---------- */
 export async function growthAction(
@@ -219,7 +223,13 @@ export async function growthAction(
     st.stage = "trying";
     redraw();
     audio.play("enhance-charge");
-    const [r] = await Promise.all([attempt(api.enhance(id, st.protect)), new Promise((res) => window.setTimeout(res, 950))]);
+    growthFx.holdPower?.(true);
+    let r: Awaited<ReturnType<typeof api.enhance>> | null;
+    try {
+      [r] = await Promise.all([attempt(api.enhance(id, st.protect)), new Promise((res) => window.setTimeout(res, 950))]);
+    } finally {
+      growthFx.holdPower?.(false);
+    }
     if (!r) { st.stage = ""; return true; }
     // the starter brush can't break: the server keeps it and only resets it to +0
     const kept = r.profile.owned.includes(id);

@@ -419,9 +419,23 @@ export class Hud {
     this.powerRoll = requestAnimationFrame(step);
   }
 
+  /** While held (an enhancement charging), a new 전투력 waits; releasing shows the last one that came. */
+  private powerHeld = false;
+  private powerWaiting = -1;
+  holdPower(on: boolean): void {
+    this.powerHeld = on;
+    if (on) return;
+    const v = this.powerWaiting;
+    this.powerWaiting = -1;
+    if (v >= 0 && v !== this.powerShown) this.setPower(v);
+  }
+
   setProfile(p: ProfileView): void {
     el("[data-name]", this.root).textContent = p.name || t("나그네");
-    if (typeof p.power === "number" && p.power !== this.powerShown) this.setPower(p.power);
+    if (typeof p.power === "number" && p.power !== this.powerShown) {
+      if (this.powerHeld) this.powerWaiting = p.power;
+      else this.setPower(p.power);
+    }
     el("[data-lv]", this.root).textContent = String(p.level);
     el("[data-scarf]", this.root).style.background = p.dye.scarf != null ? hexCss(p.dye.scarf) : "";
     this.setHp(p.hp, p.maxHp);
@@ -670,7 +684,8 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     this.zoneKey = key;
     const paint = el("[data-zonepaint]", this.root);
     el("[data-zpname]", this.root).textContent = name;
-    el("[data-zpch]", this.root).textContent = t("{n}채널", { n: channel });
+    // the seal is written top to bottom: the number stands upright in one cell (text-combine), not on its side
+    el("[data-zpch]", this.root).innerHTML = esc(t("{n}채널", { n: "\u0001" })).replace("\u0001", `<span class="tcy">${channel}</span>`);
     paint.hidden = false;
     paint.classList.remove("go");
     void paint.offsetWidth;
