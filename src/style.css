@@ -2149,12 +2149,23 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(300px, 36vw); height: 20px; }
 #ui .bossbar[data-tier="named"] > b { color: #f3d9a8; }
 #ui .bossbar.dying { opacity: 0; }
-/* phone held sideways: a thin strip at the very top, clear of my life bar (left) and the menu scroll (right) */
+/* the target's life is a solid, framed bar (the brush-stroke mask made it read faint and blurry): a dark well,
+   the red life, the white band of what was just cut off, a thin paper rim and a dark edge */
+#ui .bossbar .gauge { filter: none; border-radius: 3px; background: rgba(18, 14, 12, 0.82);
+  box-shadow: 0 0 0 1.5px rgba(244, 238, 224, 0.85), 0 0 0 3px rgba(18, 14, 12, 0.7), 0 2px 6px rgba(0, 0, 0, 0.45); }
+#ui .bossbar .gauge .track, #ui .bossbar .gauge .fill, #ui .bossbar .gauge .chip { -webkit-mask: none; mask: none; border-radius: 2px; inset: 2px; }
+#ui .bossbar .gauge .track { background: rgba(60, 52, 46, 0.9); opacity: 1; }
+#ui .bossbar .gauge.boss .fill { background: linear-gradient(180deg, #ec5a4c 0%, #c8281f 55%, #8e1712 100%); }
+#ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { height: 16px; }
+#ui .bossbar > b { color: #f6f0e2; text-shadow: 0 0 3px #120e0c, 0 0 2px #120e0c, 0 1px 2px #120e0c; }
+#ui .bossbar[data-tier="named"] > b { color: #f3d9a8; }
+/* phone held sideways: under the menu row, in the middle (clear of my life bar on the left and the quest card on
+   the right; the very top ran into both) */
 @media (max-height: 480px) {
-  #ui .bossbar { top: calc(3px + var(--safe-t)); column-gap: 5px; }
-  #ui .bossbar .tg-pic { width: 28px; height: 28px; }
-  #ui .bossbar > b, #ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 12px; line-height: 1.1; }
-  #ui .bossbar .gauge.boss, #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(230px, 31vw); height: 14px; }
+  #ui .bossbar { top: calc(var(--purse-b, 120px) + 6px); column-gap: 6px; }
+  #ui .bossbar .tg-pic { width: 30px; height: 30px; }
+  #ui .bossbar > b, #ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 12.5px; line-height: 1.15; }
+  #ui .bossbar .gauge.boss, #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(220px, 30vw); height: 13px; }
 }
 /* at 100% the enso stays open like the painted one (its gap is part of the art); the straight closing flick sat
    off the ring's line beside the gap and read as a stray mark, so it's gone */
