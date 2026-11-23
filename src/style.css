@@ -2131,3 +2131,5 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
   font-family: var(--f-brush); font-weight: 700; font-size: 12px; line-height: 1.35; white-space: nowrap; pointer-events: none;
   color: #efe5d1; background: rgba(43, 38, 34, 0.62); box-shadow: inset 0 0 0 0.5px rgba(239, 229, 209, 0.45); }
 #ui .gourd.auto-on::after { content: "자동"; background: #4b6b26; box-shadow: inset 0 0 0 0.5px rgba(222, 240, 190, 0.7), 0 0 6px rgba(111, 154, 58, 0.55); }
+/* the panel's bottom line sat right under the big button's own brush line (two lines under 단련 / +N 강화): one is enough */
+#ui .sheet .gr2-detail::after, #ui .sheet .enh2-main::after { content: none; }
