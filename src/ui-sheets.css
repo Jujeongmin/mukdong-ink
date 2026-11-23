@@ -638,3 +638,58 @@
 /* the hero banner and the podium clip their washes (overflow hidden), which lets a fixed-height grid squeeze their
  rows; keep every row at its content height and let the card scroll instead */
 #ui .sheet:is([data-kind="altar"], [data-kind="rank"]) .sheet-card { grid-auto-rows: max-content; }
+
+/* =========================== 장비: rarity in ink ===========================
+   Every piece sits on an ink dab tinted by its rarity (gray, blue, purple, gold); the chosen one gets an enso in that
+   color, the worn ones a ring of it. A faint splash sits behind the worn column so the left side isn't bare paper. */
+#ui .sheet .tiles .tile::before { background: color-mix(in srgb, var(--rc) 20%, transparent); }
+#ui .sheet .tiles .tile:hover::before { background: color-mix(in srgb, var(--rc) 32%, transparent); }
+#ui .sheet .tiles .tile[data-r="일반"]::before { background: rgba(43, 38, 34, 0.08); }
+#ui .sheet .tiles .tile[data-r="일반"]:hover::before { background: rgba(43, 38, 34, 0.15); }
+#ui .sheet .tiles .tile.on::before { background: var(--rc); opacity: 0.8; }
+#ui .sheet .tiles .tile[data-r="일반"].on::before { background: var(--ink); opacity: 0.55; }
+#ui .sheet .tiles .tile[data-r="전설"] .ic-item { filter: drop-shadow(0 0 6px rgba(217, 164, 58, 0.55)); }
+#ui .sheet .eqslot .pic::before { inset: -10%; background: var(--rc); opacity: 0.55; -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }
+#ui .sheet .eqslot[data-r="일반"] .pic::before { background: var(--ink); opacity: 0.28; }
+#ui .sheet .eqslot:hover .pic::before { background: var(--rc); opacity: 0.8; }
+#ui .sheet .eqslot .pic::after { content: ""; position: absolute; inset: 6%; z-index: -2; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--rc) 22%, transparent), transparent 70%); }
+#ui .sheet .eqslot.empty { opacity: 0.6; }
+#ui .sheet .eqslots { isolation: isolate; }
+#ui .sheet .eqslots::before { content: ""; position: absolute; left: -12%; top: -6%; width: 260px; height: 250px; z-index: -1; pointer-events: none; background: var(--ink); opacity: 0.05; transform: rotate(18deg);
+  -webkit-mask: var(--m-splash) center / contain no-repeat; mask: var(--m-splash) center / contain no-repeat; }
+#ui .sheet .gear-detail { background: radial-gradient(ellipse 120px 60px at 40px 55%, color-mix(in srgb, var(--rc) 20%, transparent), transparent 75%); }
+#ui .sheet .gear-detail[data-r="일반"] { background: radial-gradient(ellipse 120px 60px at 40px 55%, rgba(43, 38, 34, 0.08), transparent 75%); }
+
+/* =========================== 수련: each 검법 in its own color ===========================
+   Icons sit on a dab of the skill's color; the chosen row gets a stroke of it, the big picture a splash and an enso,
+   and the filled pips take the color too. Locked skills stay gray. */
+#ui .sheet .gr2-row { isolation: isolate; }
+#ui .sheet .gr2-row .gr2-ico { position: relative; }
+#ui .sheet .gr2-row:not(.locked) .gr2-ico::before { content: ""; position: absolute; inset: -12%; z-index: -1; background: var(--skc); opacity: 0.22;
+  -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .sheet .gr2-row.on:not(.locked) .gr2-ico::before { opacity: 0.4; }
+#ui .sheet .gr2-row.on { background: radial-gradient(ellipse at 22% 50%, color-mix(in srgb, var(--skc) 14%, transparent), transparent 72%); }
+#ui .sheet .gr2-row.on::before { content: ""; position: absolute; left: 0; top: 12%; bottom: 12%; width: 5px; background: var(--skc); opacity: 0.85;
+  -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .gr2-row.on.locked::before { background: var(--ink-soft); }
+#ui .sheet .gr2-row .pip.on:not(.ms) { background: var(--skc); }
+#ui .sheet .gr2-row[style*="#8fc7cf"] .pip.on:not(.ms) { background: #5f9fab; }
+#ui .sheet .gr2-detail { isolation: isolate; }
+#ui .sheet .gr2-art { position: relative; display: grid; place-items: center; width: 84px; height: 84px; }
+#ui .sheet .gr2-art::before { content: ""; position: absolute; left: 50%; top: 50%; width: 190%; height: 190%; transform: translate(-50%, -50%) rotate(-12deg); z-index: -1;
+  background: var(--skc); opacity: 0.16; -webkit-mask: var(--m-splash) center / contain no-repeat; mask: var(--m-splash) center / contain no-repeat; }
+#ui .sheet .gr2-art::after { content: ""; position: absolute; inset: -12%; background: var(--skc); opacity: 0.75; pointer-events: none;
+  -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }
+#ui .sheet .gr2-detail.locked .gr2-art::before { background: var(--ink); opacity: 0.06; }
+#ui .sheet .gr2-detail.locked .gr2-art::after { background: var(--ink); opacity: 0.25; }
+#ui .sheet .gr2-art .gr2-big { box-shadow: none; }
+#ui .sheet .gr2-detail .gr2-lv b { color: var(--skc); }
+#ui .sheet .gr2-detail[style*="#8fc7cf"] .gr2-lv b { color: #4f8f9b; }
+#ui .sheet .gr2-detail.locked .gr2-lv b { color: var(--ink-soft); }
+@media (max-width: 760px), (max-height: 480px) {
+  #ui .sheet .gr2-art { width: 64px; height: 64px; }
+}
+@media (max-height: 480px) {
+  #ui .sheet[data-kind="growth"] .gr2-art { width: 40px; height: 40px; }
+  #ui .sheet[data-kind="growth"] .gr2-art::before { opacity: 0.12; }
+}

@@ -14,7 +14,7 @@ import {
   atkText, enhancedAtk, pointsEarned, pointsSpent, skillCdMul, skillDmgMul, trainCost, type EnhanceOutcome,
 } from "../../shared/growth";
 import type { GameApi, ProfileView } from "../../net/api";
-import { attempt, esc, itemIcon, resBar, resChip, skillIconPos, tipAttr, toast } from "./dom";
+import { SKILL_COLOR, attempt, esc, itemIcon, resBar, resChip, skillIconPos, tipAttr, toast } from "./dom";
 import { audio } from "../audio";
 import { t } from "../i18n";
 
@@ -72,7 +72,7 @@ export function skillsHtml(p: ProfileView, busy: boolean, st: GrowthState): stri
     const c = trainCost(lv);
     const ready = !locked && lv < SKILL_MAX && pts >= c.points && p.pigment >= c.pigment && (p.shards ?? 0) >= c.shards;
     const badge = locked ? `<span class="lvb lock">${t("Lv {lv}에 열림", { lv: s.unlock })}</span>` : `<span class="lvb">Lv ${lv}</span>`;
-    return `<li><button type="button" class="gr2-row${i === sel ? " on" : ""}${locked ? " locked" : ""}${focus && i === 1 ? " focus" : ""}" data-do="pickSkill" data-i="${i}" aria-pressed="${i === sel}">
+    return `<li><button type="button" class="gr2-row${i === sel ? " on" : ""}${locked ? " locked" : ""}${focus && i === 1 ? " focus" : ""}" data-do="pickSkill" data-i="${i}" aria-pressed="${i === sel}" style="--skc:${SKILL_COLOR[i]}">
       <i class="spr ic-sk gr2-ico" style="background-position:${skillIconPos(i)}" aria-hidden="true"></i>
       <span class="gr2-name">${esc(t(s.name))}${ready ? `<i class="ready"${tipAttr(t("단련할 수 있다"))}></i>` : ""}</span>${badge}
       ${pips(locked ? 0 : lv, focus && i === 1 ? AWAKEN_AT[0] : 0)}
@@ -114,10 +114,10 @@ function skillDetail(p: ProfileView, i: number, pts: number, busy: boolean, st: 
     const isNext = !locked && !reached && (at === AWAKEN_AT[0] || lv >= AWAKEN_AT[0]);
     return `<li class="${reached ? "reached" : ""}${isNext ? " next" : ""}${focus && at === AWAKEN_AT[0] ? " focus" : ""}"><i class="node" aria-hidden="true"></i><b>${t("{n}단계 각성", { n: at })}</b><span>${esc(t(AWAKENINGS[i][at].text))}</span></li>`;
   }).join("");
-  return `<section class="gr2-detail${locked ? " locked" : ""}${st.slide ? " slide" : ""}" aria-label="${esc(t(s.name))}">
+  return `<section class="gr2-detail${locked ? " locked" : ""}${st.slide ? " slide" : ""}" aria-label="${esc(t(s.name))}" style="--skc:${SKILL_COLOR[i]}">
     <button type="button" class="gr2-x btn btn-secondary btn-sm" data-do="closeDetail">${t("닫기")}</button>
     <div class="gr2-hero">
-      <i class="spr ic-sk gr2-big" style="background-position:${skillIconPos(i)}" aria-hidden="true"></i>
+      <span class="gr2-art" aria-hidden="true"><i class="spr ic-sk gr2-big" style="background-position:${skillIconPos(i)}" aria-hidden="true"></i></span>
       <div><h3 class="ttl">${esc(t(s.name))}</h3><p class="gr2-lv">${locked ? `<b>${t("잠김")}</b>` : `<b>Lv ${lv}</b><small> / ${SKILL_MAX}</small>`}</p><p class="cap">${locked ? t("재사용 {cd}", { cd: sec(s.cd) }) : now}</p></div>
     </div>
     ${next}

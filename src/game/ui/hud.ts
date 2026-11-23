@@ -13,7 +13,7 @@ import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
 import { fmt, hexCss } from "../util";
 import { chapterOf, dailyStatus, mainStatus, mainWall, npcName, npcZone, objective, progressText, rewardText, subStatus } from "../quests";
-import { RES, bindSliders, el, esc, resIcon, skillIconPos, type ResKind } from "./dom";
+import { RES, SKILL_COLOR, bindSliders, el, esc, resIcon, skillIconPos, type ResKind } from "./dom";
 import { KEYS } from "./input";
 import { audio } from "../audio";
 import { roundDist, type QuestNav } from "../questnav";
@@ -60,7 +60,6 @@ export interface HudHandlers {
 const SKILL_ANGLE = [180, 157.5, 135, 112.5, 90];
 const QSTATE: Record<"" | "fight" | "travel" | "auto", string> = { "": "", fight: t("전투 중"), travel: t("이동 중"), auto: t("자동 사냥 중") };
 /** HUD color per skill (물결 indigo, 화염 vermilion, 대지 ochre, 바람 pale cyan, 먹 violet-black) */
-const SKILL_COLOR = ["#2f4f9e", "#d4462a", "#c08a2a", "#8fc7cf", "#3b2a48"];
 
 /** The death inscription written one letter at a time (a space leaves a gap). */
 function inscription(text: string): string {

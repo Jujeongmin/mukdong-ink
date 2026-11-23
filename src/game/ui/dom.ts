@@ -11,6 +11,9 @@ export function el<T extends HTMLElement = HTMLElement>(sel: string, root: Paren
   return e;
 }
 
+/** Each 검법's own color in the UI (cooldown rings, the 수련 sheet), by skill index. */
+export const SKILL_COLOR = ["#2f4f9e", "#d4462a", "#c08a2a", "#8fc7cf", "#3b2a48"];
+
 export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 }
