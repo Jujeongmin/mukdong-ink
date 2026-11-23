@@ -437,7 +437,7 @@ export class Sheets {
     }
     if (this.tab === "jade") {
       const shop = JADE_PRODUCTS.map((j, k) => `<button type="button" class="shop-tile" data-do="buy" data-id="${esc(j.productId)}" ${this.busy ? "disabled" : ""}>
-        <span class="pic jade-pile n${k + 1}">${resIcon("jade", "xl")}</span><b class="sec">${esc(j.label)}</b><small class="cap price">${local ? "모의 결제" : this.prices[j.productId] != null ? `${fmt(this.prices[j.productId])} VX` : "결제 창"}</small></button>`).join("");
+        <span class="pic jade-pile n${k + 1}">${resIcon("jade", "xl")}</span><b class="sec">${esc(j.label)}</b><small class="cap price">${fmt(this.prices[j.productId] ?? j.vx)}VX${local ? " · 모의" : ""}</small></button>`).join("");
       return `${head}${bar}
         <div class="ad-row"><button class="btn btn-secondary" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>광고 보고 ${resIcon("jade")} ${AD_REWARD_JADE}</button><span class="cap">오늘 ${Math.max(0, p.adsLeft)} / ${AD_DAILY}</span></div>
         <div class="shop-tiles">${shop}</div>

@@ -2108,3 +2108,5 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .sheet .tabs button { color: rgba(43, 38, 34, 0.42); }
 #ui .sheet .tabs button[aria-selected="true"] { color: var(--ink); }
 #ui .sheet .tabs button { padding-bottom: 8px; }
+/* the price under each jade product, readable */
+#ui .sheet .shop-tile small.price { font-family: var(--f-brush); font-weight: 700; font-size: 14px; color: #8a6418; }

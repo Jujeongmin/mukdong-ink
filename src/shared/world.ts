@@ -256,11 +256,13 @@ export interface JadeProduct {
   productId: string; // must match the VXShop product id exactly
   jade: number;
   label: string;
+  /** the VX price set on the Verse8 dashboard (shown until VXShop's own list arrives; VXShop's wins) */
+  vx: number;
 }
 export const JADE_PRODUCTS: JadeProduct[] = [
-  { productId: "jade-300", jade: 300, label: "묵옥 300" },
-  { productId: "jade-1100", jade: 1100, label: "묵옥 1,000 + 100" },
-  { productId: "jade-3600", jade: 3600, label: "묵옥 3,200 + 400" },
+  { productId: "jade-300", jade: 300, label: "묵옥 300", vx: 300 },
+  { productId: "jade-1100", jade: 1100, label: "묵옥 1,000 + 100", vx: 1000 },
+  { productId: "jade-3600", jade: 3600, label: "묵옥 3,200 + 400", vx: 3000 },
 ];
 export const AD_PLACEMENT = "jade_reward";
 export const AD_REWARD_JADE = 40;
