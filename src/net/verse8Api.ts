@@ -155,6 +155,21 @@ export class Verse8GameApi extends BaseGameApi {
     });
   }
 
+  /** VX prices as VXShop lists them, now and on every change (the list loads after init). */
+  onPrices(cb: (prices: Record<string, number>) => void): () => void {
+    let off = () => {};
+    let logged = false;
+    void import("@verse8/platform/vanilla").then(({ VXShop }) => {
+      const push = (items: { productId: string; price: number }[], error: string | null) => {
+        if (!logged && (items.length || error)) { logged = true; console.info("[shop]", items.length, "items", error ?? ""); }
+        cb(Object.fromEntries(items.map((i) => [i.productId, i.price])));
+      };
+      push(VXShop.getItems(), null);
+      off = VXShop.subscribe((s) => push(s.items, s.error));
+    }).catch(() => undefined);
+    return () => off();
+  }
+
   /** The VX price VXShop lists for a product (null when it does not know it). */
   async priceOf(productId: string): Promise<number | null> {
     try {

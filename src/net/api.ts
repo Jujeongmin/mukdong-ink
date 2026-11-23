@@ -140,6 +140,8 @@ export interface GameApi {
   watchAdForJade(): Promise<ProfileView | null>;
   /** Opens the VXShop purchase (local: grants immediately, marked as a mock). */
   buyJade(productId: string): Promise<void>;
+  /** VX prices of the shop's products as VXShop lists them (only on Verse8); called again whenever they change */
+  onPrices?(cb: (prices: Record<string, number>) => void): () => void;
   talk(npcId: string): Promise<ProfileView>;
   /** Accept the current main quest from its giver NPC (stand within NPC_REACH). */
   acceptMain(npcId: string): Promise<ProfileView>;
