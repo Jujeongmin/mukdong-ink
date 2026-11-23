@@ -187,6 +187,9 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
     </div>`;
 }
 
+/** The game's hook for an awakening reached here (a surge of the skill's color round the player). */
+export const growthFx: { onAwaken: ((skill: number) => void) | null } = { onAwaken: null };
+
 /* ---------- actions ---------- */
 export async function growthAction(
   what: string, b: HTMLElement, api: GameApi, p: ProfileView, st: GrowthState, apply: (p: ProfileView) => void, redraw: () => void,
@@ -201,6 +204,7 @@ export async function growthAction(
       const lv = r.skills?.[i] ?? before + 1;
       const aw = (AWAKEN_AT as readonly number[]).includes(lv) ? AWAKENINGS[i][lv as 5 | 10].text : "";
       toast(`${t(SKILLS[i].name)} Lv ${lv}${aw ? ` · ${t(aw)}` : ""}`);
+      if (aw) growthFx.onAwaken?.(i);
     }
     return true;
   }

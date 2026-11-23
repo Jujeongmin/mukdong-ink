@@ -745,6 +745,15 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     w.className = `skill-wash ${flip}${i === 4 ? " ink" : ""}`;
   }
 
+  /** A big moment (level-up, awakening, boss): the whole screen floods with `hex` from the edges, longer and stronger. */
+  screenBurst(hex: string): void {
+    const w = this.wash;
+    if (!w) return;
+    w.style.setProperty("--wc", hex);
+    const flip = w.classList.contains("go") ? "go2" : "go";
+    w.className = `skill-wash big ${flip}`;
+  }
+
   /** `cls`: "" (a brush strike), "heavy" (the third), "sk0".."sk4" (a skill, in its color), "kill" (+ either), "hurt", "gain", "resist". */
   number(x: number, y: number, z: number, text: string, cls: string): void {
     if (!this.showDmg && cls !== "gain" && cls !== "resist") return;

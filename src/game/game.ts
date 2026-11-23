@@ -26,7 +26,7 @@ import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
 import { camFocus, camFwd, camera, colorStain, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
 import type { RGB } from "./util";
-import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
+import { SKILL_COL, bigMoment, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
 import { Hud, type TargetInfo } from "./ui/hud";
@@ -47,7 +47,8 @@ const questIndex = (id: string): number => MAIN_QUESTS.findIndex((q) => q.id ===
 import type { MView } from "./monsters";
 import { AutoPlay } from "./autoplay";
 import { t } from "./i18n";
-import { attempt, el, errorCode, errorText, esc, installSprites, toast } from "./ui/dom";
+import { SKILL_COLOR, attempt, el, errorCode, errorText, esc, installSprites, toast } from "./ui/dom";
+import { growthFx } from "./ui/growth";
 
 const BUF = 0.15;
 /** 먹동이's thought when a skill first stirs in his hands (index = skill id). */
@@ -85,6 +86,11 @@ const PORTAL_WALK = 1.7;
 const PORTAL_PROMPT = 3;
 const QUIET_COMBAT = ["on_cooldown", "rate_limited", "too_far", "dead", "not_ready", "wrong_room"] as const;
 const GOLD_RGB = [0.95, 0.78, 0.35] as const;
+/** the color each chapter boss gives back (matches the bloom in monsters.ts) */
+const BOSS_COLOR: Record<string, { rgb: readonly number[]; hex: string }> = {
+  boss: { rgb: [0.42, 0.74, 1.0], hex: "#4f8fe0" },
+  ashboss: { rgb: [1.0, 0.46, 0.24], hex: "#e0582e" },
+};
 
 interface Remote {
   actor: Actor;
@@ -285,6 +291,14 @@ export class Game {
       setShake(s.shake);
       actorFx.remoteLow = s.lowRemote;
       actorFx.onCast = (i) => this.hud.skillWash(i);
+      growthFx.onAwaken = (i) => {
+        const pl = this.player;
+        if (!pl) return;
+        // 먹감옥 is ink: its surge is the skill's own deep violet rather than black
+        bigMoment(pl.x, pl.z, i === 4 ? [0.36, 0.2, 0.48] : SKILL_COL[i], 1.2);
+        this.hud.screenBurst(SKILL_COLOR[i]);
+        audio.play("levelup");
+      };
       this.hud.showDmg = s.dmgNumbers;
       this.chat.filter = s.chatFilter;
       root.classList.toggle("names-mine", s.names === "mine");
@@ -406,6 +420,9 @@ export class Game {
     this.monsters.onBossFall = (kind, x, z) => {
       const page = PAGE_FOR_BOSS[kind];
       const pl = this.player;
+      // the field floods with the stolen color: the screen with it, and a swirl where the boss stood
+      const bc = BOSS_COLOR[kind];
+      if (bc && pl && Math.hypot(pl.x - x, pl.z - z) < 40) { bigMoment(x, z, bc.rgb, 1.5); this.hud.screenBurst(bc.hex); }
       if (!page || !pl || this.dead || album.has(page.id) || Math.hypot(pl.x - x, pl.z - z) > 30) return null;
       return (canvas) => {
         void paintFrame(canvas).then(async (blob) => {
@@ -495,9 +512,9 @@ export class Game {
       const sk = SKILLS.find((s) => s.unlock > prev.level && s.unlock <= p.level);
       this.hud.levelUp(p.level, sk ? t(sk.name) : null);
       audio.play("levelup");
-      ring(this.player.x, this.player.z, 4, GOLD_RGB, 1.0);
-      sparkBurst(this.player.x, 0.5, this.player.z, 40, GOLD_RGB, 0.9, 1.4);
+      bigMoment(this.player.x, this.player.z, GOLD_RGB);
       addLight(this.player.x, this.player.z, 9, 1.4, GOLD_RGB, this.player);
+      this.hud.screenBurst("#d9a43a");
       toast(t("+{n} 수련 포인트", { n: p.level - prev.level }));
       if (sk) {
         this.hud.bloomSkill(sk.id);
