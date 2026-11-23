@@ -19,7 +19,7 @@ import {
 } from "../../src/shared/profile";
 import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
 import {
-  AD_REWARD_JADE, CHANNELS, CHANNEL_CAPACITY, CHANNEL_HOP_MS, DAILY_QUESTS, DASH_BURST, DASH_BURST_GAP_MS, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, WIND_BURST_GAP_MS, ROLL_IFRAME_MS, NPC_REACH, NPC_SAFE_R, PORTAL_REACH, START_POS, START_ZONE, ZONES,
+  AD_REWARD_JADE, CHANNELS, CHANNEL_CAPACITY, CHANNEL_HOP_MS, DAILY_QUESTS, DASH_BURST, DASH_BURST_GAP_MS, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, WIND_BURST_GAP_MS, ROLL_IFRAME_MS, NPC_REACH, NPC_SAFE_R, PORTAL_REACH, START_POS, START_ZONE, VILLAGES, ZONES, homeOf, spawnOf, villageOpen,
   parseRoomId, roomIdFor,
 } from "../../src/shared/world";
 import { verifyAd } from "./ads";
@@ -827,7 +827,7 @@ export class Server {
     return entry;
   }
 
-  /** Fallen: back to the village, whole again. */
+  /** Fallen: back to the village of that part of the world (먹골, or 솔재 past the peak), whole again. */
   async respawn(): Promise<ZoneEntry> {
     const account = $sender.account;
     const p = await myProfile(account);
@@ -835,8 +835,34 @@ export class Server {
     const mine = here ? readMine(await $room.getMyState()) : null;
     const fallen = (mine && present(mine) && mine.dead) || p.hp <= 0;
     if (!fallen) throw new RuleViolation("bad_args");
-    const channel = await pickChannel(START_ZONE, account, here?.channel ?? p.channel);
-    const entry = await assign(account, START_ZONE, channel, START_POS.x, START_POS.z, Date.now(), maxHpOf(p));
+    const home = here ? homeOf(here.zone) : START_ZONE;
+    const at = spawnOf(home);
+    const channel = await pickChannel(home, account, here?.channel ?? p.channel);
+    const entry = await assign(account, home, channel, at.x, at.z, Date.now(), maxHpOf(p));
+    await stepOff();
+    return entry;
+  }
+
+  /**
+   * 순간이동: from one village to another (both safe), into the spot the village keeps for it. Only standing
+   * in a village, not fallen, and only to a village the story has opened to you (villageOpen).
+   */
+  async travel(rawTo: unknown): Promise<ZoneEntry> {
+    if (typeof rawTo !== "string" || !VILLAGES.includes(rawTo) || !ZONES[rawTo]) throw new RuleViolation("bad_args");
+    const account = $sender.account;
+    const here = currentRoom();
+    if (!here) throw new RuleViolation("not_ready");
+    const assigned = await loadAssigned(account);
+    if (!assigned || assigned.roomId !== here.roomId) throw new RuleViolation("wrong_room");
+    if (!ZONES[here.zone]?.safe || rawTo === here.zone) throw new RuleViolation("bad_args");
+    const mine = readMine(await $room.getMyState());
+    if (!present(mine)) throw new RuleViolation("not_ready");
+    if (mine.dead) throw new RuleViolation("dead");
+    const p = await myProfile(account);
+    if (!villageOpen(p, rawTo)) throw new RuleViolation("locked");
+    const at = spawnOf(rawTo);
+    const channel = await pickChannel(rawTo, account, here.channel);
+    const entry = await assign(account, rawTo, channel, at.x, at.z, Date.now(), Math.round(mine.hp));
     await stepOff();
     return entry;
   }

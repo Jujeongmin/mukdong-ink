@@ -125,6 +125,9 @@ export abstract class BaseGameApi implements GameApi {
   async changeChannel(channel: number): Promise<ZoneEntry> {
     return this.moveTo(await this.call<ZoneEntry>("changeChannel", [channel]));
   }
+  async travel(village: string): Promise<ZoneEntry> {
+    return this.moveTo(await this.call<ZoneEntry>("travel", [village]));
+  }
 
   /** Joins the room the server picked and stands you in it; the room's feed then goes to the callbacks. */
   protected async moveTo(entry: ZoneEntry): Promise<ZoneEntry> {

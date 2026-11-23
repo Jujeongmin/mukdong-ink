@@ -102,6 +102,12 @@ export function readyByTalk(s: QuestStatus): boolean {
 
 export type Mark = "offer" | "turnin" | "sub" | "wait" | null;
 
+/** Whether `npc` hands out the daily quests (the elder role: 먹노인, 산할미). */
+export function dailyGiver(npc: string): boolean {
+  for (const z of Object.values(ZONES)) for (const n of z.npcs) if (n.id === npc) return n.role === "elder";
+  return false;
+}
+
 /** The painted mark over an NPC's head. */
 export function npcMark(p: ProfileView, npc: string): Mark {
   const s = mainStatus(p);
@@ -113,7 +119,7 @@ export function npcMark(p: ProfileView, npc: string): Mark {
   const sub = subStatus(p);
   if (sub?.done && sub.q.giver === npc) return "sub";
   if (s && s.accepted && !s.done && s.q.turnIn === npc) return "wait";
-  if (npc === "elder" && DAILY_QUESTS.some((_, i) => { const d = dailyStatus(p, i); return d.done && !d.claimed; })) return "turnin";
+  if (dailyGiver(npc) && DAILY_QUESTS.some((_, i) => { const d = dailyStatus(p, i); return d.done && !d.claimed; })) return "turnin";
   return null;
 }
 

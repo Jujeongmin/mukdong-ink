@@ -201,6 +201,7 @@ export class ZoneScene {
       case "kiln": this.kiln(); break;
       case "temple": this.temple(); break;
       case "censer": this.censer(); break;
+      case "pass": this.pass(); break;
     }
     for (const p of def.portals) this.portal(p);
     for (const n of def.npcs) this.npc(n);
@@ -275,7 +276,7 @@ export class ZoneScene {
   private ground(): void {
     const g = new THREE.Group();
     const th = this.def.theme;
-    setGround(this.def.ground, this.def.radius, th === "village" ? 1 : th === "peak" ? 0.75 : 0, th === "pond" ? 0.35 : th === "peak" ? 0.5 : 0.42);
+    setGround(this.def.ground, this.def.radius, th === "village" || th === "pass" ? 1 : th === "peak" ? 0.75 : 0, th === "pond" ? 0.35 : th === "peak" ? 0.5 : 0.42);
     g.add(part(G.disc, groundMat, 0, 0, 0, this.def.radius + 16, 1, this.def.radius + 16));
     // a worn path from the south portal to the north one
     const R = this.def.radius;
@@ -372,7 +373,7 @@ export class ZoneScene {
     for (const px of [-2, 2]) for (const pz of [-1.5, 1.5]) g.add(part(G.box, M.wood, px, 1.4, pz, 0.22, 2.2, 0.22));
     g.add(part(G.box, M.wood, 0, 2.45, 0, 4.3, 0.18, 3.3));
     g.add(part(G.box, M.wood, 0, 1.1, 1.52, 1.1, 1.6, 0.05)); // door
-    g.add(part(G.box, this.def.theme === "village" ? M_windowGlow : M.wood, -1.3, 1.6, 1.52, 0.7, 0.6, 0.05)); // window
+    g.add(part(G.box, this.def.safe ? M_windowGlow : M.wood, -1.3, 1.6, 1.52, 0.7, 0.6, 0.05)); // window
     g.add(part(G.pyramid, M.roof, 0, 3.35, 0, 3.6, 1.6, 2.9));
     g.add(part(G.box, M.roof, 0, 3.95, 0, 2.2, 0.16, 0.22)); // ridge
     g.position.set(x, 0, z);
@@ -519,7 +520,7 @@ export class ZoneScene {
 
   private dressing(): void {
     const th = this.def.theme;
-    this.tufts(th === "bamboo" ? 240 : th === "pond" ? 200 : th === "village" ? 150 : 130, 8, th === "peak" ? 0.6 : 0.25);
+    this.tufts(th === "bamboo" ? 240 : th === "pond" ? 200 : th === "village" || th === "pass" ? 150 : 130, 8, th === "peak" ? 0.6 : 0.25);
   }
 
   /* ---------- themes ---------- */
@@ -542,35 +543,8 @@ export class ZoneScene {
     this.fence(-10, 8, 6, 0.1);
     this.fence(11, 7, 6, -0.15);
     for (const [x, z, s] of [[-17, 10, 0.9], [15, 12, 0.8], [-9, 14, 0.6]] as const) this.rock(x, z, s, true);
-    // dye works: vats and drying cloth (the cloth is dyed, so it keeps its color)
-    {
-      const g = new THREE.Group();
-      g.add(part(G.pillar, M.wood, 1.6, 0.4, -1.2, 0.55, 0.8, 0.55));
-      g.add(part(G.pillar, M.wood, 2.6, 0.35, -0.2, 0.45, 0.7, 0.45));
-      g.add(part(G.disc, dyeMat(0x2a4f8a), 1.6, 0.81, -1.2, 0.48, 1, 0.48));
-      g.add(part(G.disc, dyeMat(0xc0281c), 2.6, 0.71, -0.2, 0.38, 1, 0.38));
-      for (const px of [-1.8, 1.8]) g.add(part(G.box, M.wood, px, 1.3, -2.4, 0.1, 2.6, 0.1));
-      g.add(part(G.box, M.wood, 0, 2.55, -2.4, 3.8, 0.06, 0.06));
-      const cloth = [0xe58aa5, 0xd9b13a, 0x5fa8a0];
-      for (let i = 0; i < 3; i++) g.add(part(G.box, dyeMat(cloth[i]), -1.1 + i * 1.1, 1.75, -2.4, 0.8, 1.55, 0.03));
-      g.position.set(7, 0, -2);
-      this.baker.add(g);
-      this.colliders.push({ x: 8.6, z: -3.2, r: 0.6 }, { x: 9.6, z: -2.2, r: 0.5 });
-    }
-    // weapon altar: stone steps, table, brush rack
-    {
-      const g = new THREE.Group();
-      g.add(part(G.box, M.stone, 0, 0.15, -1.4, 5, 0.3, 2.6));
-      g.add(part(G.box, M.stone, 0, 0.75, -1.6, 2.6, 0.9, 1.1));
-      g.add(part(G.box, M.wood, 0, 1.25, -1.6, 2.9, 0.1, 1.3));
-      for (const px of [-1.6, 1.6]) g.add(part(G.pillar, M.pillar, px, 1.6, -2.4, 0.12, 3.2, 0.12));
-      g.add(part(G.box, M.beam, 0, 3.25, -2.4, 3.8, 0.25, 0.3));
-      for (let i = 0; i < 5; i++) g.add(part(G.box, M.wood, -0.8 + i * 0.4, 1.75, -1.9, 0.05, 1.0, 0.05, 0.15, 0, 0));
-      g.add(part(G.box, M.gold, 0, 1.33, -1.4, 0.5, 0.06, 0.5));
-      g.position.set(0, 0, -9);
-      this.baker.add(g);
-      this.colliders.push({ x: -0.8, z: -10.6, r: 0.8 }, { x: 0.8, z: -10.6, r: 0.8 });
-    }
+    this.dyeWorks(7, -2);
+    this.altarStand(0, -9);
     // pines standing out past the square's sides, crowns dark against the ridges
     for (const [x, z, sc] of [[-R - 3, -3, 1.5], [-R - 6, 5, 1.8], [R + 3.5, -5, 1.6], [R + 6, 4, 1.4], [-R - 1, -21, 1.4], [R + 1.5, -22, 1.5], [-R - 9, -12, 1.9], [R + 9, -13, 1.8]] as const) this.pine(x, z, sc);
     // the far end of the village, lit windows fading in the haze beyond the field
@@ -580,6 +554,81 @@ export class ZoneScene {
     this.wallArc(R + 0.7, -Math.PI + 0.12, -Math.PI / 2 - 0.2);
     this.wallArc(R + 0.7, -Math.PI / 2 + 0.2, -0.12);
     this.wallArc(R + 0.7, 0.15, Math.PI - 0.15);
+  }
+
+  /** Dye works: vats and drying cloth (the cloth is dyed, so it keeps its color), set at (ox, oz). */
+  private dyeWorks(ox: number, oz: number, cloth: readonly number[] = [0xe58aa5, 0xd9b13a, 0x5fa8a0]): void {
+    const g = new THREE.Group();
+    g.add(part(G.pillar, M.wood, 1.6, 0.4, -1.2, 0.55, 0.8, 0.55));
+    g.add(part(G.pillar, M.wood, 2.6, 0.35, -0.2, 0.45, 0.7, 0.45));
+    g.add(part(G.disc, dyeMat(0x2a4f8a), 1.6, 0.81, -1.2, 0.48, 1, 0.48));
+    g.add(part(G.disc, dyeMat(0xc0281c), 2.6, 0.71, -0.2, 0.38, 1, 0.38));
+    for (const px of [-1.8, 1.8]) g.add(part(G.box, M.wood, px, 1.3, -2.4, 0.1, 2.6, 0.1));
+    g.add(part(G.box, M.wood, 0, 2.55, -2.4, 3.8, 0.06, 0.06));
+    for (let i = 0; i < cloth.length; i++) g.add(part(G.box, dyeMat(cloth[i]), -1.1 + i * 1.1, 1.75, -2.4, 0.8, 1.55, 0.03));
+    g.position.set(ox, 0, oz);
+    this.baker.add(g);
+    this.colliders.push({ x: ox + 1.6, z: oz - 1.2, r: 0.6 }, { x: ox + 2.6, z: oz - 0.2, r: 0.5 });
+  }
+
+  /** The weapon altar: stone steps, table, brush rack, set at (ox, oz). */
+  private altarStand(ox: number, oz: number): void {
+    const g = new THREE.Group();
+    g.add(part(G.box, M.stone, 0, 0.15, -1.4, 5, 0.3, 2.6));
+    g.add(part(G.box, M.stone, 0, 0.75, -1.6, 2.6, 0.9, 1.1));
+    g.add(part(G.box, M.wood, 0, 1.25, -1.6, 2.9, 0.1, 1.3));
+    for (const px of [-1.6, 1.6]) g.add(part(G.pillar, M.pillar, px, 1.6, -2.4, 0.12, 3.2, 0.12));
+    g.add(part(G.box, M.beam, 0, 3.25, -2.4, 3.8, 0.25, 0.3));
+    for (let i = 0; i < 5; i++) g.add(part(G.box, M.wood, -0.8 + i * 0.4, 1.75, -1.9, 0.05, 1.0, 0.05, 0.15, 0, 0));
+    g.add(part(G.box, M.gold, 0, 1.33, -1.4, 0.5, 0.06, 0.5));
+    g.position.set(ox, 0, oz);
+    this.baker.add(g);
+    this.colliders.push({ x: ox - 0.8, z: oz - 1.6, r: 0.8 }, { x: ox + 0.8, z: oz - 1.6, r: 0.8 });
+  }
+
+  /**
+   * 솔재 마을: a pine pass between the peak and the kiln. Gates south (from the peak) and north (to the kiln),
+   * houses stepping up both sides, a well, a lookout pavilion over the drop, pines everywhere, ridges beyond.
+   */
+  private pass(): void {
+    const R = this.def.radius;
+    // houses up the two slopes, roofs turned to the road
+    for (const [x, z, ry, sc] of [[-12, -14, 0.45, 1], [12, -14, -0.45, 1], [-19, -4, 1.3, 1.05], [19, -5, -1.3, 1.05], [-15, 9, 2.1, 0.95], [16, 9, -2.1, 0.95], [-25, -14, 0.9, 1.2], [25, -15, -0.9, 1.2]] as const) this.house(x, z, ry, sc);
+    this.pavilion(-13, 2);
+    this.dyeWorks(7, -1, [0xd9a640, 0xc0281c, 0x6a8fc8]);
+    this.altarStand(0, -9);
+    // a well in the square
+    {
+      const g = new THREE.Group();
+      g.add(part(G.pillar, M.stone, 0, 0.4, 0, 1.0, 0.8, 1.0));
+      g.add(part(G.disc, waterMat, 0, 0.81, 0, 0.75, 1, 0.75));
+      for (const px of [-0.95, 0.95]) g.add(part(G.box, M.wood, px, 1.3, 0, 0.1, 1.8, 0.1));
+      g.add(part(G.box, M.wood, 0, 2.15, 0, 2.3, 0.1, 0.1));
+      g.add(part(G.pyramid, M.roof, 0, 2.55, 0, 1.6, 0.6, 1.3));
+      g.position.set(6, 0, 7);
+      this.baker.add(g);
+      this.colliders.push({ x: 6, z: 7, r: 1.1 });
+    }
+    for (const [x, z] of [[-3, 14], [3, 14], [-3, 5], [3, 5], [-3, -4], [3, -4], [-3, -14], [3, -14]] as const) this.lantern(x, z);
+    this.fence(-9, 13, 5, 0.25);
+    this.fence(10, 14, 5, -0.25);
+    for (const [x, z, s] of [[-18, 15, 0.9], [17, -10, 0.7], [-8, -17, 0.6]] as const) this.rock(x, z, s, true);
+    // pines inside the walls and thick on the slopes beyond them
+    for (const [x, z, sc] of [[-9, -6, 1.15], [11, -8, 1.0], [-20, 5, 1.3], [21, 3, 1.25], [-7, 18, 1.1], [9, 18, 1.2]] as const) this.pine(x, z, sc);
+    for (let i = 0; i < 60; i++) {
+      const a = this.rand() * Math.PI * 2, d = R + 3 + this.rand() * 16;
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (Math.abs(x) < 5) continue; // both gates stay open
+      if (!this.clear(x, z, 1, false)) continue;
+      this.pine(x, z, 1.3 + this.rand() * 0.8);
+    }
+    // the ridges the pass cuts through, far off on both sides
+    for (const [x, z, h, w] of [[-44, -30, 22, 9], [-52, 4, 26, 11], [-40, 30, 18, 8], [46, -26, 24, 10], [54, 8, 20, 9], [42, 32, 17, 8], [-18, -58, 30, 12], [20, -60, 27, 11]] as const) this.spire(x, z, h, w);
+    // dry-stone walls round the rim, open at the north and south gates
+    this.wallArc(R + 0.7, -Math.PI + 0.12, -Math.PI / 2 - 0.2);
+    this.wallArc(R + 0.7, -Math.PI / 2 + 0.2, -0.12);
+    this.wallArc(R + 0.7, 0.15, Math.PI / 2 - 0.2);
+    this.wallArc(R + 0.7, Math.PI / 2 + 0.2, Math.PI - 0.15);
   }
 
   private bambooGrove(): void {
@@ -1106,6 +1155,13 @@ const NPC_LOOK: Record<string, NpcLook> = {
     pose: Pz(0.04, 0.05, -0.4, 1.5, 0.25, 0.35, 0.15, -0.15, -0.12, -0.08, -0.6, -0.03), head: -0.3 },
   noeul: { hat: ITEM.h_satgat, sash: 0xe07a3a, build: { height: 0.96, head: 0.95, limb: 0.74, arms: 1.05, hatW: 1.75 },
     pose: Pz(0.28, -0.1, 0.9, -0.35, 0.4, 0.6, 1.45, -1.55, 1.3, -1.25, 2.14, -0.55), head: Math.PI + 0.35 },
+  // 솔재 마을 (the second village): an old woman bent over a pine staff, a dyer with her sleeves rolled, the smith's younger brother
+  sanhalmi: { hat: ITEM.h_none, sash: 0x7a5a8e, build: { height: 0.8, head: 1.1, limb: 0.9, legs: 0.84, torso: 0.88 },
+    pose: Pz(0.6, -0.25, -0.1, 0.35, 0.6, 0.2, 0.2, -0.45, -0.05, -0.3, -0.7, -0.12), head: -0.2 },
+  yeoul: { hat: ITEM.h_none, sash: 0xd9a640, build: { height: 1.02, head: 0.94, limb: 0.82, legs: 1.08, arms: 1.05 },
+    pose: Pz(0.15, 0.05, 0.6, 0.6, 0.9, 0.35, 0.3, -0.45, -0.18, -0.2, -0.9, -0.07), head: 0.4 },
+  musoe: { hat: ITEM.h_none, sash: 0x8e2a22, build: { height: 1.08, head: 0.9, limb: 1.6, torso: 1.15, arms: 1.1, legs: 0.92 },
+    pose: Pz(0.04, 0, -0.2, 0.3, 0.55, 2.1, 0.28, -0.12, -0.28, -0.1, 0.86, -0.05), head: -0.4 },
   // chapter 2
   dalrae: { hat: ITEM.h_none, sash: null, build: { height: 0.97, head: 1.02, limb: 1.3, legs: 0.93, torso: 0.95 },
     pose: Pz(0.18, 0.05, 0.85, 1.35, 0.7, 1.2, 0.18, -0.2, -0.12, -0.18, 1.2, -0.05) },
@@ -1192,6 +1248,58 @@ function dressNpc(rig: Rig, id: string): Idle {
       const c = t % 6;
       const k = c > 4 && c < 5.4 ? Math.sin(((c - 4) / 1.4) * Math.PI) : 0;
       r.pose[4] += k * 0.35; r.pose[5] -= k * 0.3; r.pose[0] -= k * 0.06; r.pose[1] += k * 0.12;
+    };
+  }
+  if (id === "sanhalmi") {
+    // her hair up in a bun, leaning on a pine staff; every so often she straightens and looks up the pass
+    const hair = new THREE.Group();
+    const bun = new THREE.Mesh(NG.bun, M_beard);
+    bun.position.set(-0.12, 0.18, 0);
+    hair.add(bun);
+    rig.addProp(hair, "head");
+    rig.setHeld(new THREE.Mesh(NG.cane, M_caneWood));
+    return (r, t) => {
+      r.pose[0] += Math.sin(t * 0.8) * 0.035;
+      r.pose[11] += Math.sin(t * 0.8) * 0.012;
+      const c = t % 9;
+      const k = c > 6 && c < 8.4 ? Math.sin(((c - 6) / 2.4) * Math.PI) : 0;
+      r.pose[0] -= k * 0.25;
+      r.pose[1] -= k * 0.35;
+    };
+  }
+  if (id === "yeoul") {
+    // loose hair tied with a gold ribbon, sleeves dyed to the elbow, wringing cloth over the vat
+    const hair = new THREE.Group();
+    const tails: THREE.Mesh[] = [];
+    for (const z of [-0.05, 0.05]) {
+      const h = new THREE.Mesh(NG.hair, M_dark);
+      h.position.set(-0.2, 0.06, z);
+      hair.add(h);
+      tails.push(h);
+    }
+    const tie = new THREE.Mesh(NG.ribbon, dyeMat(0xd9a640));
+    tie.position.set(-0.18, 0.12, 0);
+    hair.add(tie);
+    rig.addProp(hair, "head");
+    rig.paintForearms(dyeMat(0xd9a640), dyeMat(0x6a8fc8));
+    rig.setHeld(new THREE.Mesh(NG.paddle, M.wood));
+    return (r, t) => {
+      const s = Math.sin(t * 1.7), c = Math.cos(t * 1.7);
+      r.pose[2] += s * 0.18; r.pose[4] -= s * 0.18;
+      r.pose[3] += c * 0.12; r.pose[5] -= c * 0.12;
+      r.pose[0] += c * 0.04;
+      for (let i = 0; i < tails.length; i++) tails[i].rotation.z = -1.0 + Math.sin(t * 3.1 + i * 1.4) * 0.15;
+      tie.rotation.z = -0.9 + Math.sin(t * 4.3) * 0.2;
+    };
+  }
+  if (id === "musoe") {
+    rig.setHeld(new THREE.Mesh(NG.hammer, M_iron));
+    return (r, t) => {
+      // taps the hammer on his palm, now and then
+      BREATHE(r, t * 0.8);
+      const c = t % 4.5;
+      const k = c > 3 && c < 3.8 ? Math.sin(((c - 3) / 0.8) * Math.PI * 2) : 0;
+      r.pose[5] += k * 0.3; r.pose[4] += k * 0.12;
     };
   }
   if (id === "baram") {

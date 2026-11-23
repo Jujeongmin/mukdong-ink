@@ -287,7 +287,7 @@ export class Hud {
         });
         root.style.setProperty("--top-c", `${Math.round((hpR + walletL) / 2)}px`);
         hudBoxes.length = 0;
-        for (const sel of [".portrait", ".purse", "[data-quest]"]) {
+        for (const sel of [".portrait", ".purse", "[data-quest]", ".minimap"]) {
           const r = root.querySelector<HTMLElement>(sel)?.getBoundingClientRect();
           if (r && r.width > 0) hudBoxes.push({ l: r.left, t: r.top, r: r.right, b: r.bottom });
         }

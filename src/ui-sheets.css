@@ -720,3 +720,73 @@
 #ui .sheet[data-kind="elder"] .qrow { padding-left: 30px; }
 #ui .sheet[data-kind="elder"] .qrow::before { content: ""; position: absolute; left: 2px; top: 12px; width: 20px; height: 20px; background: var(--cinnabar); opacity: 0.85;
   -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }
+
+/* ---------- minimap: an ink disc under the portrait (minimap.ts paints it) ---------- */
+#ui { --mm-w: calc(132px * var(--ui, 1)); }
+#ui .minimap { position: fixed; top: calc(var(--portrait-b, 100px) + 4px); left: calc(12px + var(--safe-l)); width: var(--mm-w); height: var(--mm-w); padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; pointer-events: auto; filter: drop-shadow(0 2px 4px rgba(20, 16, 12, 0.35)); transition: transform 0.15s ease; }
+#ui .minimap canvas { display: block; width: 100%; height: 100%; }
+#ui .minimap:hover { transform: scale(1.04); }
+#ui .minimap:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+#ui .minimap .mm-name { position: absolute; left: 50%; bottom: -3px; transform: translateX(-50%); max-width: 120%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--f-brush); font-weight: 700; font-size: calc(12px * var(--ui, 1)); color: var(--ink); text-shadow: var(--halo); pointer-events: none; }
+/* the zone name painted on arrival stands beside the minimap, not over it */
+#ui .zone-paint { left: calc(var(--mm-w) + 26px + var(--safe-l)); top: calc(var(--portrait-b, 100px) + 10px); }
+@media (max-height: 480px) {
+  #ui { --mm-w: calc(96px * var(--ui, 1)); }
+  #ui .zone-paint b { font-size: clamp(30px, 8vh, 46px); }
+}
+
+/* ---------- 지도 sheet: the way through the world on the left, the chosen place on the right ---------- */
+#ui .sheet .map2 { display: grid; grid-template-columns: minmax(140px, 0.8fr) 2fr; gap: 18px; align-items: start; }
+#ui .sheet .map-route { list-style: none; margin: 0; padding: 4px 0 4px 2px; position: relative; display: flex; flex-direction: column; gap: 2px; }
+/* the road: one wavering ink line through every stop */
+#ui .sheet .map-route::before { content: ""; position: absolute; left: 13px; top: 18px; bottom: 18px; width: 3px; border-radius: 2px; background: linear-gradient(var(--ink-soft), var(--ink) 40%, var(--ink-soft)); opacity: 0.55; }
+#ui .sheet .map-stop { position: relative; display: grid; grid-template-columns: 22px 1fr; grid-template-areas: "dot name" "dot lv"; column-gap: 8px; align-items: center; width: 100%; padding: 6px 8px 6px 2px; border: 0; background: none; text-align: left; cursor: pointer; border-radius: 4px; color: var(--ink); font: inherit; }
+#ui .sheet .map-stop:hover { background: rgba(43, 38, 34, 0.06); }
+#ui .sheet .map-stop.on { background: rgba(43, 38, 34, 0.1); }
+#ui .sheet .map-stop .map-dot { grid-area: dot; justify-self: center; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); border: 3px solid var(--ink); box-sizing: border-box; z-index: 1; }
+#ui .sheet .map-stop.safe .map-dot { width: 16px; height: 16px; background: var(--gold); border-color: var(--ink); }
+#ui .sheet .map-stop.boss .map-dot { border-color: var(--cinnabar); background: var(--cinnabar); }
+#ui .sheet .map-stop.here .map-dot { box-shadow: 0 0 0 4px rgba(168, 38, 27, 0.25); }
+#ui .sheet .map-stop b { grid-area: name; font-family: var(--f-brush); font-size: 16px; line-height: 1.15; }
+#ui .sheet .map-stop small { grid-area: lv; font-size: 12px; color: var(--ink-soft); }
+#ui .sheet .map-stop em { position: absolute; right: 6px; top: 50%; transform: translateY(-50%) rotate(-6deg); font-style: normal; font-family: var(--f-brush); font-weight: 700; font-size: 11px; color: var(--paper); background: var(--cinnabar); padding: 2px 5px; border-radius: 2px 3px 2px 4px; }
+#ui .sheet .map-detail { min-width: 0; }
+#ui .sheet .map-title { margin: 0 0 8px; font-family: var(--f-brush); font-size: 24px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+#ui .sheet .map-title small { font-family: var(--f-body); font-size: 13px; font-weight: 400; color: var(--ink-soft); }
+#ui .sheet .map-detail h4.sec { margin: 14px 0 6px; }
+#ui .sheet .map-travel { margin: 4px 0 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+#ui .sheet .map-mons, #ui .sheet .map-npcs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+#ui .sheet .map-mon { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 4px 6px; border-radius: 4px; background: rgba(43, 38, 34, 0.04); }
+#ui .sheet .map-mon.boss { background: rgba(168, 38, 27, 0.08); }
+#ui .sheet .map-pic { width: 48px; height: 48px; display: grid; place-items: center; }
+#ui .sheet .map-pic img { max-width: 100%; max-height: 100%; object-fit: contain; }
+#ui .sheet .map-mname { display: flex; flex-direction: column; min-width: 0; }
+#ui .sheet .map-mname b { font-family: var(--f-brush); font-size: 15px; }
+#ui .sheet .map-mname small { font-size: 12px; color: var(--ink-soft); }
+#ui .sheet .map-tag { align-self: flex-start; margin-top: 2px; font-style: normal; font-size: 11px; padding: 1px 6px; border-radius: 2px; background: rgba(43, 38, 34, 0.12); color: var(--ink); }
+#ui .sheet .map-tag.gate { background: rgba(122, 63, 160, 0.16); color: var(--r-epic); }
+#ui .sheet .map-tag.boss { background: var(--cinnabar); color: var(--paper); }
+#ui .sheet .map-drops { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 8px; }
+#ui .sheet .map-drop { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; white-space: nowrap; }
+#ui .sheet .map-drop b { font-weight: 700; }
+#ui .sheet .map-npcs li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 3px 6px; }
+#ui .sheet .map-npcs b { font-family: var(--f-brush); font-size: 15px; }
+#ui .sheet .map-npcs small { font-size: 12px; color: var(--ink-soft); }
+#ui .sheet .map-npcs .cap { margin-left: auto; }
+#ui .sheet .map-ways { display: flex; flex-wrap: wrap; gap: 6px; }
+#ui .sheet .map-way { border: 0; background: rgba(43, 38, 34, 0.08); padding: 5px 10px; border-radius: 3px; cursor: pointer; font-family: var(--f-brush); font-size: 14px; color: var(--ink); }
+#ui .sheet .map-way::before { content: "→ "; color: var(--ink-soft); }
+#ui .sheet .map-way:hover { background: rgba(43, 38, 34, 0.14); }
+@media (max-height: 480px), (max-width: 640px) {
+  #ui .sheet .map2 { grid-template-columns: 1fr; gap: 10px; }
+  #ui .sheet .map-route { flex-direction: row; overflow-x: auto; gap: 0; padding-bottom: 6px; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
+  #ui .sheet .map-route::before { left: 18px; right: 18px; top: 13px; bottom: auto; width: auto; height: 3px; }
+  #ui .sheet .map-route li { flex: none; }
+  #ui .sheet .map-stop { grid-template-columns: 1fr; grid-template-areas: "dot" "name" "lv"; justify-items: center; text-align: center; padding: 4px 6px; row-gap: 2px; }
+  #ui .sheet .map-stop b { font-size: 13px; white-space: nowrap; }
+  #ui .sheet .map-stop small { font-size: 10px; }
+  #ui .sheet .map-stop em { position: static; transform: none; font-size: 9px; padding: 1px 3px; }
+  #ui .sheet .map-mon { grid-template-columns: 38px minmax(0, 1fr); }
+  #ui .sheet .map-pic { width: 38px; height: 38px; }
+  #ui .sheet .map-drops { grid-column: 2; justify-content: flex-start; }
+}

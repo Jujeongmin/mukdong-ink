@@ -26,6 +26,7 @@ const FLAVOR: Record<string, string> = {
   bamboo: t("바람이 댓잎마다 먹을 털어 낸다."),
   pond: t("물빛이 남은 마지막 연못."),
   peak: t("먹구름이 봉우리를 삼켰다."),
+  pass: t("솔바람이 고갯마루를 넘어 등불을 흔든다."),
   kiln: t("식은 가마마다 재가 아직 숨을 쉰다."),
   temple: t("꺼진 등 사이에 하나가 서른 해를 버텼다."),
   censer: t("깨진 향로가 아직도 뜨겁다."),

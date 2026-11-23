@@ -6,7 +6,8 @@ import type { GameApi, Hit, HitResult, ProfileView, RoomView, ZoneEntry } from "
 import type { Look, Pose, RoomPlayer } from "../shared/types";
 import { MONSTERS, SKILLS } from "../shared/combat";
 import { forwardX, forwardZ } from "../shared/hit";
-import { NPC_REACH, START_ZONE, ZONES, type Npc, type Portal } from "../shared/world";
+import { NPC_REACH, START_ZONE, ZONES, homeOf, type Npc, type Portal } from "../shared/world";
+import { Minimap } from "./ui/minimap";
 import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
 import { newNav, questNav } from "./questnav";
@@ -188,6 +189,11 @@ export class Game {
   private profileCheckAt = 0;
   private uiTick = 0;
   private readonly targetPool: { x: number; z: number }[] = [];
+  /** the corner map (one canvas pair for the life of the game) */
+  private readonly minimap: Minimap;
+  /** the other players' spots for the minimap, refilled each tick (no allocation once grown) */
+  private readonly mmOthers: { x: number; z: number }[] = [];
+  private readonly mmMark = (id: string) => (this.profile ? npcMark(this.profile, id) : null);
 
   constructor(private readonly api: GameApi, root: HTMLElement, private readonly loading: Loading) {
     this.hud = new Hud(root, {
@@ -216,6 +222,7 @@ export class Game {
     });
     this.sheets = new Sheets(root, { api, profile: () => this.profile, apply: (p) => this.applyProfile(p),
       monsterPic: (kind) => this.portraits.figureOf(`mon:${kind}`) ?? this.portraits.figure(`mon:${kind}`, monsterFigure(kind)),
+      zone: () => this.zone?.def.id ?? START_ZONE, travel: (v) => void this.travelVillage(v),
       enterMemory: (id) => void this.enterMemory(id), memoryBlock: () => this.memoryBlock(), hint: (id, text) => this.hints.think(id, text, { urgent: true }), seen: (id) => this.hints.has(id), mark: (id) => this.hints.mark(id),
       settings: {
         name: () => this.profile?.name ?? "",
@@ -232,7 +239,10 @@ export class Game {
       api, dialogue: this.dialogue, sheets: this.sheets, hints: this.hints, profile: () => this.profile, apply: (p) => this.applyProfile(p),
       claimSub: () => this.claimSub(),
       startSub: () => { const why = this.auto.startSub(); if (why) this.hints.think("auto-why", why, { urgent: true, repeat: true }); },
+      openMap: () => this.openMap(),
     });
+    this.minimap = new Minimap(() => this.openMap());
+    root.querySelector(".portrait")?.after(this.minimap.el);
     this.input = new Input({
       blocked: () => this.sheets.isOpen() || this.dialogue.isOpen() || this.transitioning || !this.player || this.chat.isOpen() || this.dead,
       act: (a) => this.pressAct(a),
@@ -244,6 +254,7 @@ export class Game {
       album: () => this.openAlbum(),
       rank: () => { if (!this.transitioning && !this.memory) { this.input.clear(); this.sheets.openRank(); } },
       shop: () => { if (!this.transitioning && !this.memory && !this.dead) { this.input.clear(); this.sheets.openShop(); } },
+      map: () => this.openMap(),
       help: () => this.hud.help(),
       escape: () => this.onEscape(),
       chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
@@ -462,6 +473,7 @@ export class Game {
     this.camX = this.entry.x;
     this.camZ = this.entry.z;
     this.hud.setZone(this.entry.zone, this.entry.channel);
+    this.minimap.setZone(this.entry.zone);
     this.loading.channel(this.entry.channel);
     this.chatRoomChanged(this.entry.zone, this.entry.channel);
     audio.musicForZone(this.entry.zone);
@@ -922,6 +934,50 @@ export class Game {
     return ok;
   }
 
+  /** 지도: the minimap, N, or a village elder's 순간이동. */
+  private openMap(): void {
+    if (!this.profile || this.transitioning || this.memory) return;
+    this.input.clear();
+    this.sheets.openMap();
+  }
+
+  /** The corner map, once per slow UI tick: you, the others in the room, the NPCs and their quest marks. */
+  private drawMinimap(): void {
+    const p = this.player;
+    if (!p) return;
+    let n = 0;
+    for (const r of this.remotes.values()) {
+      if (r.dead) continue;
+      const o = this.mmOthers[n] ?? (this.mmOthers[n] = { x: 0, z: 0 });
+      o.x = r.actor.x; o.z = r.actor.z;
+      n++;
+    }
+    this.minimap.draw(p.x, p.z, p.fx, p.fz, this.mmOthers, n, this.mmMark);
+  }
+
+  /** 순간이동 from a village to another (the map sheet). */
+  private async travelVillage(to: string): Promise<void> {
+    if (this.transitioning || this.memory || this.dead || !this.player) return;
+    this.transitioning = true;
+    this.auto.stop();
+    this.sheets.close();
+    this.input.clear();
+    audio.play("portal");
+    this.loading.show(to, t("길을 접는 중…"));
+    try {
+      const entry = await this.api.travel(to);
+      this.chat.clear();
+      this.loading.progress(0.7);
+      this.rebuild(entry);
+    } catch (e) {
+      const code = errorCode(e);
+      toast(code === "locked" ? t("아직 가 보지 못한 마을이다.") : code === "dead" ? t("쓰러진 채로는 옮길 수 없다") : errorText(e), true);
+    } finally {
+      await this.loading.hide();
+      this.transitioning = false;
+    }
+  }
+
   /** To another channel of this zone, where you stand (the HUD's channel picker). */
   private async changeChannel(channel: number): Promise<void> {
     if (this.transitioning || this.memory || this.dead || !this.player) return;
@@ -976,6 +1032,7 @@ export class Game {
     this.zone.field.dynamic = this.monsters.obstacles;
     this.player.field = this.zone.field;
     this.zoneTags();
+    this.minimap.setZone(zoneId);
     audio.musicForZone(zoneId);
     audio.ambience(zoneId);
     this.auto.zoneChanged();
@@ -1053,7 +1110,7 @@ export class Game {
     this.hud.death(true, true);
     try {
       this.transitioning = true;
-      this.loading.show("village", t("다시 일어나는 중"));
+      this.loading.show(homeOf(this.zone.def.id), t("다시 일어나는 중"));
       this.chat.clear();
       const entry = await this.api.respawn();
       this.loading.progress(0.7);
@@ -1367,6 +1424,7 @@ export class Game {
     }
     this.hud.prompt(prompt);
     this.npcMarks();
+    this.drawMinimap();
     const boss = this.monsters.boss(p.x, p.z);
     if (boss) this.hud.target({ id: boss.id, name: `${t(boss.def.name)} · Lv ${boss.level}`, frac: boss.hp / Math.max(1, boss.maxHp), tier: "boss", pic: null, dying: false });
     else this.hud.target(this.targetFrame());

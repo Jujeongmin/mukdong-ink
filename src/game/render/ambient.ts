@@ -54,6 +54,15 @@ export const MOODS: Record<Theme, ThemeMood> = {
     // no moon in the storm: light from high above, shadows pool softly at the feet of things
     sun: [-100, 74], shade: [0.66, 3.2, 4], motes: "drift",
   },
+  // 솔재 마을: a pine pass at the end of the day, pale gold low in the sky over blue ridges, lamps already lit,
+  // between the peak's storm and the kiln's ash
+  pass: {
+    paper: [0.76, 0.74, 0.72], ink: [0.05, 0.045, 0.07], skyTop: [0.2, 0.21, 0.32], skyLow: [0.88, 0.8, 0.66], mist: [0.8, 0.77, 0.74],
+    moon: [0.3, 0.84, 0.05, 0.85], fogLow: 0.5, hazeNear: 26, hazeFar: 74,
+    hemiSky: 0xd8ccc0, hemiGround: 0x34303a, hemiI: 1.2, moonCol: 0xffe2c0, moonI: 1.9, fireflies: 0, rain: false, lightning: false,
+    pillars: 0.7, pillarH: 1.45, stalks: 0, glow: 0.55, clouds: 0.7, fgDark: 0.55,
+    sun: [-64, 26], shade: [0.74, 1.6, 10],
+  },
   // chapter 2. old kiln yard: warm ink on yellowed paper, a low grey sky with a white sun that gives no light, ash falling
   kiln: {
     paper: [0.85, 0.81, 0.75], ink: [0.08, 0.062, 0.05], skyTop: [0.42, 0.39, 0.35], skyLow: [0.72, 0.68, 0.62], mist: [0.76, 0.72, 0.66],

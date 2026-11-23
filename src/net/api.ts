@@ -133,6 +133,8 @@ export interface GameApi {
   rankings(board: RankBoard): Promise<RankView>;
   /** To another channel of this zone, where you stand. Errors: room_full, on_cooldown (10 s between), dead. */
   changeChannel(channel: number): Promise<ZoneEntry>;
+  /** 순간이동 from a village to another one the story has opened. Errors: locked, dead, bad_args. */
+  travel(village: string): Promise<ZoneEntry>;
   equip(itemId: string): Promise<ProfileView>;
   dye(target: "sash" | "scarf", hex: number | null): Promise<ProfileView>;
   pullGacha(n: 1 | 10): Promise<GachaResult & { profile: ProfileView }>;

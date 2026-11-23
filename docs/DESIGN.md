@@ -20,12 +20,20 @@ flash of color across the monochrome field. The hero (an ink stick figure, calle
 
 ## Content (v1)
 - Zones: 먹골 마을 (safe hub: 먹노인 quests, 염색 장인 dyes+potions, 병기 제단 gacha) → 죽림 (Lv1–8) → 연못가 (Lv8–15)
-  → 먹봉우리 (Lv15–20, boss 대먹귀). Portals at zone edges.
+  → 먹봉우리 (Lv15–20, boss 대먹귀) → east door → 솔재 마을 (second safe village: 산할미 daily quests, 여울 dyes+potions,
+  무쇠 altar) → 옛 가마터 (Lv20–27) → 불탄 절터 (Lv27–33) → 향로 마당 (boss 잿불귀). Portals at zone edges.
+- Villages (2026-11): 순간이동 between 먹골 and 솔재 from either village (map sheet, or the village elder's "다른 마을로"); 솔재
+  opens once the main quest reaches "봉우리 너머" (c2q3). Falling past the peak (솔재, kiln, temple, censer) you rise in 솔재
+  (ZoneDef.home), before it in 먹골. A fresh start still always comes into 먹골.
+- Minimap (top left under the portrait, N or a tap opens the map sheet): the zone's path, gates with where they lead, NPCs
+  (gold with a quest mark), fixed monster spots and the boss ground, other players, you. Field monsters are not tracked
+  live; the map sheet lists each zone's monsters with levels, count and drops (pigment, 먹돌 / 색 조각 chance, jade), its
+  NPCs and roads, and the 순간이동 button for villages.
 - Levels 1–35 (MAX_LEVEL). Skills unlock: 물결베기 1, 화염선풍 4, 대지낙하 8, 바람질주 12, 먹감옥 16.
 - Basic combo: 3 ground swings (third is a spin), air spin, dash slash.
 - Monsters: 먹방울 (contact), 먹그림자 (wind-up melee), 먹두꺼비 (ranged ink shot), 대먹귀 (telegraphed slam boss).
 - Main quest chain of 9 steps ending at the boss; 3 daily quests.
-- Potions bought with 안료; respawn in the village after death.
+- Potions bought with 안료; respawn in the village of that part of the world after death.
 
 ## Health and potions (balance, 2026-11)
 - Max health `100 + 20 × level` (+ hat and 도감 bonuses). It was 80 + 14/level, and a field monster's blow took

@@ -36,9 +36,9 @@ const VARY = new Set<SfxName>(["swing-1", "swing-2", "swing-3-spin", "hit-ink", 
 const TRIM: Partial<Record<SfxName, number>> = { "ui-click": 0.45, "dialogue-next": 0.4, "ui-open": 0.55, "swing-1": 0.7, "swing-2": 0.7, "swing-3-spin": 0.8, "hit-ink": 0.75, roll: 0.6 };
 
 const AMB_OF: Record<string, string> = {
-  village: "amb-village", bamboo: "amb-bamboo", pond: "amb-pond", peak: "amb-rain", kiln: "amb-kiln", temple: "amb-temple", censer: "amb-censer",
+  village: "amb-village", pass: "amb-village", bamboo: "amb-bamboo", pond: "amb-pond", peak: "amb-rain", kiln: "amb-kiln", temple: "amb-temple", censer: "amb-censer",
 };
-const ZONE_BGM: Record<string, BgmTrack> = { village: "village", bamboo: "bamboo", pond: "pond", peak: "peak", kiln: "kiln", temple: "temple", censer: "censer" };
+const ZONE_BGM: Record<string, BgmTrack> = { village: "village", pass: "village", bamboo: "bamboo", pond: "pond", peak: "peak", kiln: "kiln", temple: "temple", censer: "censer" };
 
 export interface AudioSettings { master: number; music: number; sfx: number; muted: boolean }
 const DEFAULTS: AudioSettings = { master: 80, music: 60, sfx: 80, muted: false };

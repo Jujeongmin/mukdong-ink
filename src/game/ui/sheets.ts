@@ -4,14 +4,15 @@
 // tiles in rarity frames, cost chips, one big primary tablet per screen, captions instead of paragraphs.
 
 import {
-  AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, type Npc, type QuestDef,
+  AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, villageOpen, type Npc, type QuestDef, type ZoneDef,
 } from "../../shared/world";
 import {
   COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, harmonySkill, HARMONY_BONUS, hatHpBonus, itemOdds, sashCdCut, type Grant, type ItemDef,
 } from "../../shared/items";
-import { atkText, enhancedAtk } from "../../shared/growth";
-import { MONSTERS, SKILLS, potionCost } from "../../shared/combat";
+import { DROPS, atkText, enhancedAtk } from "../../shared/growth";
+import { MONSTERS, SKILLS, isObstacle, potionCost } from "../../shared/combat";
 import { BOOK, BOOK_STEP, bookBonus, bookStage } from "../../shared/book";
+import { NPC_INFO } from "../../shared/story";
 import type { RankBoard, RankRow, RankView } from "../../shared/rank";
 import type { SlotId } from "../../shared/types";
 import type { GachaPull, GameApi, ProfileView } from "../../net/api";
@@ -39,7 +40,23 @@ export interface SheetCtx {
   /** 먹그림 도감: a monster kind's picture (a data URL, drawn once), null if it can't be drawn now */
   monsterPic?(kind: string): string | null;
   memoryBlock?(): string | null;
+  /** the zone you stand in (the map marks it, and 순간이동 starts only from a village) */
+  zone?(): string;
+  /** 순간이동 to a village (the game closes the sheet and moves you) */
+  travel?(village: string): void;
 }
+
+/** The way through the world, in story order: the map's route. */
+const ROUTE = ["village", "bamboo", "pond", "peak", "pass", "kiln", "temple", "censer"];
+/** what each kind of NPC does for you (the map's NPC list) */
+const NPC_WORK: Record<Npc["role"], string> = {
+  elder: t("오늘의 의뢰 · 순간이동"),
+  dyer: t("염색 · 물약"),
+  altar: t("병기 뽑기"),
+  guide: t("이야기 · 지역 의뢰"),
+};
+/** "12%" (or "1%" for the rare ones, never 0 when it can drop) */
+const pct = (p: number) => `${Math.max(1, Math.round(p * 100))}%`;
 
 /** One short line the first time each growth tab is opened. */
 const GROWTH_FIRST: Record<string, string> = {
@@ -47,7 +64,7 @@ const GROWTH_FIRST: Record<string, string> = {
   enhance: t("먹돌로 붓을 다듬는다. 너무 욕심내면 붓이 부서질 수도."),
 };
 
-type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings" | "album" | "rank";
+type SheetId = "elder" | "dyer" | "altar" | "gear" | "growth" | "settings" | "album" | "rank" | "map";
 const SLOT_NAME: Record<SlotId, string> = { weapon: t("무기"), hat: t("머리"), sash: t("띠") };
 /** what an item is called in a line of text: 검 / 붓 for weapons, else its slot */
 const kindName = (it: ItemDef) => (it.slot === "weapon" ? (it.kind === "sword" ? t("검") : t("붓")) : SLOT_NAME[it.slot]);
@@ -178,9 +195,12 @@ export class Sheets {
     this.show("altar");
   }
 
-  openNpc(n: Pick<Npc, "role">, tab?: string): void {
+  /** the NPC whose sheet is open (the elder sheet is titled with their name: 먹노인, 산할미) */
+  private npcId = "elder";
+  openNpc(n: Pick<Npc, "role" | "id">, tab?: string): void {
     this.pull = null;
     if (n.role !== "elder" && n.role !== "dyer" && n.role !== "altar") return;
+    this.npcId = n.id;
     this.show(n.role, tab);
   }
 
@@ -247,6 +267,70 @@ export class Sheets {
     return `${this.head(t("랭킹"))}<p class="cap">${say}</p><div class="rk-sheet">${body}<i class="rk-wash" aria-hidden="true"></i></div>`;
   }
 
+  /** 지도 (the minimap, N, or a village elder's 순간이동): opens on the zone you stand in. */
+  openMap(): void {
+    if (this.current === "map") { this.close(); return; }
+    this.mapSel = this.ctx.zone?.() ?? "village";
+    this.show("map");
+  }
+  private mapSel = "village";
+
+  private map(p: ProfileView): string {
+    const here = this.ctx.zone?.() ?? "";
+    const sel = ZONES[this.mapSel] ? this.mapSel : here;
+    const z = ZONES[sel];
+    const route = ROUTE.filter((id) => ZONES[id]).map((id) => {
+      const d = ZONES[id];
+      const cls = [d.safe ? "safe" : "", d.boss ? "boss" : "", id === here ? "here" : "", id === sel ? "on" : ""].filter(Boolean).join(" ");
+      return `<li><button type="button" class="map-stop ${cls}" data-do="mapSel" data-z="${id}"><i class="map-dot" aria-hidden="true"></i><b>${esc(t(d.name))}</b><small>${d.safe ? t("마을") : `Lv ${d.levels[0]}–${d.levels[1]}`}</small>${id === here ? `<em>${t("지금 여기")}</em>` : ""}</button></li>`;
+    }).join("");
+    return `${this.head(t("지도"))}<div class="map2"><ol class="map-route">${route}</ol><section class="map-detail">${z ? this.mapZone(p, z, here) : ""}</section></div>`;
+  }
+
+  private mapZone(p: ProfileView, z: ZoneDef, here: string): string {
+    // the monsters of the field, one line per kind (levels and how many put together), then the boss
+    const kinds = new Map<string, { lo: number; hi: number; n: number }>();
+    for (const sp of z.spawns) {
+      const k = kinds.get(sp.kind);
+      if (k) { k.lo = Math.min(k.lo, sp.level[0]); k.hi = Math.max(k.hi, sp.level[1]); k.n += sp.count; }
+      else kinds.set(sp.kind, { lo: sp.level[0], hi: sp.level[1], n: sp.count });
+    }
+    const monRow = (kind: string, lo: number, hi: number, n: number, boss: boolean, respawnMs = 0) => {
+      const m = MONSTERS[kind];
+      if (!m) return "";
+      const dr = DROPS[kind];
+      const pic = this.ctx.monsterPic?.(kind);
+      const drops = [
+        m.pigment ? `<span class="map-drop"${tipAttr(t("안료"), t("벨 때마다 얻는다."))}>${resIcon("pigment")}<b>${m.pigment}</b></span>` : "",
+        dr && dr.stone[0] > 0 ? `<span class="map-drop"${tipAttr(t("먹돌"), t("붓을 강화할 때 쓴다."))}>${resIcon("stone")}<b>${dr.stone[0] >= 1 ? `×${dr.stone[1]}` : pct(dr.stone[0])}</b></span>` : "",
+        dr && dr.shard[0] > 0 ? `<span class="map-drop"${tipAttr(t("색 조각"), t("검법을 각성시킨다."))}>${resIcon("shard")}<b>${dr.shard[0] >= 1 ? `×${dr.shard[1]}` : pct(dr.shard[0])}</b></span>` : "",
+        m.jade ? `<span class="map-drop"${tipAttr(t("묵옥"), "")}>${resIcon("jade")}<b>${m.jade}</b></span>` : "",
+      ].join("");
+      const tag = boss ? `<em class="map-tag boss">${t("보스")} · ${t("{n}분마다", { n: Math.round(respawnMs / 60000) })}</em>`
+        : isObstacle(m) ? `<em class="map-tag">${t("길막이")}</em>` : m.armor ? `<em class="map-tag gate">${t("관문")}</em>` : "";
+      return `<li class="map-mon${boss ? " boss" : ""}"><span class="map-pic">${pic ? `<img src="${pic}" alt="">` : ""}</span>
+        <span class="map-mname"><b>${esc(t(m.name))}</b><small>Lv ${lo === hi ? lo : `${lo}–${hi}`}${n > 1 ? ` · ${t("{n}마리", { n })}` : ""}</small>${tag}</span>
+        <span class="map-drops">${drops}</span></li>`;
+    };
+    const mons = [...kinds].map(([kind, k]) => monRow(kind, k.lo, k.hi, k.n, false)).join("")
+      + (z.boss ? monRow(z.boss.kind, z.boss.level, z.boss.level, 1, true, z.boss.respawnMs) : "");
+    const npcs = z.npcs.map((n) => `<li><b>${esc(npcName(n.id))}</b><small>${esc(t(NPC_INFO[n.id]?.title ?? ""))}</small><span class="cap">${esc(NPC_WORK[n.role])}</span></li>`).join("");
+    const ways = z.portals.map((g) => `<button type="button" class="map-way" data-do="mapSel" data-z="${g.to}">${esc(t(ZONES[g.to]?.name ?? g.to))}</button>`).join("");
+    // 순간이동: between villages, starting from one
+    let travel = "";
+    if (z.safe && z.id !== here) {
+      const open = villageOpen(p, z.id);
+      const fromVillage = !!ZONES[here]?.safe;
+      const why = !open ? t("아직 가 보지 못한 마을이다.") : !fromVillage ? t("순간이동은 마을에서만 할 수 있다.") : "";
+      travel = `<div class="map-travel"><button class="btn btn-lg" type="button" data-do="travel" data-z="${z.id}" ${why || this.busy ? "disabled" : ""}>${t("{name}로 순간이동", { name: t(z.name) })}</button>${why ? `<p class="cap">${why}</p>` : ""}</div>`;
+    }
+    return `<h3 class="map-title">${esc(t(z.name))}<small>${z.safe ? t("마을 · 쉬는 곳, 생명이 빨리 찬다") : t("사냥터 · Lv {a}–{b}", { a: z.levels[0], b: z.levels[1] })}</small></h3>
+      ${travel}
+      ${mons ? `<h4 class="sec">${t("몬스터와 드랍")}</h4><ul class="map-mons">${mons}</ul>` : ""}
+      ${npcs ? `<h4 class="sec">${t("사람들")}</h4><ul class="map-npcs">${npcs}</ul>` : ""}
+      ${ways ? `<h4 class="sec">${t("이어지는 길")}</h4><div class="map-ways">${ways}</div>` : ""}`;
+  }
+
   /** 화첩: the pictures of each recovered color. */
   openAlbum(page = ""): void {
     if (this.current === "album" && !page) { this.close(); return; }
@@ -304,6 +388,7 @@ export class Sheets {
     else if (this.current === "gear") html = this.gear(p);
     else if (this.current === "album") html = this.album(p);
     else if (this.current === "rank") html = this.rank();
+    else if (this.current === "map") html = this.map(p);
     else if (this.current === "settings" && this.ctx.settings) html = this.head(t("설정")) + settingsHtml(this.tab, this.ctx.settings);
     else if (this.current === "growth") {
       const first = `growth-${this.tab}`;
@@ -427,7 +512,7 @@ export class Sheets {
       }).join("");
       const ready = DAILY_QUESTS.filter((_, k) => { const d = dailyStatus(p, k); return d.done && !d.claimed; }).length;
       const all = ready > 1 ? `<button class="btn btn-lg daily-all" type="button" data-do="claimDailyAll" ${this.busy ? "disabled" : ""}>${t("모두 받기 ({n})", { n: ready })}</button>` : "";
-      return `${this.head(t("먹노인"))}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], t("하루에 한 번씩 새로 맡긴다.\n다 하면 여기서, 또는 오른쪽 의뢰 칸에서 바로 받는다."))}<ol class="qrows">${daily}</ol>${all}`;
+      return `${this.head(npcName(this.npcId))}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], t("하루에 한 번씩 새로 맡긴다.\n다 하면 여기서, 또는 오른쪽 의뢰 칸에서 바로 받는다."))}<ol class="qrows">${daily}</ol>${all}`;
     }
     let main = `<p class="cap">${t("이어지는 의뢰가 없다.")}</p>`;
     if (s) {
@@ -435,7 +520,7 @@ export class Sheets {
       main = `<div class="qrow big${s.done ? " ready" : ""}"><div class="qmain"><b class="sec">${esc(t(s.q.title))}</b><p class="body">${esc(t(s.q.text))}</p>
         <span class="cap">${esc(t("진행 {p} · {state}", { p: progressText(s), state }))}</span>${rewardChips(s.q)}</div></div>`;
     }
-    return `${this.head(t("먹노인"))}${bar}<p class="say">${esc(say)}</p>${main}`;
+    return `${this.head(npcName(this.npcId))}${bar}<p class="say">${esc(say)}</p>${main}`;
   }
 
   /* ---------- 염색 장인 ---------- */
@@ -567,6 +652,8 @@ export class Sheets {
     if (what && growthLocal(what, b, this.growthState)) { this.render(); return; }
     if (what === "pickGear") { this.gearSel = b.dataset.id ?? ""; this.render(); return; }
     if (what === "memory") { this.ctx.enterMemory?.(b.dataset.pageGo ?? ""); return; }
+    if (what === "mapSel") { this.mapSel = b.dataset.z ?? this.mapSel; this.render(); return; }
+    if (what === "travel") { const to = b.dataset.z ?? ""; this.close(); this.ctx.travel?.(to); return; }
     if (what === "gearFilter") { this.gearFilter = (b.dataset.v ?? "") as SlotId | ""; this.render(); return; }
     this.busy = true;
     this.render();

@@ -35,12 +35,12 @@ describe("chapter 2 zones", () => {
     expect(parseRoomId("ink-kiln-0")).toBe(null);
   });
 
-  test("the way runs peak (east door) → kiln → temple → censer and back, arriving out of the bosses' reach", async (server) => {
+  test("the way runs peak (east door) → 솔재 → kiln → temple → censer and back, arriving out of the bosses' reach", async (server) => {
     const kiln = await goTo(server, "test-a", "kiln");
     expect(kiln.roomId).toBe("ink-kiln-1");
     const censer = await goTo(server, "test-b", "censer");
     expect([censer.roomId, censer.x, censer.z]).toEqual(["ink-censer-1", 0, 17]);
-    const east = ZONES.peak.portals.find((p) => p.to === "kiln")!;
+    const east = ZONES.peak.portals.find((p) => p.to === "pass")!;
     expect([east.x, east.z]).toEqual([27, 3]);
     // Each arrival point stands outside the aggro of the gate monsters and bosses nearby.
     const peakBoss = ZONES.peak.boss!;

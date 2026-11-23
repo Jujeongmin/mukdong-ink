@@ -2,8 +2,8 @@
 // on the main quest's state (offer → accept, progress, complete → reward → maybe the next offer); otherwise
 // idle chatter, then the NPC's own service (daily list, dye vats, the altar).
 
-import { CHAPTER_ENDS, IDLE_LINES, DAILY_INTRO, PROLOGUE, QUEST_STORY, SUB_STORY, chapterOf, type Line } from "../shared/story";
-import { MAIN_QUESTS, type Npc } from "../shared/world";
+import { CHAPTER_ENDS, IDLE_LINES, DAILY_INTRO, DAILY_INTRO_BY, TRAVEL_LINE, PROLOGUE, QUEST_STORY, SUB_STORY, chapterOf, type Line } from "../shared/story";
+import { MAIN_QUESTS, VILLAGES, villageOpen, type Npc } from "../shared/world";
 import type { GameApi, ProfileView } from "../net/api";
 import { dailyStatus, mainStatus, readyByTalk, rewardText, subStatus } from "./quests";
 import type { Dialogue } from "./ui/dialogue";
@@ -24,6 +24,8 @@ export interface StoryCtx {
   claimSub?(): Promise<void>;
   /** 자동 진행 on the 서브 퀘스트 */
   startSub?(): void;
+  /** the map sheet (순간이동 between villages is chosen there) */
+  openMap?(): void;
 }
 
 const LATER = { label: t("나중에"), value: "" };
@@ -135,17 +137,25 @@ export class Story {
     const idle = pickIdle(npc.id);
     if (npc.role === "elder") {
       if (!handled && idle) await dialogue.play(idle);
-      // the daily list only when the elder had no story for you this time
-      const open = !handled && [0, 1, 2].some((i) => !dailyStatus(p, i).claimed);
-      if (open) {
-        const pick = await dialogue.play(DAILY_INTRO, { choices: [{ label: t("오늘의 의뢰 보기"), value: "daily" }, LATER] });
-        if (pick === "daily") sheets.openNpc(npc, "daily");
-      }
+      if (handled) return; // the daily list only when the elder had no story for you this time
+      const daily = [0, 1, 2].some((i) => !dailyStatus(p, i).claimed);
+      // 순간이동 to another village, once the story has opened one
+      const travel = !!this.ctx.openMap && VILLAGES.some((v) => v !== p.zone && villageOpen(p, v));
+      if (!daily && !travel) return;
+      const choices = [
+        ...(daily ? [{ label: t("오늘의 의뢰 보기"), value: "daily" }] : []),
+        ...(travel ? [{ label: t("다른 마을로"), value: "travel" }] : []),
+        LATER,
+      ];
+      const intro = daily ? (DAILY_INTRO_BY[npc.id] ?? DAILY_INTRO) : (TRAVEL_LINE[npc.id] ?? TRAVEL_LINE.elder);
+      const pick = await dialogue.play(intro, { choices });
+      if (pick === "daily") sheets.openNpc(npc, "daily");
+      else if (pick === "travel") this.ctx.openMap?.();
       return;
     }
     if (npc.role === "dyer" && !handled && this.ctx.hints?.has("death") && !this.ctx.hints.has("dyer-potion")) {
       this.ctx.hints.mark("dyer-potion");
-      const pick = await dialogue.play([{ who: "dyer", text: t("또 먹에 잠겼다면서요? 물약 몇 개 챙겨 가요! 여기서 팔아요.") }], { choices: [{ label: t("물약 보기"), value: "potion" }, { label: t("그만 가 볼게"), value: "" }] });
+      const pick = await dialogue.play([{ who: npc.id, text: t("또 먹에 잠겼다면서요? 물약 몇 개 챙겨 가요! 여기서 팔아요.") }], { choices: [{ label: t("물약 보기"), value: "potion" }, { label: t("그만 가 볼게"), value: "" }] });
       if (pick === "potion") sheets.openNpc(npc, "potion");
       return;
     }

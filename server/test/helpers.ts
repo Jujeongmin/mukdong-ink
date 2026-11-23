@@ -45,7 +45,7 @@ export async function goTo(server: any, account: string, zone: string): Promise<
   const peak = ["bamboo", "pond", "peak"];
   const path: Record<string, string[]> = {
     village: [], bamboo: ["bamboo"], pond: ["bamboo", "pond"], peak,
-    kiln: [...peak, "kiln"], temple: [...peak, "kiln", "temple"], censer: [...peak, "kiln", "temple", "censer"],
+    pass: [...peak, "pass"], kiln: [...peak, "pass", "kiln"], temple: [...peak, "pass", "kiln", "temple"], censer: [...peak, "pass", "kiln", "temple", "censer"],
   };
   let entry = await inVillage(server, account);
   let from = "village";

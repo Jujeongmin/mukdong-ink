@@ -53,12 +53,17 @@ export interface ZoneDef {
   portals: Portal[];
   npcs: Npc[];
   /** scenery theme used by the client */
-  theme: "village" | "bamboo" | "pond" | "peak" | "kiln" | "temple" | "censer";
+  theme: "village" | "bamboo" | "pond" | "peak" | "kiln" | "temple" | "censer" | "pass";
+  /** a village: where you stand after 순간이동 into it, and after rising there */
+  spawn?: { x: number; z: number };
+  /** the village you rise in after falling here (default START_ZONE) */
+  home?: string;
 }
 
 export const ZONES: Record<string, ZoneDef> = {
   village: {
     id: "village", name: "먹골 마을", radius: 22, safe: true, levels: [1, 20], ground: 0xb7b08f, theme: "village",
+    spawn: { x: 0, z: 6 },
     spawns: [],
     portals: [{ to: "bamboo", x: 0, z: -20, arriveX: 0, arriveZ: 24, label: "죽림으로" }],
     npcs: [
@@ -97,13 +102,28 @@ export const ZONES: Record<string, ZoneDef> = {
     portals: [
       { to: "pond", x: 0, z: 27, arriveX: 0, arriveZ: -23, label: "연못가로" },
       // 2장: the east door (not north: arriving there would land beside 대먹귀).
-      { to: "kiln", x: 27, z: 3, arriveX: 0, arriveZ: 25, label: "옛 가마터로" },
+      { to: "pass", x: 27, z: 3, arriveX: 0, arriveZ: 16, label: "솔재 마을로" },
     ],
     npcs: [{ id: "heukwol", name: "흑월", role: "guide", x: -4.5, z: 20 }],
   },
+  // 두 번째 마을: 2장의 거점. Safe, with its own daily quests, potions and dyes, a brush altar, and 순간이동 to 먹골.
+  pass: {
+    id: "pass", name: "솔재 마을", radius: 22, safe: true, levels: [20, 35], ground: 0xb3ab94, theme: "pass",
+    spawn: { x: 0, z: 4 }, home: "pass",
+    spawns: [],
+    portals: [
+      { to: "peak", x: 0, z: 20, arriveX: 23, arriveZ: 3, label: "먹봉우리로" },
+      { to: "kiln", x: 0, z: -20, arriveX: 0, arriveZ: 25, label: "옛 가마터로" },
+    ],
+    npcs: [
+      { id: "sanhalmi", name: "산할미", role: "elder", x: -6, z: -3 },
+      { id: "yeoul", name: "여울", role: "dyer", x: 7, z: -1 },
+      { id: "musoe", name: "무쇠", role: "altar", x: 0, z: -9 },
+    ],
+  },
   // ---------- 2장 「불빛 조각」 (docs/CHAPTER2.md) ----------
   kiln: {
-    id: "kiln", name: "옛 가마터", radius: 32, safe: false, levels: [20, 27], ground: 0xa59a8a, theme: "kiln",
+    id: "kiln", name: "옛 가마터", radius: 32, safe: false, levels: [20, 27], ground: 0xa59a8a, theme: "kiln", home: "pass",
     spawns: [
       { kind: "jar", count: 10, level: [20, 24] },
       { kind: "crow", count: 5, level: [21, 26] },
@@ -111,13 +131,13 @@ export const ZONES: Record<string, ZoneDef> = {
       { kind: "kilnlord", count: 1, level: [24, 24], at: [KILN_LORD] },
     ],
     portals: [
-      { to: "peak", x: 0, z: 29, arriveX: 23, arriveZ: 3, label: "먹봉우리로" },
+      { to: "pass", x: 0, z: 29, arriveX: 0, arriveZ: -16, label: "솔재 마을로" },
       { to: "temple", x: 0, z: -29, arriveX: 0, arriveZ: 25, label: "불탄 절터로" },
     ],
     npcs: [{ id: "dalrae", name: "달래", role: "guide", x: 5, z: 21 }],
   },
   temple: {
-    id: "temple", name: "불탄 절터", radius: 32, safe: false, levels: [27, 33], ground: 0x8f8c84, theme: "temple",
+    id: "temple", name: "불탄 절터", radius: 32, safe: false, levels: [27, 33], ground: 0x8f8c84, theme: "temple", home: "pass",
     spawns: [
       { kind: "shademonk", count: 8, level: [27, 31] },
       { kind: "lantern", count: TEMPLE_LANTERNS.length, level: [29, 32], at: TEMPLE_LANTERNS },
@@ -132,7 +152,7 @@ export const ZONES: Record<string, ZoneDef> = {
     npcs: [{ id: "haedam", name: "해담", role: "guide", x: -5, z: 21 }],
   },
   censer: {
-    id: "censer", name: "향로 마당", radius: 24, safe: false, levels: [33, 35], ground: 0x7d7870, theme: "censer",
+    id: "censer", name: "향로 마당", radius: 24, safe: false, levels: [33, 35], ground: 0x7d7870, theme: "censer", home: "pass",
     spawns: [],
     boss: { kind: "ashboss", level: 35, respawnMs: 240000, x: 0, z: -7 },
     portals: [{ to: "temple", x: 0, z: 21, arriveX: 0, arriveZ: -25, label: "절터로" }],
@@ -141,6 +161,28 @@ export const ZONES: Record<string, ZoneDef> = {
 };
 export const START_ZONE = "village";
 export const START_POS = { x: 0, z: 6 };
+
+/* ---------- villages and 순간이동 ---------- */
+/** The safe zones, in story order: 순간이동 runs between them. */
+export const VILLAGES: readonly string[] = ["village", "pass"];
+/**
+ * Whether 순간이동 into village `id` is open to you: 먹골 always; 솔재 once the story has sent you over the
+ * peak's east door (the quest "봉우리 너머" or later).
+ */
+export function villageOpen(p: { main: number }, id: string): boolean {
+  if (id === START_ZONE) return true;
+  if (id === "pass") return p.main >= MAIN_QUESTS.findIndex((q) => q.id === "c2q3");
+  return false;
+}
+/** The village you rise in after falling in `zone`. */
+export function homeOf(zone: string): string {
+  const h = ZONES[zone]?.home;
+  return h && ZONES[h]?.safe ? h : START_ZONE;
+}
+/** Where you stand on coming into village `id` by 순간이동 or on rising there. */
+export function spawnOf(id: string): { x: number; z: number } {
+  return ZONES[id]?.spawn ?? START_POS;
+}
 export const PORTAL_REACH = 3;
 export const NPC_REACH = 4;
 /** Standing this close to a quest NPC in a hunting zone, monsters leave you be (you can read the dialogue). */
@@ -208,7 +250,7 @@ export const MAIN_QUESTS: QuestDef[] = [
   /** Chapter 2 「불빛 조각」. Dialogue for each step is in story.ts (QUEST_STORY[id]). */
   { id: "c2q1", title: "흑월의 전갈", text: "산을 내려가 먹노인에게 흑월의 말을 전하자.", goal: { type: "talk", npc: "elder" }, giver: "heukwol", turnIn: "elder", reward: { exp: 1000, pigment: 200, potions: 5 } },
   { id: "c2q2", title: "그을린 천", text: "먹노인이 건넨 그을린 천을 단이에게 보이자.", goal: { type: "talk", npc: "dyer" }, giver: "elder", turnIn: "dyer", reward: { exp: 1000, pigment: 200 } },
-  { id: "c2q3", title: "봉우리 너머", text: "먹봉우리 동쪽 문을 지나 옛 가마터로 가자.", goal: { type: "reach", zone: "kiln" }, giver: "dyer", turnIn: "dalrae", reward: { exp: 1500, pigment: 250, potions: 5 } },
+  { id: "c2q3", title: "봉우리 너머", text: "먹봉우리 동쪽 문 너머 솔재 마을을 지나 옛 가마터로 가자.", goal: { type: "reach", zone: "kiln" }, giver: "dyer", turnIn: "dalrae", reward: { exp: 1500, pigment: 250, potions: 5 } },
   { id: "c2q4", title: "깨진 옹기", text: "옛 가마터에서 옹기귀 15마리를 깨자.", goal: { type: "kill", kind: "jar", zone: "kiln", count: 15 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 2500, pigment: 300, stones: 5, shards: 1, points: 1 } },
   { id: "c2q5", title: "가마 지킴이", text: "큰 가마 입구의 가마 지킴이를 베자. 깨어난 화염선풍이 필요하다.", goal: { type: "kill", kind: "kilnlord", zone: "kiln", count: 1 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 3000, pigment: 400, jade: 40, stones: 5, points: 1 } },
   { id: "c2q6", title: "하나 남은 등불", text: "27단계까지 붓을 깊게 하고, 불탄 절터의 등지기를 찾자.", goal: { type: "level", level: 27 }, giver: "dalrae", turnIn: "haedam", reward: { exp: 2500, pigment: 300, potions: 5 } },

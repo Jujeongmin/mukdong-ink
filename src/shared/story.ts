@@ -47,6 +47,9 @@ export const NPC_INFO: Record<string, NpcInfo> = {
   baram: { name: "바람이", title: "죽림 지기" },
   noeul: { name: "노을", title: "연못가 뱃사공" },
   heukwol: { name: "흑월", title: "먹봉우리의 은자" },
+  sanhalmi: { name: "산할미", title: "솔재 마을 어른" },
+  yeoul: { name: "여울", title: "솔재 마을 염색집" },
+  musoe: { name: "무쇠", title: "솔재 병기 제단지기" },
   dalrae: { name: "달래", title: "옛 가마터 옹기장이" },
   haedam: { name: "해담", title: "불탄 절터의 등지기" },
   hongmae: { name: "홍매", title: "불빛의 붓 검객" },
@@ -311,6 +314,18 @@ export const IDLE_LINES: Record<string, Line[][]> = {
     [{ who: "altar", text: "…묵옥을 바치면 옛 검객의 붓이 돌아온다. 확률은 제단에 새겼다." }],
     [{ who: "altar", text: "…쉰 번째엔 전설 붓이 반드시 온다. 제단은 셈을 잊지 않는다." }],
   ],
+  sanhalmi: [
+    [{ who: "sanhalmi", text: "고개 넘느라 욕봤다. 여기선 다리 쭉 펴고 쉬어라." }],
+    [{ who: "sanhalmi", text: "먹골 영감은 잘 있더냐? 그 양반, 지팡이는 나보다 먼저 짚었다." }],
+  ],
+  yeoul: [
+    [{ who: "yeoul", text: "단이 언니한테 배웠어요. 물약도 똑같이 지어요!" }],
+    [{ who: "yeoul", text: "가마터 재가 묻으면 물이 잘 안 들어요. 한 번 헹구고 오세요." }],
+  ],
+  musoe: [
+    [{ who: "musoe", text: "…형님 제단이랑 같은 셈이다. 여기서 바쳐도 쉰 번째는 쉰 번째다." }],
+    [{ who: "musoe", text: "…먹골까지 내려갈 것 없다. 붓은 여기서도 돌아온다." }],
+  ],
   baram: [
     [{ who: "baram", text: "내리찍는 놈은 바닥에 고리부터 그려. 그때 굴러서 빠져." }],
     [{ who: "baram", text: "대숲은 내가 지켜. 넌 앞만 봐." }],
@@ -339,6 +354,16 @@ export const IDLE_LINES: Record<string, Line[][]> = {
 export const DAILY_INTRO: Line[] = [
   { who: "elder", text: "먹귀신은 날마다 다시 고인단다. 오늘도 살펴 주겠느냐." },
 ];
+/** The same, from the other villages' daily givers (DAILY_INTRO is the elder's). */
+export const DAILY_INTRO_BY: Record<string, Line[]> = {
+  sanhalmi: [{ who: "sanhalmi", text: "영감이 주던 그날 일, 여기서도 내가 준다. 받아 가라." }],
+};
+
+/** 순간이동 offered by each village's daily giver: where it takes you is chosen on the map. */
+export const TRAVEL_LINE: Record<string, Line[]> = {
+  elder: [{ who: "elder", text: "고개 너머 솔재로 가려느냐? 지도를 펴 보거라. 붓이 길을 접어 준다." }],
+  sanhalmi: [{ who: "sanhalmi", text: "먹골로 내려가려고? 지도를 펴라. 먹이 길을 접어 준다." }],
+};
 
 export const CHAPTER_END: Line[] = [
   { who: "", text: "1장 「물빛 조각」 끝." },
