@@ -2133,3 +2133,26 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .gourd.auto-on::after { content: "자동"; background: #4b6b26; box-shadow: inset 0 0 0 0.5px rgba(222, 240, 190, 0.7), 0 0 6px rgba(111, 154, 58, 0.55); }
 /* the panel's bottom line sat right under the big button's own brush line (two lines under 단련 / +N 강화): one is enough */
 #ui .sheet .gr2-detail::after, #ui .sheet .enh2-main::after { content: none; }
+
+/* the top frame: the boss nearby, else the monster I last struck (picture, name · Lv, life).
+   The life drops at once; a white band keeps what was just cut off, holds 1 s, then runs down to it. */
+#ui .bossbar { grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 8px; align-items: center; transition: opacity 0.6s ease 0.25s; }
+#ui .bossbar > b { grid-column: 2; justify-self: center; line-height: 1.15; }
+#ui .bossbar > .gauge { grid-column: 2; }
+#ui .bossbar .tg-pic { grid-column: 1; grid-row: 1 / span 2; width: 46px; height: 46px; background: center / contain no-repeat; position: relative; isolation: isolate; }
+#ui .bossbar .tg-pic::before { content: ""; position: absolute; inset: -5px; z-index: -1; background: rgba(239, 229, 209, 0.82);
+  -webkit-mask: var(--m-dab) center / 100% 100% no-repeat; mask: var(--m-dab) center / 100% 100% no-repeat; }
+#ui .bossbar .tg-pic[hidden] { display: none; }
+#ui .bossbar .gauge .chip { background: #fbf7ee; transition: clip-path 0.5s ease-in-out 1s; }
+#ui .bossbar .gauge .chip.snap { transition: none; }
+#ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 15px; }
+#ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(300px, 36vw); height: 20px; }
+#ui .bossbar[data-tier="named"] > b { color: #f3d9a8; }
+#ui .bossbar.dying { opacity: 0; }
+/* phone held sideways: a thin strip at the very top, clear of my life bar (left) and the menu scroll (right) */
+@media (max-height: 480px) {
+  #ui .bossbar { top: calc(3px + var(--safe-t)); column-gap: 5px; }
+  #ui .bossbar .tg-pic { width: 28px; height: 28px; }
+  #ui .bossbar > b, #ui .bossbar[data-tier="mob"] > b, #ui .bossbar[data-tier="named"] > b { font-size: 12px; line-height: 1.1; }
+  #ui .bossbar .gauge.boss, #ui .bossbar[data-tier="mob"] .gauge.boss, #ui .bossbar[data-tier="named"] .gauge.boss { width: min(230px, 31vw); height: 14px; }
+}

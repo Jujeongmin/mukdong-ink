@@ -2,7 +2,7 @@
 // like the prototype; all outcomes (damage, rewards, HP, quests, shop) come from GameApi.
 
 import { createGameApi } from "../net";
-import type { GameApi, HitResult, ProfileView, RoomView, ZoneEntry } from "../net/api";
+import type { GameApi, Hit, HitResult, ProfileView, RoomView, ZoneEntry } from "../net/api";
 import type { Look, Pose, RoomPlayer } from "../shared/types";
 import { MONSTERS, SKILLS } from "../shared/combat";
 import { forwardX, forwardZ } from "../shared/hit";
@@ -29,7 +29,7 @@ import type { RGB } from "./util";
 import { SKILL_COL, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, ring, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
-import { Hud } from "./ui/hud";
+import { Hud, type TargetInfo } from "./ui/hud";
 import { Input, KEYS, type Act } from "./ui/input";
 import { Sheets } from "./ui/sheets";
 import { Dialogue } from "./ui/dialogue";
@@ -152,6 +152,8 @@ export class Game {
   /** kills in 죽림 while c1q3 is running (gate 2: the third one) */
   private gateKills = 0;
   private readonly eliteTagged: MView[] = [];
+  /** the monster I last struck, for the frame at the top (MMO style); the boss frame wins over it */
+  private tgt: { id: string; kind: string; name: string; maxHp: number; named: boolean; hp: number; from: number; at: number; deadAt: number } | null = null;
   private readonly auto: AutoPlay;
   private readonly input: Input;
   private readonly monsters = new Monsters();
@@ -708,6 +710,7 @@ export class Game {
       else this.hud.number(v.x, def.height + 0.5, v.z, String(h.dmg), h.kill ? "kill" : "");
     }
     if (any) hitFeel(heavy, killed);
+    this.pickTarget(res.hits);
     const p = this.player;
     let y = 2.6;
     if (res.exp > 0) { this.hud.number(p.x, y, p.z, `경험 +${res.exp}`, "gain"); y += 0.4; }
@@ -932,6 +935,7 @@ export class Game {
     for (const a of this.zone.anchors) this.hud.dropTag(a);
     this.zone.dispose();
     this.monsters.clear();
+    this.tgt = null;
     for (const [id, r] of this.remotes) this.dropRemote(id, r);
     clearFx();
     clearLights();
@@ -1160,6 +1164,53 @@ export class Game {
   /** when this session's play began (first-time feature thoughts wait a little) */
   private begunAt = 0;
   /** Writes the n-th pooled monster target (no per-frame closure or object); returns n + 1. */
+  /**
+   * Which struck monster the top frame follows: the one already shown while it's still being hit (or was, within 3 s);
+   * otherwise the hit one with the least life left. Its life drops here at once (the server's count follows).
+   */
+  private pickTarget(hits: readonly Hit[]): void {
+    const now = performance.now();
+    const cur = this.tgt;
+    let curHit = false;
+    let alive: { v: MView; hp: number; from: number } | null = null;
+    let dead: MView | null = null;
+    for (const h of hits) {
+      const v = this.monsters.views.get(h.id);
+      if (!v || v.def.boss || h.resisted && h.dmg <= 0) continue;
+      const base = cur?.id === h.id ? Math.min(cur.hp, v.hp) : v.hp;
+      const hp = h.kill ? 0 : Math.max(1, base - h.dmg);
+      if (cur?.id === h.id) {
+        cur.hp = hp; cur.at = now; curHit = true;
+        if (h.kill) cur.deadAt = now;
+      }
+      if (h.kill) dead ??= v;
+      else if (!alive || hp < alive.hp) alive = { v, hp, from: base };
+    }
+    if (cur && !cur.deadAt && (curHit || now - cur.at < 3000)) return;
+    if (cur && cur.deadAt && !alive) return; // let the one just cut down show its empty bar
+    const pick = alive ?? (dead ? { v: dead, hp: 0, from: dead.hp } : null);
+    if (!pick) return;
+    const v = pick.v;
+    this.tgt = { id: v.id, kind: v.kind, name: `${v.def.name} · Lv ${v.level}`, maxHp: Math.max(1, v.maxHp), named: !!v.def.leash,
+      hp: pick.hp, from: pick.from, at: now, deadAt: pick.hp <= 0 ? now : 0 };
+  }
+
+  /** The top frame for the struck monster: follows the synced life, shows 0 briefly on a kill, goes after 5 s idle. */
+  private targetFrame(): TargetInfo | null {
+    const t = this.tgt;
+    if (!t) return null;
+    const now = performance.now();
+    const v = this.monsters.views.get(t.id);
+    if (!t.deadAt) {
+      if (!v) { this.tgt = null; return null; }
+      if (v.mode === "dead" || v.hp <= 0) { t.hp = 0; t.deadAt = now; }
+      else if (v.hp < t.hp || now - t.at > 1500) t.hp = v.hp; // never bounce back up under fresh blows
+      if (!t.deadAt && now - t.at > 5000) { this.tgt = null; return null; }
+    } else if (now - t.deadAt > 900) { this.tgt = null; return null; }
+    return { id: t.id, name: t.name, frac: t.hp / t.maxHp, from: t.from / t.maxHp, tier: t.named ? "named" : "mob", dying: !!t.deadAt,
+      pic: this.portraits.figureOf(`mon:${t.kind}`) ?? this.portraits.figure(`mon:${t.kind}`, monsterFigure(t.kind)) };
+  }
+
   private pushTarget(n: number, x: number, z: number): number {
     const o = this.targetPool[n] ?? (this.targetPool[n] = { x: 0, z: 0 });
     o.x = x; o.z = z;
@@ -1288,7 +1339,8 @@ export class Game {
     this.hud.prompt(prompt);
     this.npcMarks();
     const boss = this.monsters.boss(p.x, p.z);
-    this.hud.boss(boss ? `${boss.def.name} · Lv ${boss.level}` : null, boss ? boss.hp / Math.max(1, boss.maxHp) : 0);
+    if (boss) this.hud.target({ id: boss.id, name: `${boss.def.name} · Lv ${boss.level}`, frac: boss.hp / Math.max(1, boss.maxHp), tier: "boss", pic: null, dying: false });
+    else this.hud.target(this.targetFrame());
     // profile fallback: if a reward came back but no profile push followed, fetch it once
     if (this.profileCheckAt && performance.now() > this.profileCheckAt) {
       const stale = this.lastProfileAt < this.profileCheckAt - 700;

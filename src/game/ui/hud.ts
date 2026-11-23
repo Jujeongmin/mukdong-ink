@@ -97,7 +97,7 @@ const MARKUP = `
 <aside class="jokja" data-quest hidden></aside>
 <div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>돌아가기<kbd>Esc</kbd></button></div>
 <div class="zone-paint passive" data-zonepaint hidden><b data-zpname></b><span class="seal" data-zpch></span></div>
-<div class="bossbar passive" data-boss hidden><b data-bossname></b><div class="hp gauge boss"><i class="track"></i><i class="fill" data-bosshp></i></div></div>
+<div class="bossbar passive" data-boss hidden><span class="tg-pic" data-tgpic aria-hidden="true"></span><b data-bossname></b><div class="hp gauge boss"><i class="track"></i><i class="chip" data-bosschip></i><i class="fill" data-bosshp></i></div></div>
 <div class="tags passive" data-tags></div>
 <div class="tags passive" data-dmg></div>
 <div class="arc" data-arc>
@@ -141,6 +141,18 @@ const TAG_RANK: Record<string, number> = { me: 0, npc: 1, elite: 2, portal: 3, p
 const tagOrder: TagSlot[] = [];
 const vProj = new THREE.Vector3();
 
+/** What the top frame shows (see Hud.target). */
+export interface TargetInfo {
+  id: string;
+  name: string;
+  frac: number;
+  /** life before the first blow on this target, so even that blow leaves its white band */
+  from?: number;
+  tier: "boss" | "named" | "mob";
+  pic: string | null;
+  dying: boolean;
+}
+
 export class Hud {
   private readonly root: HTMLElement;
   private readonly skillBtns: HTMLElement[] = [];
@@ -154,6 +166,7 @@ export class Hud {
   private promptText = "";
   private bossShown = false;
   private bossFrac = -1;
+  private tgId = "";
   private hpFrac = -1;
   private hpShown = 1;
   private lastExp = -1;
@@ -664,22 +677,46 @@ export class Hud {
     if (text) p.innerHTML = `<kbd>${KEYS.talk}</kbd><span>${esc(text)}</span>`;
   }
 
-  boss(name: string | null, frac: number): void {
+  /**
+   * The frame at the top: the boss nearby, else the monster I last struck. Its life drops at once; a white band
+   * keeps the part just cut off, holds 1 s, then runs down to it (each new blow restarts the hold).
+   */
+  target(t: TargetInfo | null): void {
     const b = el("[data-boss]", this.root);
-    if (!name) {
-      if (this.bossShown) { b.hidden = true; this.bossShown = false; }
+    if (!t) {
+      if (this.bossShown) { b.hidden = true; this.bossShown = false; this.tgId = ""; }
       return;
     }
-    if (!this.bossShown) {
+    const fill = el("[data-bosshp]", this.root), chip = el("[data-bosschip]", this.root);
+    const f = Math.max(0, Math.min(1, t.frac));
+    if (!this.bossShown || t.id !== this.tgId) {
       b.hidden = false;
       this.bossShown = true;
-      el("[data-bossname]", this.root).textContent = name;
+      this.tgId = t.id;
+      el("[data-bossname]", this.root).textContent = t.name;
+      b.dataset.tier = t.tier;
+      const pic = el("[data-tgpic]", this.root);
+      pic.hidden = !t.pic;
+      if (t.pic && pic.dataset.src !== t.pic) { pic.dataset.src = t.pic; pic.style.backgroundImage = `url("${t.pic}")`; }
       this.bossFrac = -1;
+      this.snapChip(chip, Math.max(f, Math.min(1, t.from ?? f)));
+      fill.style.setProperty("--f", f.toFixed(3));
+      chip.style.setProperty("--f", f.toFixed(3));
+      this.bossFrac = f;
     }
-    if (Math.abs(frac - this.bossFrac) > 1e-3) {
-      this.bossFrac = frac;
-      el("[data-bosshp]", this.root).style.setProperty("--f", Math.max(0, frac).toFixed(3));
+    b.classList.toggle("dying", t.dying);
+    if (Math.abs(f - this.bossFrac) > 1e-3) {
+      if (f > this.bossFrac) this.snapChip(chip, f); // healed or reset: no white band
+      else chip.style.setProperty("--f", f.toFixed(3));
+      this.bossFrac = f;
+      fill.style.setProperty("--f", f.toFixed(3));
     }
+  }
+  private snapChip(chip: HTMLElement, f: number): void {
+    chip.classList.add("snap");
+    chip.style.setProperty("--f", f.toFixed(3));
+    void chip.offsetWidth;
+    chip.classList.remove("snap");
   }
 
   /* ---------- floating numbers ---------- */
