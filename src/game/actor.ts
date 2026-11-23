@@ -75,6 +75,11 @@ const SKILL_CD = SKILLS.map((s) => s.cd);
 const WHITE: RGB = [1, 1, 1];
 const EMBER: RGB = [1, 0.62, 0.15];
 const GOLD_MOTE: RGB = [0.95, 0.78, 0.32];
+const BLUE_MOTE: RGB = [0.55, 0.75, 1];
+/** the air round a figure in 영웅 (purple) or 전설 (gold) gear */
+const AURA_EPIC: RGB = [0.62, 0.38, 0.88];
+const AURA_LEGEND: RGB = [1, 0.8, 0.32];
+const RANK: Record<string, number> = { 일반: 0, 희귀: 1, 영웅: 2, 전설: 3 };
 const FAN = 0.26; // ±15° for the awakened 물결베기
 const WIND_EDGE: RGB = [0.35, 0.37, 0.42];
 
@@ -186,6 +191,12 @@ export class Actor {
   /** the worn sash cuts every 검법 cooldown by this much (1 = none) */
   private cdMul = 1;
   private plus = 0;
+  /** gear aura: 0 none, 2 영웅, 3 전설 (the best piece worn); its color; seconds to the next 전설 ring */
+  private aura = 0;
+  private auraCol: RGB = AURA_EPIC;
+  private auraRing = 0;
+  /** the scarf's dye as a color (null: undyed, no flecks) */
+  private scarfCol: RGB | null = null;
   private windX = 0;
   private windZ = 0;
   private lookKey = "";
@@ -232,6 +243,11 @@ export class Actor {
     this.weaponTrail = INK_TRAIL;
     this.plus = look.plus ?? 0;
     this.rig.setGlow(this.plus);
+    const best = Math.max(RANK[w?.r ?? ""] ?? 0, RANK[h?.r ?? ""] ?? 0, RANK[s?.r ?? ""] ?? 0);
+    this.aura = best >= 2 ? best : 0;
+    this.auraCol = best >= 3 ? AURA_LEGEND : AURA_EPIC;
+    const sc = look.scarfDye;
+    this.scarfCol = sc == null ? null : [((sc >> 16) & 255) / 255, ((sc >> 8) & 255) / 255, (sc & 255) / 255];
   }
 
   teleport(x: number, z: number): void {
@@ -881,8 +897,22 @@ export class Actor {
     rig.inner.localToWorld(vA);
     rig.inner.localToWorld(vB);
     this.trail.push(vA, vB);
-    // +15: gold motes drift off the brush tip
-    if (this.plus >= 15 && Math.random() < 0.35) sparks.emit(vB.x, vB.y, vB.z, (Math.random() - 0.5) * 0.8, 0.6 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8, 0.03 + Math.random() * 0.04, 0.8, GOLD_MOTE, 1.5);
+    // +10: blue motes drift off the brush tip, +15: gold ones, thicker
+    const showy = this.local || !actorFx.remoteLow;
+    if (showy && this.plus >= 10 && Math.random() < (this.plus >= 15 ? 0.55 : 0.22)) {
+      sparks.emit(vB.x, vB.y, vB.z, (Math.random() - 0.5) * 0.8, 0.6 + Math.random() * 0.8, (Math.random() - 0.5) * 0.8, 0.03 + Math.random() * 0.045, 0.85, this.plus >= 15 ? GOLD_MOTE : BLUE_MOTE, 1.5);
+    }
+    // 영웅 / 전설 gear: motes of its color rise off the body; 전설 also breathes a faint ring at the feet
+    if (showy && this.aura && this.state !== "dead") {
+      if (Math.random() < dt * (this.aura >= 3 ? 20 : 10)) {
+        const a = Math.random() * Math.PI * 2, r = 0.25 + Math.random() * 0.35;
+        sparks.emit(this.x + Math.cos(a) * r, this.y + 0.2 + Math.random() * 1.5, this.z + Math.sin(a) * r, Math.cos(a) * 0.3, 1.6 + Math.random() * 1.2, Math.sin(a) * 0.3, 0.04 + Math.random() * 0.05, 1.0, this.auraCol, 1.2);
+      }
+      if (this.aura >= 3 && this.onGround) {
+        this.auraRing -= dt;
+        if (this.auraRing <= 0) { this.auraRing = 2.6; ring(this.x, this.z, 0.95, AURA_LEGEND, 1.3, 0, null, this); }
+      }
+    }
     const t = feel.time + this.idx * 3;
     // cloth speed: how hard the scarf and sash are blown back (running, rolling, dashing)
     const s2 = this.state;
@@ -892,6 +922,11 @@ export class Actor {
       vA.set(rig.neck.x - 0.1, rig.neck.y - 0.06, i ? 0.06 : -0.05);
       rig.inner.localToWorld(vA);
       (i ? this.scarf2 : this.scarf).update(dt, vA.x, vA.y, vA.z, this.head, t + i * 0.9, cloth, i ? 1 : -1);
+    }
+    // a dyed scarf sheds flecks of its color when it streams out behind (running, rolling, dashing)
+    if (showy && this.scarfCol && cloth > 3 && Math.random() < dt * cloth * 1.4) {
+      this.scarf.tailEnd(vA);
+      sparks.emit(vA.x, vA.y, vA.z, (Math.random() - 0.5) * 0.6, 0.3 + Math.random() * 0.6, (Math.random() - 0.5) * 0.6, 0.03 + Math.random() * 0.04, 0.6, this.scarfCol, 2);
     }
     for (let i = 0; i < 2; i++) {
       vA.set(rig.waistBack.x, rig.waistBack.y, i ? 0.05 : -0.05);

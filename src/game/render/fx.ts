@@ -96,6 +96,11 @@ export class Ribbon {
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.color.needsUpdate = true;
   }
+  /** The free end of the tail, into `out`. */
+  tailEnd(out: THREE.Vector3): THREE.Vector3 {
+    const k = this.N - 1;
+    return out.set(this.x[k], this.y[k], this.z[k]);
+  }
   /** OWNED geometry: dispose when the actor goes away. Material is shared. */
   dispose(): void {
     scene.remove(this.mesh);
