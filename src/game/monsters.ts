@@ -59,6 +59,8 @@ export interface MView {
   dieCol: RGB | null;
   dieAt: number;
   dieTinted: boolean;
+  /** this view's own death material (its color runs from ink to the killing color); made once, OWNED */
+  dieMat: THREE.MeshBasicMaterial | null;
 }
 
 function mesh(geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number): THREE.Mesh {
@@ -393,7 +395,9 @@ const INK: RGB = [0.06, 0.06, 0.06];
    it fills the body with the color: it swells, shrinks and bursts into sparks of it. The materials are written
    with the dyed alpha (like lantern light) so the ink pass keeps the color; one per color, SHARED, never disposed
    (a handful: five skills and the dyes). */
-const DIE = 0.5;
+const DIE = 0.9;
+// linear: the body's own black (0.07 read as grey once written to the screen)
+const INK_BODY = new THREE.Color(0.012, 0.011, 0.01);
 const tintMats = new Map<string, THREE.MeshBasicMaterial>();
 function tintMat(c: RGB): THREE.MeshBasicMaterial {
   // full strength: the ink pass lays paper over it, so a paler tint read as pink
@@ -492,7 +496,7 @@ export class Monsters {
       id: s.id, kind: s.kind, def, look, shadow, x: s.x, z: s.z, y: 0, tx: s.x, tz: s.z, head: 0, mode: s.mode, since: s.since,
       hitAt: s.hitAt, hp: s.hp, maxHp: s.maxHp, level: s.level, flash: 0, flashOn: false, drop: 0, shown: false,
       phase: Math.random() * 6, speed: 0, stamp: 0, windTele: null, obst: { x: s.x, z: s.z, r: def.radius }, grow: 1,
-      flashMat: null, dying: 0, dieCol: null, dieAt: 0, dieTinted: false,
+      flashMat: null, dying: 0, dieCol: null, dieAt: 0, dieTinted: false, dieMat: null,
     };
   }
 
@@ -609,10 +613,15 @@ export class Monsters {
       if (v.dying > 0 && !v.dieTinted) this.tintBody(v);
     }
   }
+  /** The body takes its own death material, starting from ink; dyingStep runs it to the killing color. */
   private tintBody(v: MView): void {
     if (!v.dieCol) return;
     v.dieTinted = true;
-    const m = tintMat(v.dieCol);
+    const m = v.dieMat ?? (v.dieMat = new THREE.MeshBasicMaterial({
+      color: INK_BODY.clone(), opacity: 0.5, blending: THREE.CustomBlending, blendSrc: THREE.OneFactor, blendDst: THREE.ZeroFactor,
+      blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.ZeroFactor,
+    }));
+    m.color.copy(INK_BODY);
     for (const f of v.look.flash) f.material = m;
   }
   /** The death's last frame: the body bursts (in its color) and goes; materials back for the respawn. */
@@ -635,10 +644,16 @@ export class Monsters {
     v.dying -= dt;
     if (v.dying <= 0) { this.endDying(v, true); return; }
     const u = 1 - v.dying / DIE;
-    const swell = 1 + 0.28 * Math.sin(Math.min(1, u * 2.2) * Math.PI * 0.5);
-    const s = swell * (1 - u * u * 0.8);
+    // black ink slowly filling with the color (most of the way by two thirds), then it swells and shrinks away
+    if (v.dieTinted && v.dieCol && v.dieMat) {
+      const k = Math.min(1, u / 0.65), e = k * k * (3 - 2 * k);
+      v.dieMat.color.setRGB(INK_BODY.r + (v.dieCol[0] - INK_BODY.r) * e, INK_BODY.g + (v.dieCol[1] - INK_BODY.g) * e, INK_BODY.b + (v.dieCol[2] - INK_BODY.b) * e);
+    }
+    const late = Math.max(0, (u - 0.45) / 0.55);
+    const swell = 1 + 0.28 * Math.sin(Math.min(1, late * 2.2) * Math.PI * 0.5);
+    const s = swell * (1 - late * late * 0.85);
     v.look.group.scale.set(s, s * (1 - u * 0.25), s);
-    if (v.dieTinted && v.dieCol && Math.random() < 0.8) {
+    if (v.dieTinted && v.dieCol && Math.random() < 0.3 + u * 0.6) {
       const a = Math.random() * Math.PI * 2, r = v.def.radius * (0.3 + Math.random() * 0.7);
       sparks.emit(v.x + Math.cos(a) * r, v.def.height * (0.2 + Math.random() * 0.7), v.z + Math.sin(a) * r, Math.cos(a) * 1.5, 1.5 + Math.random() * 2, Math.sin(a) * 1.5, 0.05 + Math.random() * 0.06, 0.6, v.dieCol, 1.5);
     }
@@ -861,7 +876,7 @@ export class Monsters {
 
   /** Zone change: hide everything (views go back to the pools). */
   clear(): void {
-    for (const v of this.views.values()) this.release(v);
+    for (const v of this.views.values()) { this.release(v); v.dieMat?.dispose(); v.dieMat = null; }
     this.views.clear();
     for (const f of this.fx.values()) {
       if (f.shot) f.shot.visible = false;
