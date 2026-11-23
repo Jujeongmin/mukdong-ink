@@ -554,3 +554,87 @@
 .album-cap > div, .album-big figcaption > div { display: grid; gap: 1px; min-width: 0; }
 .album-big figcaption { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .btn.album-walk { flex: none; }
+
+/* =========================== 병기 제단: the 전설 hero ===========================
+   The three 전설 pieces stand large, each inside a gold enso, over a faint ink splash and five 오방 dabs
+   (blue, red, yellow, white, black). After a pull the hero goes slim so the cards below stay in view. */
+#ui .sheet .banner.hero { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 8px; padding: 14px 18px 16px; overflow: hidden; isolation: isolate; flex-shrink: 0; min-height: max-content; }
+#ui .sheet .hero-wash { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+#ui .sheet .hero-wash::before { content: ""; position: absolute; left: 50%; top: 50%; width: 520px; height: 500px; transform: translate(-50%, -54%) rotate(-8deg);
+  background: var(--ink); opacity: 0.07; -webkit-mask: var(--m-splash) center / contain no-repeat; mask: var(--m-splash) center / contain no-repeat; }
+#ui .sheet .hero-wash::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse 46% 60% at 50% 46%, rgba(217, 164, 58, 0.2), transparent 70%); }
+#ui .sheet .hero-wash i { position: absolute; opacity: 0.16; -webkit-mask: var(--m-splash) center / contain no-repeat; mask: var(--m-splash) center / contain no-repeat; }
+#ui .sheet .hero-wash i:nth-child(1) { left: -2%; top: -8%; background: #2f5f9a; width: 130px; height: 126px; transform: rotate(-20deg); }
+#ui .sheet .hero-wash i:nth-child(2) { left: 6%; bottom: -14%; background: #a8261b; width: 110px; height: 106px; transform: rotate(35deg); }
+#ui .sheet .hero-wash i:nth-child(3) { right: -2%; top: -10%; background: #d9a43a; width: 140px; height: 136px; transform: rotate(60deg); opacity: 0.22; }
+#ui .sheet .hero-wash i:nth-child(4) { right: 9%; bottom: -10%; background: #fffaf0; width: 120px; height: 116px; opacity: 0.7; }
+#ui .sheet .hero-wash i:nth-child(5) { right: 2%; bottom: -6%; background: var(--ink); width: 70px; height: 68px; transform: rotate(-40deg); opacity: 0.12; }
+#ui .sheet .hero-k { margin: 0; font-family: var(--f-brush); font-weight: 700; font-size: 13px; letter-spacing: 0.3em; color: var(--r-legend); }
+#ui .sheet .banner.hero .showcase { gap: clamp(8px, 4vw, 34px); justify-content: center; }
+#ui .sheet .banner.hero .show { width: auto; height: auto; display: grid; justify-items: center; gap: 2px; border-radius: 0; background: none; min-width: 0; }
+#ui .sheet .show .halo { position: relative; display: grid; place-items: center; width: 116px; height: 116px; animation: hero-bob 4.2s ease-in-out calc(var(--k) * -1.4s) infinite; }
+#ui .sheet .show .halo::before { content: ""; position: absolute; inset: 0; background: var(--r-legend); opacity: 0.85; transform: rotate(calc(var(--k) * 100deg));
+  -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }
+#ui .sheet .show .halo::after { content: ""; position: absolute; inset: 14px; border-radius: 50%; z-index: -1; background: radial-gradient(circle, rgba(245, 214, 140, 0.55), rgba(245, 214, 140, 0) 70%); }
+#ui .sheet .show .ic-item.xl { width: 84px; height: 84px; filter: drop-shadow(0 3px 4px rgba(43, 38, 34, 0.25)); }
+#ui .sheet .show > b { font-family: var(--f-brush); font-weight: 700; font-size: 15px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+#ui .sheet .show > small { font-size: 11.5px; color: var(--r-legend); white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+#ui .sheet .banner.hero .pity { width: min(100%, 420px); margin-top: 2px; }
+#ui .sheet .banner.hero .pity { grid-template-columns: 1fr auto auto auto 1fr; }
+#ui .sheet .banner.hero .pity > :first-child { grid-column: 2; }
+#ui .sheet .banner.hero.slim { gap: 4px; padding: 8px 14px 10px; }
+#ui .sheet .banner.hero.slim .show .halo { width: 70px; height: 70px; }
+#ui .sheet .banner.hero.slim .show .ic-item.xl { width: 50px; height: 50px; }
+#ui .sheet .banner.hero.slim .show > small, #ui .sheet .banner.hero.slim .hero-k { display: none; }
+#ui .sheet .banner.hero.slim .show > b { font-size: 12.5px; }
+@keyframes hero-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (max-height: 480px) {
+  /* phones: the pieces sit left of the counter in one band so the pull buttons stay on screen */
+  #ui .sheet .banner.hero { grid-template-columns: auto minmax(0, 1fr); justify-items: stretch; padding: 4px 12px 6px; gap: 4px 16px; }
+  #ui .sheet .banner.hero .hero-k, #ui .sheet .show > small, #ui .sheet .show > b { display: none; }
+  #ui .sheet .banner.hero .showcase { gap: 4px; }
+  #ui .sheet .show .halo, #ui .sheet .banner.hero.slim .show .halo { width: 54px; height: 54px; }
+  #ui .sheet .show .ic-item.xl, #ui .sheet .banner.hero.slim .show .ic-item.xl { width: 40px; height: 40px; }
+  #ui .sheet .banner.hero .pity { width: auto; grid-template-columns: auto auto auto 1fr; }
+  #ui .sheet .banner.hero .pity > :first-child { grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) { #ui .sheet .show .halo { animation: none; } }
+
+/* =========================== 랭킹: podium ===========================
+   The first three stand 2 · 1 · 3 inside ink rings (1st in cinnabar); empty places stay as faint rings. */
+#ui .sheet .rk-sheet { position: relative; isolation: isolate; min-height: 220px; }
+#ui .sheet .rk-wash { position: absolute; right: -30px; bottom: -40px; width: 300px; height: 290px; z-index: -1; pointer-events: none; background: var(--ink); opacity: 0.05;
+  -webkit-mask: var(--m-splash) center / contain no-repeat; mask: var(--m-splash) center / contain no-repeat; }
+#ui .sheet .rk-podium { list-style: none; margin: 6px 0 10px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 10px; }
+#ui .sheet .pod-seat { display: grid; justify-items: center; gap: 2px; text-align: center; min-width: 0; padding-bottom: 10px; position: relative; }
+#ui .sheet .pod-seat::after { content: ""; position: absolute; left: 6%; right: 6%; bottom: 0; height: 7px; background: var(--ink); opacity: 0.3; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .pod-ring { position: relative; display: grid; place-items: center; width: 74px; height: 74px; margin-bottom: 4px; }
+#ui .sheet .pod-ring::before { content: ""; position: absolute; inset: 0; background: var(--ink); opacity: 0.75; -webkit-mask: var(--m-enso) center / 100% 100% no-repeat; mask: var(--m-enso) center / 100% 100% no-repeat; }
+#ui .sheet .pod-ring b { font-family: var(--f-brush); font-weight: 700; font-size: 30px; line-height: 1; color: var(--ink); }
+#ui .sheet .pod-seat.p1 .pod-ring { width: 96px; height: 96px; }
+#ui .sheet .pod-seat.p1 .pod-ring::before { background: var(--cinnabar); opacity: 0.9; }
+#ui .sheet .pod-seat.p1 .pod-ring::after { content: ""; position: absolute; inset: 18px; border-radius: 50%; z-index: -1; background: radial-gradient(circle, rgba(168, 38, 27, 0.16), transparent 70%); }
+#ui .sheet .pod-seat.p1 .pod-ring b { font-size: 40px; color: var(--cinnabar); }
+#ui .sheet .pod-seat.p1::after { opacity: 0.45; height: 9px; }
+#ui .sheet .pod-seat .rk-name { font-family: var(--f-brush); font-weight: 700; font-size: 16px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ui .sheet .pod-seat.p1 .rk-name { font-size: 18px; }
+#ui .sheet .pod-seat .rk-v { font-size: 12.5px; color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+#ui .sheet .pod-seat.me .rk-name { color: var(--cinnabar); }
+#ui .sheet .pod-seat.empty { opacity: 0.38; }
+#ui .sheet .pod-seat.empty .pod-ring::before { opacity: 0.35; }
+#ui .sheet .rk-row { grid-template-columns: 44px auto minmax(12px, 1fr) auto; }
+#ui .sheet .rk-dots { align-self: center; height: 0; border-bottom: 1.5px dotted rgba(43, 38, 34, 0.28); margin-top: 6px; }
+#ui .sheet .rk-row .rk-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ui .sheet .rk-more { padding: 10px 0; opacity: 0.7; }
+#ui .sheet .rk-mine { display: grid; gap: 2px; margin-top: 12px; padding-top: 8px; border-top: 0; position: relative; }
+#ui .sheet .rk-mine::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--ink); opacity: 0.3; -webkit-mask: var(--m-line) center / 100% 100% no-repeat; mask: var(--m-line) center / 100% 100% no-repeat; }
+#ui .sheet .rk-mine .rk-list { margin: 0; padding: 0; border: 0; }
+#ui .sheet .rk-mine .rk-row { box-shadow: inset 4px 0 0 var(--cinnabar); background: rgba(168, 38, 27, 0.05); }
+@media (max-height: 480px) {
+  #ui .sheet .pod-ring { width: 56px; height: 56px; } #ui .sheet .pod-ring b { font-size: 24px; }
+  #ui .sheet .pod-seat.p1 .pod-ring { width: 70px; height: 70px; } #ui .sheet .pod-seat.p1 .pod-ring b { font-size: 30px; }
+  #ui .sheet .rk-sheet { min-height: 0; }
+}
+/* the hero banner and the podium clip their washes (overflow hidden), which lets a fixed-height grid squeeze their
+ rows; keep every row at its content height and let the card scroll instead */
+#ui .sheet:is([data-kind="altar"], [data-kind="rank"]) .sheet-card { grid-auto-rows: max-content; }

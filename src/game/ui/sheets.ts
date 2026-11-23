@@ -199,14 +199,26 @@ export class Sheets {
     this.loadRank(board);
     const v = this.ranks[board];
     const unit = (n: number) => t("전투력 {n}", { n: fmt(n) });
-    const line = (r: RankRow) => `<li class="rk-row${r.me ? " me" : ""}${r.rank <= 3 ? ` top${r.rank}` : ""}"><b class="rk-n">${r.rank}</b><span class="rk-name">${esc(r.name)}</span><span class="rk-v">${unit(r.value)}</span></li>`;
+    const line = (r: RankRow) => `<li class="rk-row${r.me ? " me" : ""}${r.rank <= 3 ? ` top${r.rank}` : ""}"><b class="rk-n">${r.rank}</b><span class="rk-name">${esc(r.name)}</span><i class="rk-dots" aria-hidden="true"></i><span class="rk-v">${unit(r.value)}</span></li>`;
     let body: string;
     if (!v || v === "loading") body = `<p class="cap rk-note">${t("불러오는 중…")}</p>`;
     else if (v === "error") body = `<p class="cap rk-note">${t("지금은 순위를 볼 수 없다.")}</p>`;
     else if (!v.top.length) body = `<p class="cap rk-note">${t("아직 아무도 없다.")}</p>`;
-    else body = `<ol class="rk-list">${v.top.map(line).join("")}</ol>${v.mine && !v.top.some((r) => r.me) ? `<ol class="rk-list rk-mine">${line(v.mine)}</ol>` : ""}`;
+    else {
+      // the first three stand on a podium (2 · 1 · 3), each inside an ink ring; empty places stay as faint rings
+      const seat = (n: number) => {
+        const r = v.top.find((x) => x.rank === n);
+        if (!r) return `<li class="pod-seat empty p${n}"><span class="pod-ring"><b>${n}</b></span><span class="rk-name">${t("빈 자리")}</span><span class="rk-v">—</span></li>`;
+        return `<li class="pod-seat p${n}${r.me ? " me" : ""}"><span class="pod-ring"><b>${n}</b></span><span class="rk-name">${esc(r.name)}</span><span class="rk-v">${unit(r.value)}</span></li>`;
+      };
+      const rest = v.top.filter((r) => r.rank > 3);
+      const mine = v.mine && !v.top.some((r) => r.me) ? v.mine : null;
+      body = `<ol class="rk-podium">${[2, 1, 3].map(seat).join("")}</ol>
+        ${rest.length ? `<ol class="rk-list">${rest.map(line).join("")}</ol>` : `<p class="cap rk-note rk-more">${t("4위부터는 여기에 적힌다.")}</p>`}
+        ${mine ? `<div class="rk-mine"><span class="cap">${t("내 순위")}</span><ol class="rk-list">${line(mine)}</ol></div>` : ""}`;
+    }
     const say = t("전투력이 높은 순. 같으면 먼저 오른 사람이 앞.");
-    return `${this.head(t("랭킹"))}<p class="cap">${say}</p>${body}`;
+    return `${this.head(t("랭킹"))}<p class="cap">${say}</p><div class="rk-sheet">${body}<i class="rk-wash" aria-hidden="true"></i></div>`;
   }
 
   /** 화첩: the pictures of each recovered color. */
@@ -454,7 +466,8 @@ export class Sheets {
         <p class="mock">${local ? t("오프라인(로컬) 모드: 충전은 <b>모의 결제</b>로 바로 지급, 실제 돈은 나가지 않는다. 광고도 모의 화면.") : t("충전은 Verse8 결제 창에서 진행된다.")} ${t("광고는 버튼을 누를 때만. 경지와 진행은 팔지 않는다.")}</p>`;
     }
     const left = Math.max(0, PITY - p.pity);
-    const showcase = ["w_gold", "h_goldgat", "s_gold"].map((id) => ITEM[id]).filter(Boolean).map((it) => `<span class="show"${tipAttr(t(it.name), `${t("전설")} ${kindName(it)}`)}>${itemIcon(it, "l")}</span>`).join("");
+    const showcase = ["w_gold", "h_goldgat", "s_gold"].map((id) => ITEM[id]).filter(Boolean).map((it, k) =>
+      `<span class="show" style="--k:${k}"${tipAttr(t(it.name), `${t("전설")} ${kindName(it)}`)}><span class="halo">${itemIcon(it, "xl")}</span><b>${esc(t(it.name))}</b><small>${t("전설")} · ${kindName(it)}</small></span>`).join("");
     const pull = this.pull;
     const age = pull ? (performance.now() - pull.at) / 1000 : 99;
     const results = pull ? pull.pulls.map((d, k) => {
@@ -472,7 +485,8 @@ export class Sheets {
         <span class="face">${itemIcon(it, "l")}<b>${esc(t(it.name))}</b><small>${d.dupe ? t("이미 가짐") : t("새 장비")}</small></span>${d.dupe ? `<span class="ribbon">${esc(t("중복 → {got}", { got }))}</span>` : ""}<i class="back" aria-hidden="true"></i></div>`;
     }).join("") : "";
     return `${head}${bar}
-      <div class="banner"><div class="showcase">${showcase}</div>
+      <div class="banner hero${pull ? " slim" : ""}"><i class="hero-wash" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></i>
+        <p class="hero-k">${t("전설 병기")}</p><div class="showcase">${showcase}</div>
         <div class="pity"><span class="cap">${t("전설까지")}</span><b>${left}</b><span class="cap">${t("번")}</span><i class="bar" style="--f:${(p.pity / PITY).toFixed(3)}" aria-hidden="true"></i></div></div>
       <div class="pull-row">
         <button class="pull btn btn-lg" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>${t("1회 뽑기")}</b><span class="cost">${resIcon("jade")}${fmt(COST1)}</span></button>
