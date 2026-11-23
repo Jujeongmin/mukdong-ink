@@ -62,7 +62,13 @@ export const POTION_HEAL = 0.45; // fraction of max HP
 export const REGEN_DELAY_MS = 5000;
 export const REGEN_FIELD = 0.03; // a hunting zone: full in about half a minute
 export const REGEN_SAFE = 0.12; // the village: full in under ten seconds
-export const POTION_COST = 15; // 안료
+/**
+ * A potion's price in 안료 rises with your level, as the pigment a kill gives stays flat (3 for a 먹방울, 8–10 late
+ * on): about four or five kills a potion at every stage, instead of five early and two late. Level 5 pays 15.
+ */
+export function potionCost(level: number): number {
+  return 10 + level;
+}
 export const POTION_GAP_MS = 1500;
 export const RESPAWN_MS = 4000;
 /** Radius of a 먹덩굴; the client blocks walking into a living one. */

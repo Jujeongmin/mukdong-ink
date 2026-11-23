@@ -1,4 +1,4 @@
-import { POTION_COST, POTION_HEAL, maxHpFor } from "../../src/shared/combat";
+import { POTION_HEAL, maxHpFor, potionCost } from "../../src/shared/combat";
 import { COST1, COST10, DUPE_SHARDS, DUPE_STONES, DYES, DYE_COST, GACHA_ENTRIES, GACHA_EXTRA_BY_ID, ITEM, NOT_DRAWN, PITY } from "../../src/shared/items";
 import { DAILY_QUESTS, MAIN_QUESTS, ZONES } from "../../src/shared/world";
 import { NO_ROOM, editProfile, errorOf, goTo, inVillage, newPlayer, profileOf, rolling, walkTo } from "./helpers";
@@ -45,7 +45,11 @@ describe("potions", () => {
     expect(await errorOf(server.buyPotions(1.5))).toContain("bad_args");
     await editProfile("test-a", (q) => ({ ...q, pigment: 100 }));
     const p = await server.buyPotions(2);
-    expect([p.potions, p.pigment]).toEqual([5, 100 - 2 * POTION_COST]);
+    expect([p.potions, p.pigment]).toEqual([5, 100 - 2 * potionCost(1)]);
+  });
+
+  test("cost more as you rise: 10 + level (15 at level 5, 45 at level 35)", () => {
+    expect([potionCost(1), potionCost(5), potionCost(35)]).toEqual([11, 15, 45]);
   });
 
   test("are not sold outside the village", async (server) => {

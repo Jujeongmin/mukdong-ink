@@ -1,6 +1,6 @@
 import type { AttackReq, EnhanceResult, GachaPull, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
-  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, REGEN_SAFE, SKILLS, killExp, type HitShape,
+  BASIC, BASIC_MIN_GAP, MONSTERS, potionCost, POTION_GAP_MS, POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, REGEN_SAFE, SKILLS, killExp, type HitShape,
 } from "../../src/shared/combat";
 import {
   DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
@@ -773,7 +773,7 @@ export class Server {
     return profileView(account, p);
   }
 
-  /** Potions from the dyer in the village, POTION_COST pigment each. */
+  /** Potions from the dyer in the village, potionCost(level) pigment each. */
   async buyPotions(rawCount: unknown): Promise<ProfileView> {
     const count = intIn(rawCount, 1, MAX_POTION_BUY);
     if (count === null) throw new RuleViolation("bad_args");
@@ -783,7 +783,7 @@ export class Server {
     if (!present(mine) || !dyer) throw new RuleViolation("too_far");
     if (Math.hypot(mine.pose.x - dyer.x, mine.pose.z - dyer.z) > NPC_REACH + PROXIMITY_SLACK) throw new RuleViolation("too_far");
     const p = await updateProfile(account, (q) => {
-      const cost = count * POTION_COST;
+      const cost = count * potionCost(q.level);
       if (q.potions + count > MAX_POTIONS) throw new RuleViolation("bad_args");
       if (q.pigment < cost) throw new RuleViolation("no_currency");
       return { ...q, pigment: q.pigment - cost, potions: q.potions + count };

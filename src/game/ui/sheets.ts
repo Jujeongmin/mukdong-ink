@@ -10,7 +10,7 @@ import {
   COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, harmonySkill, HARMONY_BONUS, hatHpBonus, itemOdds, sashCdCut, type Grant, type ItemDef,
 } from "../../shared/items";
 import { atkText, enhancedAtk } from "../../shared/growth";
-import { MONSTERS, POTION_COST, SKILLS } from "../../shared/combat";
+import { MONSTERS, SKILLS, potionCost } from "../../shared/combat";
 import { BOOK, BOOK_STEP, bookBonus, bookStage } from "../../shared/book";
 import type { RankBoard, RankRow, RankView } from "../../shared/rank";
 import type { SlotId } from "../../shared/types";
@@ -442,7 +442,7 @@ export class Sheets {
   private dyer(p: ProfileView): string {
     if (this.tab === "potion") {
       const pot = [1, 5, 10].map((n) => {
-        const cost = n * POTION_COST;
+        const cost = n * potionCost(p.level);
         return `<button type="button" class="shop-tile" data-do="potion" data-n="${n}" ${p.pigment < cost || this.busy ? "disabled" : ""}>
           <span class="pic">${resIcon("potion", "xl")}${n > 1 ? `<b class="count">×${n}</b>` : ""}</span><b class="sec">${t("물약 {n}개", { n })}</b>${resChip("pigment", cost, { need: true, short: p.pigment < cost })}</button>`;
       }).join("");
