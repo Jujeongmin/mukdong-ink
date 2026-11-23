@@ -1,6 +1,6 @@
 import type { AttackReq, EnhanceResult, GachaPull, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
-  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, SKILLS, killExp, type HitShape,
+  BASIC, BASIC_MIN_GAP, MONSTERS, POTION_COST, POTION_GAP_MS, POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, REGEN_SAFE, SKILLS, killExp, type HitShape,
 } from "../../src/shared/combat";
 import {
   DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
@@ -382,6 +382,38 @@ async function tickRoom(zone: string, delta: number, now: number): Promise<void>
   const walkDue = out.walked && (writtenAt === null || now - writtenAt >= MONSTER_SYNC_MS);
   if (state.monsters === undefined || out.urgent || out.bites.length > 0 || walkDue) {
     await $room.updateRoomState({ monsters: tidy(monsters), effects, now, monstersAt: now }, { returnState: false });
+  }
+}
+
+/**
+ * Out of the fight, health returns: once nothing has hit you for REGEN_DELAY_MS, a share of max health each
+ * second (faster in the village). Written at most once a second per player; the profile keeps it once full.
+ */
+/** when each room last looked at regeneration (a cache only: losing it just means one extra look) */
+const regenLooked = new Map<string, number>();
+async function regenRoom(zone: string, now: number, roomId = zone): Promise<void> {
+  if (now - (regenLooked.get(roomId) ?? 0) < 1000) return;
+  regenLooked.set(roomId, now);
+  const state = await $room.getRoomState([]);
+  const accounts: string[] = Array.isArray(state.$users) ? state.$users : [];
+  if (accounts.length === 0) return;
+  const rate = ZONES[zone]?.safe ? REGEN_SAFE : REGEN_FIELD;
+  const users = await $room.getUserStates(accounts, ["pose", "hp", "maxHp", "dead", "gone", "hurtAt", "regenAt"]);
+  for (const u of users) {
+    const m = readMine(u);
+    if (!present(m) || m.dead || m.hp <= 0 || m.hp >= m.maxHp) continue;
+    const hurtAt = finite(u.hurtAt) ? u.hurtAt : 0;
+    const regenAt = finite(u.regenAt) ? u.regenAt : 0;
+    if (now - hurtAt < REGEN_DELAY_MS || now - regenAt < 1000) continue;
+    const secs = regenAt > hurtAt ? Math.min(3, (now - regenAt) / 1000) : 1;
+    const hp = Math.min(m.maxHp, Math.round(m.hp + m.maxHp * rate * secs));
+    await $room.updateUserState(u.account, { hp, regenAt: now }, { returnState: false });
+    if (hp >= m.maxHp) {
+      await withProfileLock(u.account, async () => {
+        const p = await loadStored(u.account);
+        if (p && p.hp !== hp) await saveProfile(u.account, { ...p, hp });
+      });
+    }
   }
 }
 
@@ -1095,11 +1127,16 @@ export class Server {
     return { success: true, code: granted ? "granted" : "already_granted" };
   }
 
-  // Every room tick (about every 200 ms): the monsters of a hunting zone move and fight.
+  // Every room tick (about every 200 ms): the monsters of a hunting zone move and fight; everywhere, health
+  // comes back to whoever nothing has hit for a while.
   async $roomTick(delta: number, roomId: string): Promise<void> {
     const zone = parseRoomId(roomId)?.zone;
-    if (!zone || !hasMonsters(zone)) return;
-    await withRoomLock(roomId, () => tickRoom(zone, delta, Date.now()));
+    if (!zone) return;
+    await withRoomLock(roomId, async () => {
+      const now = Date.now();
+      if (hasMonsters(zone)) await tickRoom(zone, delta, now);
+      await regenRoom(zone, now, roomId);
+    });
   }
 
   // Someone gone from a room for good (after the platform's reconnect grace): their health stays with

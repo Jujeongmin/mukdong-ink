@@ -49,14 +49,19 @@ export const MAX_LEVEL = 35;
 export function expToNext(level: number): number {
   return Math.round(30 * Math.pow(level, 1.55));
 }
+/** Max health. Raised from 80 + 14/level: a field monster's blow was 12–25% of it (an MMO's is nearer 5–10%). */
 export function maxHpFor(level: number): number {
-  return 80 + level * 14;
+  return 100 + level * 20;
 }
 /** Attack power from level and weapon. */
 export function attackFor(level: number, weaponAtk: number): number {
   return weaponAtk * (1 + (level - 1) * 0.09); // unrounded: every level and enhancement step counts
 }
 export const POTION_HEAL = 0.45; // fraction of max HP
+/** Health comes back by itself once nothing has hit you for a while: a share of max health per second. */
+export const REGEN_DELAY_MS = 5000;
+export const REGEN_FIELD = 0.03; // a hunting zone: full in about half a minute
+export const REGEN_SAFE = 0.12; // the village: full in under ten seconds
 export const POTION_COST = 15; // 안료
 export const POTION_GAP_MS = 1500;
 export const RESPAWN_MS = 4000;
@@ -129,7 +134,7 @@ export const MONSTERS: Record<string, MonsterDef> = {
   spitter: { kind: "spitter", name: "먹두꺼비", hp: 45, atk: 8, speed: 1.6, radius: 0.7, height: 1.0, exp: 14, pigment: 4, attack: "ranged", range: 9, windMs: 700, cooldownMs: 2400, aggro: 15 },
   boss: { kind: "boss", name: "대먹귀", hp: 900, atk: 22, speed: 2.4, radius: 1.6, height: 2.9, exp: 400, pigment: 120, jade: 30, attack: "slam", range: 5.5, windMs: 1100, cooldownMs: 2600, aggro: 22, boss: true, armor: "plus3" },
   // Tutorial gates (docs/TUTORIAL-GATES.md): a slam to roll away from, vines only fire burns, an armored elite.
-  bigblob: { kind: "bigblob", name: "부푼 먹방울", hp: 90, atk: 33, speed: 2.0, radius: 1.0, height: 1.6, exp: 30, pigment: 8, attack: "slam", range: 3, windMs: 1000, cooldownMs: 2800, aggro: 8, slamR: 2.8 },
+  bigblob: { kind: "bigblob", name: "부푼 먹방울", hp: 90, atk: 42, speed: 2.0, radius: 1.0, height: 1.6, exp: 30, pigment: 8, attack: "slam", range: 3, windMs: 1000, cooldownMs: 2800, aggro: 8, slamR: 2.8 },
   vine: { kind: "vine", name: "먹덩굴", hp: 60, atk: 0, speed: 0, radius: 1.6, height: 2.2, exp: 4, pigment: 1, attack: "none", range: 0, windMs: 0, cooldownMs: 0, aggro: 0, respawnMs: 45_000, skillOnly: true, weakTo: [1] },
   shadelord: { kind: "shadelord", name: "그림자 무사", hp: 220, atk: 12, speed: 2.6, radius: 0.6, height: 2.1, exp: 90, pigment: 25, attack: "melee", range: 2.4, windMs: 600, cooldownMs: 1500, aggro: 8, armor: "training", leash: 1.5, respawnMs: 30_000 },
   // 2장 「불빛 조각」
