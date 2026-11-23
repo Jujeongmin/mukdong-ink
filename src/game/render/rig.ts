@@ -273,6 +273,7 @@ function buildSword(it: Partial<ItemDef>): THREE.Group {
 }
 
 const _sd = new THREE.Vector3(), _sup = new THREE.Vector3(0, 1, 0);
+const _bb = new THREE.Box3();
 /** segment between two 3D points (cylinder along +y, oriented with a quaternion) */
 function seg3(m: THREE.Object3D, ax: number, ay: number, az: number, bx: number, by: number, bz: number, r: number): void {
   _sd.set(bx - ax, by - ay, bz - az);
@@ -503,6 +504,30 @@ export class Rig {
   held(): THREE.Object3D[] {
     const out: THREE.Object3D[] = [this.weapon];
     for (const p of this.props) if (p.at === "handL") out.push(p.obj);
+    return out;
+  }
+
+  /**
+   * The box of the figure itself (body, head, hat or mask, head props such as a beard), leaving out what it holds
+   * and what hangs on its back: a tall oar, pole or staff must not decide how a portrait is framed.
+   * World matrices must be current.
+   */
+  bodyBox(out: THREE.Box3): THREE.Box3 {
+    const skip = new Set<THREE.Object3D>(this.held());
+    for (const p of this.props) if (p.at !== "head") skip.add(p.obj);
+    out.makeEmpty();
+    const visit = (o: THREE.Object3D): void => {
+      if (skip.has(o) || !o.visible) return;
+      const m = o as THREE.Mesh;
+      if (m.isMesh && m.geometry) {
+        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+        _bb.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld);
+        // specks (흑월's ink wisps, grown only by the idle) don't count
+        if (_bb.max.x - _bb.min.x + _bb.max.y - _bb.min.y > 0.02) out.union(_bb);
+      }
+      for (const c of o.children) visit(c);
+    };
+    visit(this.group);
     return out;
   }
 

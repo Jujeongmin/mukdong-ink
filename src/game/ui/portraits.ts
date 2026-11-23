@@ -11,7 +11,7 @@ import type { Rig } from "../render/rig";
 const W = 320, H = 384;
 const ray = new THREE.Raycaster();
 const _c = new THREE.Vector3(), _p = new THREE.Vector3(), _n = new THREE.Vector2();
-const _box = new THREE.Box3(), _sz = new THREE.Vector3();
+const _box = new THREE.Box3(), _sz = new THREE.Vector3(), _hb = new THREE.Box3();
 const MAX_CACHE = 12;
 
 export interface PortraitPair {
@@ -31,10 +31,12 @@ function hideFaceCovers(rig: Rig, cam: THREE.Camera): THREE.Object3D[] {
   _box.setFromObject(head);
   _box.getCenter(_c);
   _box.getSize(_sz);
-  const r = Math.max(_sz.x, _sz.y) * 0.32;
+  // a 5 × 5 grid over the middle of the face: a thin pole or oar shaft slipped between three samples, while a
+  // paddle that only grazes the cheek (the dyer's) stays in her hands
+  const r = Math.max(_sz.x, _sz.y) * 0.15;
   const out: THREE.Object3D[] = [];
-  for (let i = 0; i < 9; i++) {
-    const ox = ((i % 3) - 1) * r, oy = (Math.floor(i / 3) - 1) * r;
+  for (let i = 0; i < 25; i++) {
+    const ox = ((i % 5) - 2) * r, oy = (Math.floor(i / 5) - 2) * r;
     _p.set(_c.x + ox, _c.y + oy, _c.z).project(cam);
     _n.set(_p.x, _p.y);
     ray.setFromCamera(_n, cam);
@@ -88,10 +90,17 @@ export class Portraits {
     try {
       rig.apply();
       g.updateMatrixWorld(true);
-      // frame from the top of the figure (hats included) down to about the waist; the dialogue box hides the cut
-      const box = new THREE.Box3().setFromObject(g);
-      const h = box.max.y - box.min.y;
-      const span = Math.max(0.8, h * 0.66);
+      // frame from the top of the figure (hats included) down to about the waist; the dialogue box hides the cut.
+      // Only the figure counts: a held oar or lantern pole may run out of the frame instead of shrinking the face.
+      const box = rig.bodyBox(new THREE.Box3());
+      if (box.isEmpty()) box.setFromObject(g);
+      // sized by the head, not the whole height, so every speaker's face comes out about the same size (a tall
+      // figure like 흑월 would otherwise shrink): the hat or head top down to about two heads below the chin
+      const head = rig.headMesh();
+      if (!head.geometry.boundingBox) head.geometry.computeBoundingBox();
+      _hb.copy(head.geometry.boundingBox!).applyMatrix4(head.matrixWorld);
+      const headH = _hb.max.y - _hb.min.y;
+      const span = Math.max(0.8, box.max.y - _hb.min.y + headH * 2.3);
       const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
       const ty = box.max.y + span * 0.04 - span * 0.5;
       const dist = span / (2 * Math.tan((24 * Math.PI) / 360)) * 1.04;
