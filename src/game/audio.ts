@@ -16,7 +16,7 @@ const MAX_VOICES = 4;
 const MIN_GAP_MS = 40;
 const LOOP_EPS = 0.03;
 
-export type BgmTrack = "title" | "village" | "bamboo" | "pond" | "peak" | "kiln" | "temple" | "censer";
+export type BgmTrack = "title" | "village" | "bamboo" | "pond" | "peak" | "kiln" | "temple" | "censer" | "pass";
 export type SfxName =
   | "swing-1" | "swing-2" | "swing-3-spin" | "hit-ink" | "kill-burst" | "roll" | "resisted" | "player-hurt"
   | "skill-wave" | "skill-fire" | "skill-earth" | "skill-wind" | "skill-ink"
@@ -38,7 +38,7 @@ const TRIM: Partial<Record<SfxName, number>> = { "ui-click": 0.45, "dialogue-nex
 const AMB_OF: Record<string, string> = {
   village: "amb-village", pass: "amb-village", bamboo: "amb-bamboo", pond: "amb-pond", peak: "amb-rain", kiln: "amb-kiln", temple: "amb-temple", censer: "amb-censer",
 };
-const ZONE_BGM: Record<string, BgmTrack> = { village: "village", pass: "village", bamboo: "bamboo", pond: "pond", peak: "peak", kiln: "kiln", temple: "temple", censer: "censer" };
+const ZONE_BGM: Record<string, BgmTrack> = { village: "village", pass: "pass", bamboo: "bamboo", pond: "pond", peak: "peak", kiln: "kiln", temple: "temple", censer: "censer" };
 
 export interface AudioSettings { master: number; music: number; sfx: number; muted: boolean }
 const DEFAULTS: AudioSettings = { master: 80, music: 60, sfx: 80, muted: false };

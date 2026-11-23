@@ -18,6 +18,7 @@ const ART: Record<string, string> = {
   kiln: "./assets/art/loading-kiln.webp",
   temple: "./assets/art/loading-temple.webp",
   censer: "./assets/art/loading-censer.webp",
+  pass: "./assets/art/loading-pass.webp",
 };
 
 /** One line about each place, under its name. */
