@@ -24,6 +24,26 @@ export const BASIC: Record<number, HitDef & { dur: number }> = {
 /** Minimum time between two basic attacks the server accepts (seconds), with grace. */
 export const BASIC_MIN_GAP = 0.2;
 
+/**
+ * 궁극기 「무지개 붓질」: the five colors at once. A gauge (0..ULT_MAX) fills as you strike and fell monsters; full,
+ * the brush comes down and a rainbow ring of radius ULT_RADIUS strikes everything around for ULT_MUL × attack,
+ * while you stand untouchable for ULT_IFRAME_MS. Opens after 1장's boss (shared/world ultOpen).
+ */
+export const ULT_MAX = 100;
+/** gauge per monster struck in one blow (up to ULT_HIT_CAP for the blow) and per monster felled */
+export const ULT_PER_HIT = 2;
+export const ULT_HIT_CAP = 8;
+export const ULT_PER_KILL = 6;
+export const ULT_RADIUS = 7.5;
+export const ULT_MUL = 9;
+export const ULT_KB = 10;
+/** the whole leap: asked for as it starts, untouchable until a little after the brush lands */
+export const ULT_IFRAME_MS = 2200;
+/** The gauge a blow earns: hits (capped) and kills; the 궁극기 itself earns none. */
+export function ultGain(hits: number, kills: number): number {
+  return Math.min(ULT_HIT_CAP, hits * ULT_PER_HIT) + kills * ULT_PER_KILL;
+}
+
 export interface SkillDef {
   id: number;
   label: string; // short Korean label on the skill button

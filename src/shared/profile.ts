@@ -3,7 +3,7 @@
 // owns the profile, and the client, which shows the copy the server pushes.
 
 import type { ProfileView } from "../net/api";
-import { MAX_LEVEL, MONSTERS, SKILLS, attackFor, expToNext, isObstacle, maxHpFor } from "./combat";
+import { MAX_LEVEL, MONSTERS, SKILLS, attackFor, expToNext, isObstacle, maxHpFor, ULT_MAX } from "./combat";
 import { ENHANCE_MAX, SKILL_MAX, enhancedAtk, pointsEarned, pointsSpent, skillCdMul, skillDmgMul } from "./growth";
 import { BOOK, bookAfter, bookBonus } from "./book";
 import { HARMONY_BONUS, ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED, harmonySkill, hatHpBonus, sashCdCut } from "./items";
@@ -22,7 +22,7 @@ const SLOTS: SlotId[] = ["weapon", "hat", "sash"];
 
 export function starterProfile(name: string, now: number): Profile {
   return {
-    name, level: 1, exp: 0, hp: maxHpFor(1), potions: STARTER_POTIONS, pigment: 0, jade: 0,
+    name, level: 1, exp: 0, hp: maxHpFor(1), ult: 0, potions: STARTER_POTIONS, pigment: 0, jade: 0,
     owned: [...STARTER_OWNED], equip: { ...STARTER_EQUIP }, dye: { ...STARTER_DYE }, pity: 0,
     created: false, skills: SKILLS.map(() => 1), bonusPoints: 0, stones: 0, shards: 0, protects: 0, enh: {},
     main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), sub: { id: "", prog: 0 }, book: {}, adsDay: today(now), adsLeft: AD_DAILY,
@@ -83,6 +83,7 @@ export function readProfile(raw: unknown): Profile | null {
     level,
     exp: int(r.exp, 0),
     hp: int(r.hp, maxHpFor(level), 0, maxHpOf({ level, equip, book: readBook(r.book) })),
+    ult: int(r.ult, 0, 0, ULT_MAX),
     potions: int(r.potions, 0, 0, MAX_POTIONS),
     pigment: int(r.pigment, 0),
     jade: int(r.jade, 0),

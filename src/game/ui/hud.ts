@@ -23,6 +23,8 @@ import { t } from "../i18n";
 
 export interface HudHandlers {
   potion(): void;
+  /** 궁극기 (F or its button) */
+  ult?(): void;
   gear(): void;
   growth(): void;
   album(): void;
@@ -44,7 +46,7 @@ export interface HudHandlers {
   travelSub(): void;
   /** hand in the finished 서브 퀘스트 */
   claimSub(): void;
-  autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean };
+  autoSettings(): { skills: boolean[]; potion: boolean; threshold: number; questFirst: boolean; ult: boolean };
   saveAutoSettings(): void;
   interact(): void;
   skill(i: number): void;
@@ -108,6 +110,7 @@ const MARKUP = `
 <div class="arc" data-arc>
   <button class="ring-btn atk" type="button" data-act="atk" aria-label="${t("베기 (클릭, J)")}" data-tip-title="${t("베기 (클릭 · J)")}" data-tip="${t("누르고 있으면 이어 벤다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>${t("베기")}</b><kbd>${KEYS.attack}</kbd></button>
   <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="${t("구르기")}" data-tip-title="${t("구르기")} (Space)" data-tip="${t("구르는 동안은 맞지 않는다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>${t("구르기")}</b></button>
+  <button class="ring-btn ult" type="button" data-ult hidden aria-label="${t("무지개 붓질")} (F)" data-tip-title="${t("궁극기 · 무지개 붓질")} (F)" data-tip="${t("베고 쓰러뜨릴수록 무지개가 찬다. 가득 차면 높이 뛰어올라 주변을 모두 벤다. 그동안은 맞지 않는다.")}"><i class="ult-gauge" aria-hidden="true"></i><i class="rim spr-enso"></i><i class="ult-ic" aria-hidden="true"></i><b>${t("궁극기")}</b><kbd>F</kbd></button>
   <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="${t("자동 진행")} (Z)" aria-pressed="false" data-tip-title="${t("자동 진행")} (Z)" data-tip="${t("의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 갈 곳이 없으면 그 자리에서 사냥한다. 검법도 저절로 쓴다.")}"><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>${t("자동")}</b></button>
   <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="${t("자동 사냥 설정")}" data-tip-title="${t("자동 사냥 설정")}" data-tip="${t("쓸 검법, 물약 기준, 의뢰 대상 먼저.")}">${t("설정")}</button>
   <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip-title="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip="${t("길게 누르거나 우클릭: 자동 사용 켜기/끄기")}" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
@@ -319,6 +322,7 @@ export class Hud {
       this.h.claimDaily();
     });
     el("[data-auto]", root).addEventListener("click", () => this.h.auto());
+    el("[data-ult]", root).addEventListener("pointerdown", (e) => { e.preventDefault(); this.h.ult?.(); });
     el("[data-autoset]", root).addEventListener("click", () => this.toggleAutoPop());
     el("[data-zone]", root).addEventListener("click", (e) => { e.stopPropagation(); void this.toggleChannels(); });
     el("[data-chpop]", root).addEventListener("click", (e) => {
@@ -417,6 +421,28 @@ export class Hud {
       else box.classList.remove("rising");
     };
     this.powerRoll = requestAnimationFrame(step);
+  }
+
+  /** 궁극기: shown once it opens; its rainbow ring fills with the gauge and glows when full. */
+  private ultShown = -1;
+  setUlt(frac: number, open: boolean): void {
+    const b = el("[data-ult]", this.root);
+    if (b.hidden === open) { b.hidden = !open; this.relayout(); }
+    if (!open) return;
+    const f = Math.max(0, Math.min(1, frac));
+    if (Math.abs(f - this.ultShown) < 0.002) return;
+    const filled = f >= 1 && this.ultShown < 1 && this.ultShown >= 0;
+    this.ultShown = f;
+    b.style.setProperty("--f", f.toFixed(3));
+    b.classList.toggle("full", f >= 1);
+    if (filled) this.flashClass("[data-ult]", "ready", 900);
+  }
+
+  /** The 궁극기 lands on us: the screen's edge washes through every color at once. */
+  rainbowWash(): void {
+    const w = this.wash;
+    const flip = w.classList.contains("go") ? "go2" : "go";
+    w.className = `skill-wash big rainbow ${flip}`;
   }
 
   /** While held (an enhancement charging), a new 전투력 waits; releasing shows the last one that came. */
@@ -1035,11 +1061,13 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
       <label><input type="checkbox" data-potion-auto ${gameSettings.v.autoPotion ? "checked" : ""}> ${t("생명이 낮으면 물약 (어디서나)")}</label>
       ${potionSlider()}
       <label><input type="checkbox" data-quest-first ${st.questFirst ? "checked" : ""}> ${t("의뢰 대상 먼저")}</label>
+      <label><input type="checkbox" data-ult-auto ${st.ult !== false ? "checked" : ""}> ${t("궁극기 자동 사용")}</label>
       <button type="button" class="close btn btn-secondary btn-sm" data-popclose>${t("닫기")}</button>`;
     pop.hidden = false;
     pop.querySelectorAll<HTMLInputElement>("[data-sk]").forEach((c) => c.addEventListener("change", () => { st.skills[Number(c.dataset.sk)] = c.checked; this.h.saveAutoSettings(); }));
     el<HTMLInputElement>("[data-potion-auto]", pop).addEventListener("change", (e) => gameSettings.set({ autoPotion: (e.target as HTMLInputElement).checked }));
     el<HTMLInputElement>("[data-quest-first]", pop).addEventListener("change", (e) => { st.questFirst = (e.target as HTMLInputElement).checked; this.h.saveAutoSettings(); });
+    el<HTMLInputElement>("[data-ult-auto]", pop).addEventListener("change", (e) => { st.ult = (e.target as HTMLInputElement).checked; this.h.saveAutoSettings(); });
     bindSliders(pop, onSlider);
     el("[data-popclose]", pop).addEventListener("click", () => { pop.hidden = true; });
   }

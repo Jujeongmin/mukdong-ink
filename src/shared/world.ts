@@ -174,6 +174,11 @@ export function villageOpen(p: { main: number }, id: string): boolean {
   if (id === "pass") return p.main >= MAIN_QUESTS.findIndex((q) => q.id === "c2q3");
   return false;
 }
+/** 궁극기 opens once 1장's boss has fallen and its quest is handed in (the 물빛 조각 brings the colors back). */
+export function ultOpen(p: { main: number }): boolean {
+  return p.main > MAIN_QUESTS.findIndex((q) => q.id === "c1q10");
+}
+
 /** The village you rise in after falling in `zone`. */
 export function homeOf(zone: string): string {
   const h = ZONES[zone]?.home;

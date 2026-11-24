@@ -23,6 +23,8 @@ export interface InputHandlers {
   shop?(): void;
   /** 지도 (N) */
   map?(): void;
+  /** 궁극기 (F) */
+  ult?(): void;
   escape(): void;
   /** any manual input (auto-battle yields to it) */
   manual?(): void;
@@ -36,7 +38,7 @@ export interface InputHandlers {
 
 /** On-screen glyphs for the controls, shared by the HUD, hints and tips. */
 export const KEYS = {
-  move: "WASD", attack: t("클릭"), auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", album: "P", rank: "R", shop: "B", map: "N", help: "H", mute: "M", chat: "Enter",
+  move: "WASD", attack: t("클릭"), auto: "Z", roll: "Space", potion: "Q", skills: "1–5", talk: "G", gear: "I", growth: "K", album: "P", rank: "R", shop: "B", map: "N", ult: "F", help: "H", mute: "M", chat: "Enter",
 } as const;
 
 const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
@@ -139,6 +141,7 @@ export class Input {
     if (e.code === "KeyR") { this.h.rank?.(); return; }
     if (e.code === "KeyB") { this.h.shop?.(); return; }
     if (e.code === "KeyN") { this.h.map?.(); return; }
+    if (e.code === "KeyF" && !e.repeat) { this.h.ult?.(); return; }
     if (this.h.blocked()) return;
     if (move) {
       e.preventDefault();

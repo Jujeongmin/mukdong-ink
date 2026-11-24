@@ -4,9 +4,9 @@
 import { createGameApi } from "../net";
 import type { GameApi, Hit, HitResult, ProfileView, RoomView, ZoneEntry } from "../net/api";
 import type { Look, Pose, RoomPlayer } from "../shared/types";
-import { MONSTERS, SKILLS } from "../shared/combat";
+import { MONSTERS, SKILLS, ULT_MAX, ULT_RADIUS } from "../shared/combat";
 import { forwardX, forwardZ } from "../shared/hit";
-import { NPC_REACH, START_ZONE, ZONES, homeOf, type Npc, type Portal } from "../shared/world";
+import { NPC_REACH, START_ZONE, ZONES, homeOf, ultOpen, type Npc, type Portal } from "../shared/world";
 import { Minimap, type MapLive } from "./ui/minimap";
 import { Actor, IMPACT, actorFx, actorSound, type ActorHooks } from "./actor";
 import { Chat } from "./ui/chat";
@@ -27,7 +27,7 @@ import { ZoneScene, buildNpcRig } from "./world";
 import * as THREE from "three";
 import { camFocus, camFwd, camera, colorStain, feelFlags, clearBloom, clearLights, clearStains, feel, holdColor, initRenderer, memoryInfo, renderFrame, resize, setEdge, setHorizon, setLoop, addLight, setQuality, setShake } from "./render/gfx";
 import type { RGB } from "./util";
-import { SKILL_COL, bigMoment, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, shellBounce, updateFx, sparkBurst } from "./render/fx";
+import { SKILL_COL, bigMoment, clearFx, fireFlow, glazeCrack, hitFeel, inkHit, killBurst, rainbowAt, rainbowBurst, shellBounce, updateFx, sparkBurst } from "./render/fx";
 import { emberBloom } from "./render/ambient";
 import { Ambient } from "./render/ambient";
 import { Hud, type TargetInfo } from "./ui/hud";
@@ -106,10 +106,13 @@ interface Remote {
  * player's own scarf color) and a floor on its weight.
  */
 interface Blow {
-  col: RGB | null; basic: boolean; heavy: number; /** its damage numbers' class */ num: "" | "heavy" | `sk${number}`;
+  col: RGB | null; basic: boolean; heavy: number; /** its damage numbers' class */ num: "" | "heavy" | "ult" | `sk${number}`;
   /** the color a monster struck by it flashes and dies in (null: the scarf's, for a brush strike) */
   die: RGB | null;
+  /** the 궁극기: each monster takes the rainbow's color of its direction from the caster */
+  rainbow?: boolean;
 }
+const ULT_BLOW: Blow = { col: null, basic: false, heavy: 1, num: "ult", die: null, rainbow: true };
 const LIGHT_BLOW: Blow = { col: null, basic: true, heavy: 0, num: "", die: null };
 const HEAVY_BLOW: Blow = { col: null, basic: true, heavy: 0.8, num: "heavy", die: null }; // the third strike
 /** each skill's death color: its own, with 바람 a pale jade (its white would read as nothing) and 먹감옥 deep violet */
@@ -198,6 +201,7 @@ export class Game {
   constructor(private readonly api: GameApi, root: HTMLElement, private readonly loading: Loading) {
     this.hud = new Hud(root, {
       potion: () => void this.drinkPotion(),
+      ult: () => this.pressUlt(),
       gear: () => this.openGear(),
       growth: () => this.openGrowth(),
       album: () => this.openAlbum(),
@@ -255,6 +259,7 @@ export class Game {
       rank: () => { if (!this.transitioning && !this.memory) { this.input.clear(); this.sheets.openRank(); } },
       shop: () => { if (!this.transitioning && !this.memory && !this.dead) { this.input.clear(); this.sheets.openShop(); } },
       map: () => this.openMap(),
+      ult: () => this.pressUlt(),
       help: () => this.hud.help(),
       escape: () => this.onEscape(),
       chat: () => { if (gameSettings.v.chat) this.chat.openInput(); },
@@ -271,6 +276,8 @@ export class Game {
       paused: () => this.sheets.isOpen(),
       sinceManual: () => performance.now() - this.lastManualAt,
       skillReady: (i) => this.profile.level >= SKILLS[i].unlock && this.player.cd[i] <= 0,
+      ultReady: () => this.ultReady(),
+      ult: () => this.unleash(),
       drinkPotion: () => void this.drinkPotion(),
       travel: (to, from) => this.travel(to, from, true),
       talk: (npc) => this.story.talk(npc),
@@ -308,6 +315,11 @@ export class Game {
       setShake(s.shake);
       actorFx.remoteLow = s.lowRemote;
       actorFx.onCast = (i) => this.hud.skillWash(i);
+      actorFx.onUlt = (a) => {
+        rainbowBurst(a.x, a.z, ULT_RADIUS, a.local);
+        if (a.local) this.hud.rainbowWash();
+        audio.play("levelup", a.local ? undefined : a.x, a.local ? undefined : a.z);
+      };
       growthFx.holdPower = (on) => this.hud.holdPower(on);
       growthFx.onAwaken = (i) => {
         const pl = this.player;
@@ -457,6 +469,7 @@ export class Game {
     const hooks: ActorHooks = {
       attack: (kind, a) => this.sendAttack(kind, a),
       skill: (i, a, delay) => this.sendSkill(i, a, delay),
+      ult: (a) => this.sendUlt(a),
       // mouse players face the cursor on every swing and cast; others get the nearest-target assist
       // auto-targeting for everyone: whoever is on you, else ahead, else nearest (targeting.ts)
       aim: (x, z, dir, kind) => aimFor(this.monsters.views, x, z, dir, kind),
@@ -474,6 +487,7 @@ export class Game {
     this.camZ = this.entry.z;
     this.hud.setZone(this.entry.zone, this.entry.channel);
     this.minimap.setZone(this.entry.zone);
+    this.setUlt(this.entry.ult ?? profile.ult ?? 0);
     this.loading.channel(this.entry.channel);
     this.chatRoomChanged(this.entry.zone, this.entry.channel);
     audio.musicForZone(this.entry.zone);
@@ -520,6 +534,13 @@ export class Game {
   applyProfile(p: ProfileView): void {
     const prev = this.profile;
     this.profile = p;
+    // 대먹귀 handed in: the colors are back, and the 궁극기 with them
+    const ultNow = ultOpen(p);
+    if (prev && !ultOpen(prev) && ultNow) {
+      this.hints.think("ult-open", t("물빛 조각이 붓에 스민다… 무지개를 모아 내리칠 수 있겠다. (F)"), { urgent: true });
+      bigMoment(this.player?.x ?? 0, this.player?.z ?? 0, [0.98, 0.84, 0.16], 1.2);
+    }
+    this.hud.setUlt(this.ultGauge / ULT_MAX, ultNow);
     this.lastProfileAt = performance.now();
     if (this.player) this.player.applyLook(this.lookOf(p));
     this.hud.setProfile(p);
@@ -687,6 +708,7 @@ export class Game {
   }
 
   private queueHits(res: HitResult, delay: number, blow: Blow): void {
+    if (typeof res.ult === "number") this.setUlt(res.ult);
     if (delay <= 0.05) this.showHits(res, blow);
     else this.pending.push({ t: delay, res, blow });
   }
@@ -739,9 +761,9 @@ export class Game {
         const dx = v.x - pl.x, dz = v.z - pl.z, d = Math.hypot(dx, dz) || 1;
         const power = Math.min(2, 0.6 + Math.log10(1 + h.dmg) * 0.35);
         heavy = Math.max(heavy, (power - 0.6) / 1.4, blow.heavy);
-        const tint = blow.basic ? strikeTint(this.profile?.dye.scarf) : blow.col;
+        const tint = blow.rainbow ? rainbowAt(dx, dz) : blow.basic ? strikeTint(this.profile?.dye.scarf) : blow.col;
         inkHit(v.x, v.def.height * 0.55, v.z, dx / d, dz / d, power, tint);
-        this.monsters.struck(h.id, blow.die ?? tint, h.kill);
+        this.monsters.struck(h.id, blow.rainbow ? tint : blow.die ?? tint, h.kill);
         if (h.kill) { killed = true; killBurst(v.x, v.def.height * 0.5, v.z, v.def.radius); }
       }
       if (v.kind === "kilnlord") audio.play(h.resisted ? "armor-clunk" : "glaze-crack", v.x, v.z);
@@ -768,6 +790,55 @@ export class Game {
   private pressAct(a: Act): void {
     if (!this.player || this.dead || (this.memory && a === "atk")) return;
     this.player.input[a] = BUF;
+  }
+
+  /** 궁극기 gauge as the server last said it (0..ULT_MAX) */
+  private ultGauge = 0;
+  private setUlt(v: number): void {
+    this.ultGauge = v;
+    this.hud.setUlt(v / ULT_MAX, !!this.profile && ultOpen(this.profile));
+  }
+  /** Whether the 궁극기 can go now (auto-play asks too). */
+  ultReady(): boolean {
+    return !!this.player && !!this.profile && ultOpen(this.profile) && this.ultGauge >= ULT_MAX && !this.dead && !this.transitioning
+      && !this.memory && !this.zone.def.safe && this.player.state !== "ult" && !this.ultBusy;
+  }
+  private ultBusy = false;
+  /** F / the 궁극기 button: the leap; its landing (Actor → hooks.ult) strikes. */
+  private pressUlt(): void {
+    if (!this.player || !this.profile || this.sheets.isOpen() || this.transitioning || this.memory || this.dead) return;
+    if (!ultOpen(this.profile)) return;
+    if (this.zone.def.safe) { this.hints.think("ult-safe", t("마을에선 붓을 내리칠 곳이 없다."), { repeat: true, urgent: true }); return; }
+    if (this.ultGauge < ULT_MAX) { this.hints.think("ult-wait", t("무지개가 아직 덜 찼다… 더 베자."), { repeat: true, urgent: true }); return; }
+    if (!this.ultReady()) return;
+    this.lastManualAt = performance.now();
+    this.unleash();
+  }
+  /**
+   * The leap starts: the server is asked at once (its untouchable time covers the whole leap, and it strikes
+   * where you stand, which the leap never leaves); the hits are shown when the brush lands.
+   */
+  private unleash(): void {
+    const a = this.player;
+    if (!a.unleash()) return;
+    this.ultBusy = true;
+    this.ultLanded = false;
+    this.ultRes = null;
+    this.lastSwingAt = performance.now();
+    void attempt(this.api.ultimate({ x: a.x, z: a.z, yaw: a.head }), QUIET_COMBAT).then((res) => {
+      this.ultBusy = false;
+      if (!res) return;
+      if (typeof res.ult === "number") this.setUlt(res.ult);
+      if (this.ultLanded) this.queueHits(res, 0, ULT_BLOW);
+      else this.ultRes = res;
+    });
+  }
+  private ultRes: HitResult | null = null;
+  private ultLanded = false;
+  /** The brush has landed: show what the server already struck. */
+  private sendUlt(_a: Actor): void {
+    this.ultLanded = true;
+    if (this.ultRes) { this.queueHits(this.ultRes, 0, ULT_BLOW); this.ultRes = null; }
   }
 
   private pressSkill(i: number): void {
@@ -1012,6 +1083,8 @@ export class Game {
   }
 
   private rebuild(entry: ZoneEntry): void {
+    if (typeof entry.ult === "number") this.setUlt(entry.ult);
+    this.ultBusy = false;
     const changed = entry.zone !== this.entry.zone || entry.channel !== this.entry.channel;
     this.entry = entry;
     if (changed) {
@@ -1446,6 +1519,7 @@ export class Game {
     }
   }
 
+  private camLift = 0;
   private updateCamera(dt: number): void {
     const p = this.player;
     const aspect = window.innerWidth / Math.max(1, window.innerHeight), k = aspect < 1.1 ? 1.45 : 1;
@@ -1456,8 +1530,10 @@ export class Game {
     const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
     // a low quarter view: the player stays lower-middle, the field ahead reads, and the upper part of the
     // frame opens onto the field's far edge, the painted backdrop and the moon
-    camera.position.set(this.camX + sx, 8.4 * k + sy, this.camZ + 15 * k);
-    camera.lookAt(this.camX + sx * 0.5, 2.2 + sy * 0.5, this.camZ - 4);
+    // the 궁극기's leap: the view rises with it (and settles back as it lands)
+    this.camLift += ((p.state === "ult" ? p.y * 0.6 : 0) - this.camLift) * Math.min(1, dt * 6);
+    camera.position.set(this.camX + sx, 8.4 * k + sy + this.camLift * 0.5, this.camZ + 15 * k);
+    camera.lookAt(this.camX + sx * 0.5, 2.2 + sy * 0.5 + this.camLift, this.camZ - 4);
     camFocus.set(this.camX, 0, this.camZ);
     camera.updateMatrixWorld();
     camera.getWorldDirection(camFwd);

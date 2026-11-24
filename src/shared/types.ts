@@ -44,6 +44,8 @@ export interface Profile {
   level: number;
   exp: number;
   hp: number;
+  /** 궁극기 gauge (0..ULT_MAX) as of the last zone change or kill; the room keeps the live one */
+  ult: number;
   potions: number;
   pigment: number; // free currency (안료)
   jade: number; // paid currency (묵옥)

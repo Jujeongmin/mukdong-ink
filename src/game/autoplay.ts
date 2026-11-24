@@ -5,7 +5,7 @@
 
 import * as THREE from "three";
 import { DAILY_QUESTS, MAIN_QUESTS, NPC_REACH, PORTAL_REACH, ZONES, type Npc, type ZoneDef } from "../shared/world";
-import { SKILLS, isObstacle } from "../shared/combat";
+import { SKILLS, ULT_RADIUS, isObstacle } from "../shared/combat";
 import type { ProfileView } from "../net/api";
 import type { Actor } from "./actor";
 import type { MView } from "./monsters";
@@ -21,6 +21,8 @@ export interface AutoSettings {
   /** 0.2..0.6 */
   threshold: number;
   questFirst: boolean;
+  /** 궁극기 as soon as it is full (with something in reach) */
+  ult: boolean;
 }
 
 export interface AutoCtx {
@@ -35,6 +37,9 @@ export interface AutoCtx {
   /** ms since the last manual input */
   sinceManual(): number;
   skillReady(i: number): boolean;
+  /** the 궁극기 is full and can go now; `ult` sets it off */
+  ultReady?(): boolean;
+  ult?(): void;
   drinkPotion(): void;
   /** true on arrival; false (quietly, on too_far) means keep walking and try again */
   travel(to: string, from: string): Promise<boolean>;
@@ -73,7 +78,7 @@ type Goal =
 export class AutoPlay {
   /* ---------- auto-battle ---------- */
   on = false;
-  settings: AutoSettings = { skills: [true, true, true, true, true], potion: true, threshold: 0.4, questFirst: true };
+  settings: AutoSettings = { skills: [true, true, true, true, true], potion: true, threshold: 0.4, questFirst: true, ult: true };
   private anchorX = 0;
   private anchorZ = 0;
   private target: MView | null = null;
@@ -133,6 +138,8 @@ export class AutoPlay {
   private fireSkill(pl: Actor, d: number, only?: readonly number[]): boolean {
     const inp = pl.input;
     if (inp.sk >= 0) return false;
+    // full rainbow and something within its ring: it goes first (자동 설정에서 끌 수 있다)
+    if (this.settings.ult !== false && !only && d < ULT_RADIUS - 1.5 && this.ctx.ultReady?.()) { this.ctx.ult?.(); return true; }
     for (let i = 0; i < SKILLS.length; i++) {
       if (!this.settings.skills[i] || !this.ctx.skillReady(i)) continue;
       if (only && !only.includes(i)) continue;

@@ -31,6 +31,12 @@ flash of color across the monochrome field. The hero (an ink stick figure, calle
   NPCs and roads, and the 순간이동 button for villages.
 - Levels 1–35 (MAX_LEVEL). Skills unlock: 물결베기 1, 화염선풍 4, 대지낙하 8, 바람질주 12, 먹감옥 16.
 - Basic combo: 3 ground swings (third is a spin), air spin, dash slash.
+- 궁극기 「무지개 붓질」 (2026-11, F or its button): opens once 1장's boss quest (c1q10) is handed in. A gauge (0–100)
+  fills as you strike (2 per monster hit, at most 8 a blow) and fell (6 each); full, the leap: gather, rise turning
+  with the brush drawing a rainbow ring, hold at the top, drop; the server strikes a 7.5 m ring for 9 × attack when it
+  is asked (at the leap's start) and you are untouchable for 2.2 s; kills die in the rainbow color of their direction.
+  The gauge lives in room user state, goes with you through portals, and is kept in the profile on kills and zone
+  changes. Auto-play fires it when full with something in reach (자동 설정 can turn that off). Others see it (pose skill 5).
 - Monsters: 먹방울 (contact), 먹그림자 (wind-up melee), 먹두꺼비 (ranged ink shot), 대먹귀 (telegraphed slam boss).
 - Main quest chain of 9 steps ending at the boss; 3 daily quests.
 - Potions bought with 안료; respawn in the village of that part of the world after death.

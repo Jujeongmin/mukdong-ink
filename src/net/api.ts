@@ -25,6 +25,8 @@ export interface ZoneEntry {
   channel: number;
   x: number;
   z: number;
+  /** 궁극기 gauge on arriving (arrive answers it) */
+  ult?: number;
 }
 
 export interface AttackReq {
@@ -55,6 +57,8 @@ export interface HitResult {
   stones?: number;
   shards?: number;
   levelUp: boolean;
+  /** 궁극기 gauge after this blow */
+  ult?: number;
 }
 
 export interface EnhanceResult {
@@ -125,6 +129,8 @@ export interface GameApi {
   attack(req: AttackReq): Promise<HitResult>;
   castSkill(req: SkillReq): Promise<HitResult>;
   usePotion(): Promise<ProfileView>;
+  /** 궁극기 「무지개 붓질」 from where you stand (full gauge, opened). Errors: locked, on_cooldown (not full), dead. */
+  ultimate(req: { x: number; z: number; yaw: number }): Promise<HitResult>;
   buyPotions(count: number): Promise<ProfileView>;
   respawn(): Promise<ZoneEntry>;
   /** Players in each channel of the zone you are in, and yours. */

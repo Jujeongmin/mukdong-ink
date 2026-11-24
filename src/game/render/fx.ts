@@ -713,6 +713,35 @@ export function bigMoment(x: number, z: number, col: readonly number[], power = 
   if (local) feel.shake = Math.max(feel.shake, 0.35);
 }
 
+/* ---------- 궁극기 「무지개 붓질」 ---------- */
+/** the rainbow, red to violet: the five colors come back at once */
+export const RAINBOW: readonly RGB[] = [
+  [0.9, 0.16, 0.12], [0.98, 0.5, 0.1], [0.98, 0.84, 0.16], [0.24, 0.72, 0.3], [0.16, 0.6, 0.9], [0.22, 0.3, 0.82], [0.56, 0.24, 0.78],
+];
+/** The rainbow color of a direction from the caster (each kill around the ring dies in its own band). */
+export function rainbowAt(dx: number, dz: number): RGB {
+  const a = (Math.atan2(dz, dx) / (Math.PI * 2) + 1) % 1;
+  return RAINBOW[Math.min(RAINBOW.length - 1, Math.floor(a * RAINBOW.length))];
+}
+/**
+ * The 궁극기 lands: seven brush rings, one per color, widening out to the strike's reach; the colors soak the
+ * ground in a ring of petals around the caster; a white light and (ours) a hard shake. Pooled rings, stains and
+ * lights only (nothing allocated).
+ */
+export function rainbowBurst(x: number, z: number, reach: number, local: boolean): void {
+  for (let i = 0; i < RAINBOW.length; i++) {
+    ring(x, z, reach * (0.35 + (0.65 * (i + 1)) / RAINBOW.length), RAINBOW[i], 0.7 + i * 0.12, 0, i === RAINBOW.length - 1 ? INK_RING : null);
+  }
+  for (let i = 0; i < RAINBOW.length; i++) {
+    const a = (i / RAINBOW.length) * Math.PI * 2;
+    colorStain(x + Math.cos(a) * reach * 0.55, z + Math.sin(a) * reach * 0.55, reach * 0.42, RAINBOW[i]);
+  }
+  addLight(x, z, reach * 2, 1.6, WHITE_LIGHT);
+  inkBurst(x, 0.3, z, 10, 0, 0, 0.9);
+  if (local) { feel.shake = Math.max(feel.shake, 0.85); feel.hitstop = Math.max(feel.hitstop, 0.12); }
+}
+const WHITE_LIGHT: RGB = [1, 0.97, 0.92];
+
 /* ---------- delayed echoes (여운) ---------- */
 type EchoKind = "fire" | "earth" | "wind";
 interface Echo { t: number; x: number; z: number; r: number; local: boolean; kind: EchoKind; on: boolean }

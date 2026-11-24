@@ -36,6 +36,7 @@ export function installSprites(): void {
     "--m-splash": "./assets/ui/ui-splash.png",
     "--sheet-mat": "./assets/materials2.webp",
     "--sheet-hud": "./assets/hud_icons3.png",
+    "--ult-icon": "./assets/ui/ult_icon.webp",
   };
   for (const [k, v] of Object.entries(kit)) root.setProperty(k, `url("${url(v)}")`);
   // ink-sketch sheets (v3, redrawn to match the prologue paintings); new names so deploy caches can't serve the old ones

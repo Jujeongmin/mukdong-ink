@@ -15,7 +15,7 @@ import { G, M_body, M_shadow, dyeCloth } from "./render/materials";
 import { POSE, KEYS, Rig, blend, runPose, sampleKeys, sampleMotion } from "./render/rig";
 import { HIT1, HIT2, HIT3, type MotionClip } from "./render/motion/sword";
 import {
-  BLOT_DELAY, INK_TRAIL, Ribbon, SILVER_TRAIL, SKILL_COL, Trail, earthSlam, fireCrescent, inkBurst, inkDrop, inkSweep, later, ring,
+  BLOT_DELAY, INK_TRAIL, RAINBOW, Ribbon, SILVER_TRAIL, SKILL_COL, Trail, earthSlam, fireCrescent, inkBurst, inkDrop, inkSweep, later, ring,
   inkAfterimage, spawnBlot, spawnGhost,
 } from "./render/fx";
 import { strokeAdd, strokeBegin, strokeEnd } from "./render/strokes";
@@ -23,7 +23,18 @@ import type { RGB } from "./util";
 
 export type ActState =
   | "move" | "atk1" | "atk2" | "atk3" | "airspin" | "dash" | "roll"
-  | "sk0" | "sk1" | "sk2" | "sk3" | "sk4" | "land" | "hurt" | "dead";
+  | "sk0" | "sk1" | "sk2" | "sk3" | "sk4" | "ult" | "land" | "hurt" | "dead";
+
+/*
+ * 궁극기 「무지개 붓질」 timeline (seconds into the state): gather (crouch, the colors pool at the feet), rise (lifted
+ * off the ground, turning, the brush drawing a rainbow ring round the body), hold at the top (both arms up, the brush
+ * overhead, a white flare), then a straight drop and the brush driven into the ground (the burst).
+ */
+const ULT_GATHER = 0.4, ULT_RISE = 1.15, ULT_HOLD = 1.42, ULT_DROP = 1.58, ULT_TOP = 4;
+const ULT_CHARGE = Float32Array.from([0.75, -0.35, -0.9, 0.7, -1.3, 0.5, 1.35, -2.2, -0.75, -1.0, -0.7, -0.5]);
+const ULT_LIFT = Float32Array.from([-0.15, 0.3, 2.3, 0.2, -2.1, 0.4, 0.4, -1.1, -0.2, -0.7, 3.1, 0]);
+const ULT_APEX = Float32Array.from([-0.3, 0.4, 3.05, 0.05, 3.05, 0.05, 0.8, -1.7, -0.35, -1.0, 3.4, 0]);
+const ULT_DIVE = Float32Array.from([1.0, -0.25, 1.5, 0.15, 1.6, 0.1, 0.9, -1.3, -0.5, -0.7, -0.5, 0]);
 
 /*
  * The ground combo plays motion-captured sword strikes retargeted onto the rig (render/motion/sword.ts,
@@ -92,6 +103,8 @@ export interface ActorHooks {
   attack(kind: number, a: Actor): void;
   /** a skill should be resolved now at (x, z, head); show its hits after `delay` seconds */
   skill(i: number, a: Actor, delay: number): void;
+  /** the 궁극기 has landed: resolve it now */
+  ult?(a: Actor): void;
   /**
    * Heading toward the auto-target for this action (kind −1 = basic swing, 0..4 = skill), or null to keep
    * facing. `dir` is the move direction while moving, else the facing.
@@ -120,7 +133,7 @@ let actorCount = 0;
  */
 export const actorSound: { fn: ((code: number, a: Actor) => void) | null } = { fn: null };
 /** "다른 유저 효과 줄이기": remote actors skip their roll/skill flourishes (rings, lights, bursts). */
-export const actorFx: { remoteLow: boolean; onCast: ((i: number) => void) | null } = {
+export const actorFx: { remoteLow: boolean; onCast: ((i: number) => void) | null; onUlt?: (a: Actor) => void } = {
   remoteLow: false,
   /** our own skill was cast (the game washes the screen edge in its color) */
   onCast: null,
@@ -323,7 +336,50 @@ export class Actor {
     if (kind && s !== "roll") this.hooks?.attack(kind, this);
   }
 
+  /** the 궁극기 is in the air: its landing is the rainbow, not 대지낙하 */
+  private ultArmed = false;
+  /**
+   * 궁극기 「무지개 붓질」: a high leap and the brush brought down (대지낙하's body, a rainbow landing). Untouchable
+   * until it lands. Local: the game has already checked the gauge. Remote: replayed from the pose (skill 5).
+   */
+  unleash(): boolean {
+    if (this.state === "dead" || this.state === "ult") return false;
+    this.start("ult");
+    this.ultArmed = true;
+    this.ultFx = 0;
+    // the colors pool at the feet while the body gathers
+    for (let i = 0; i < RAINBOW.length; i += 2) ring(this.x, this.z, 1.8 + i * 0.35, RAINBOW[i], 0.55 + i * 0.05, 0, null, this);
+    addLight(this.x, this.z, 6, 0.6, WHITE, this);
+    if (!this.local) return true;
+    this.skillSeq++;
+    this.skill = 5;
+    this.vx = 0; this.vz = 0; this.vy = 0;
+    this.inv = Math.max(this.inv, ULT_DROP + 0.4);
+    feel.shake = Math.max(feel.shake, 0.15);
+    return true;
+  }
+  /** which of the 궁극기's moments have fired (bit 1 the lift, 2 the flare) */
+  private ultFx = 0;
+  /** The 궁극기's moments, for this actor (local or remote) as its timeline passes them. */
+  private ultStep(): void {
+    const st = this.st;
+    if (st >= ULT_GATHER && !(this.ultFx & 1)) {
+      this.ultFx |= 1;
+      actorSound.fn?.(12, this);
+    }
+    if (st >= ULT_RISE && !(this.ultFx & 2)) {
+      this.ultFx |= 2;
+      addLight(this.x, this.z, 12, 0.5, WHITE, this);
+      if (this.local) feel.shake = Math.max(feel.shake, 0.25);
+    }
+    // the brush draws the ring in every color as the body turns
+    if (st >= ULT_GATHER && st < ULT_RISE) this.trail.col = RAINBOW[Math.floor(st * 18) % RAINBOW.length];
+    else if (st >= ULT_RISE) this.trail.col = WHITE;
+    if (st >= ULT_DROP) this.landSlam();
+  }
+
   private startSkill(i: number): void {
+    if (i === 5) { this.unleash(); return; }
     if (this.local) this.aim(i);
     this.start(("sk" + i) as ActState);
     actorSound.fn?.(10 + i, this);
@@ -358,6 +414,12 @@ export class Actor {
 
   private landSlam(): void {
     this.start("land");
+    if (this.ultArmed) {
+      this.ultArmed = false;
+      actorFx.onUlt?.(this);
+      if (this.local) this.hooks?.ult?.(this);
+      return;
+    }
     const a = this.aw(2);
     earthSlam(this.x, this.z, this.local, 5 + (a?.area ?? 0), !!a && a.echo > 0);
     if (this.local) this.hooks?.skill(2, this, 0);
@@ -440,7 +502,10 @@ export class Actor {
     else this.spin = 0;
     // the third hit's spin comes from its mocap twist now
     if (this.state === "sk1") this.spinY = -Math.PI * 6 * Math.min(1, this.st / 0.75);
-    else this.spinY = 0;
+    else if (this.state === "ult") {
+      const r = Math.min(1, Math.max(0, (this.st - ULT_GATHER) / (ULT_RISE - ULT_GATHER)));
+      this.spinY = -Math.PI * 4 * (1 - (1 - r) * (1 - r));
+    } else this.spinY = 0;
   }
 
   private canSkill(): boolean {
@@ -528,6 +593,16 @@ export class Actor {
         if (!this.fired && this.st >= 0.15) { this.fired = true; this.castBlot(); }
         if (this.st >= 0.45) this.state = "move";
         break;
+      case "ult": {
+        grav = 0; this.vy = 0; this.vx = 0; this.vz = 0;
+        const st = this.st;
+        const rise = Math.min(1, Math.max(0, (st - ULT_GATHER) / (ULT_RISE - ULT_GATHER)));
+        const up = 1 - (1 - rise) * (1 - rise);
+        const drop = Math.min(1, Math.max(0, (st - ULT_HOLD) / (ULT_DROP - ULT_HOLD)));
+        this.y = st < ULT_HOLD ? ULT_TOP * up + (st > ULT_RISE ? Math.sin((st - ULT_RISE) * 9) * 0.08 : 0) : ULT_TOP * (1 - drop * drop);
+        this.ultStep();
+        break;
+      }
       case "land": this.damp(dt, 12); if (this.st > 0.3) this.state = "move"; break;
       case "hurt": this.damp(dt, 3); if (this.tryRoll(hasIn)) break; if (this.st > 0.25) this.state = "move"; break;
       case "roll":
@@ -587,6 +662,7 @@ export class Actor {
         if (!this.onGround) this.sk2Air = true;
         if ((this.sk2Air && this.onGround && this.st > 0.3) || this.st > 1.4) this.landSlam();
         break;
+      case "ult": this.ultStep(); break;
       case "sk3":
         this.windStep(dt);
         if (this.st >= this.windDur()) this.windEnd();
@@ -822,6 +898,11 @@ export class Actor {
       case "sk0": sampleKeys(pose, KEYS.atk1, this.st / 0.42); break;
       case "airspin": case "sk1": blend(pose, POSE.spin, easeK(dt, 30)); break;
       case "sk2": blend(pose, POSE.plunge, easeK(dt, 25)); break;
+      case "ult": {
+        const st = this.st;
+        blend(pose, st < ULT_GATHER ? ULT_CHARGE : st < ULT_RISE ? ULT_LIFT : st < ULT_HOLD ? ULT_APEX : ULT_DIVE, easeK(dt, st < ULT_HOLD ? 14 : 40));
+        break;
+      }
       case "land": blend(pose, POSE.land, easeK(dt, 30)); break;
       case "dash": case "sk3": blend(pose, POSE.dash, easeK(dt, 35)); break;
       case "roll": blend(pose, ROLL_POSE, easeK(dt, 40)); break;

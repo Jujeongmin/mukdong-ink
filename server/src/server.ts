@@ -1,6 +1,6 @@
 import type { AttackReq, EnhanceResult, GachaPull, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
-  BASIC, BASIC_MIN_GAP, MONSTERS, potionCost, POTION_GAP_MS, POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, REGEN_SAFE, SKILLS, killExp, type HitShape,
+  BASIC, BASIC_MIN_GAP, MONSTERS, potionCost, POTION_GAP_MS, POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, REGEN_SAFE, SKILLS, ULT_IFRAME_MS, ULT_KB, ULT_MAX, ULT_MUL, ULT_RADIUS, killExp, ultGain, type HitShape,
 } from "../../src/shared/combat";
 import {
   DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
@@ -19,7 +19,7 @@ import {
 } from "../../src/shared/profile";
 import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
 import {
-  AD_REWARD_JADE, CHANNELS, CHANNEL_CAPACITY, CHANNEL_HOP_MS, DAILY_QUESTS, DASH_BURST, DASH_BURST_GAP_MS, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, WIND_BURST_GAP_MS, ROLL_IFRAME_MS, NPC_REACH, NPC_SAFE_R, PORTAL_REACH, START_POS, START_ZONE, VILLAGES, ZONES, homeOf, spawnOf, villageOpen,
+  AD_REWARD_JADE, CHANNELS, CHANNEL_CAPACITY, CHANNEL_HOP_MS, DAILY_QUESTS, DASH_BURST, DASH_BURST_GAP_MS, JADE_PRODUCTS, MAIN_QUESTS, MAX_SPEED, MOVE_SLACK, WIND_BURST, WIND_BURST_GAP_MS, ROLL_IFRAME_MS, NPC_REACH, NPC_SAFE_R, PORTAL_REACH, START_POS, START_ZONE, VILLAGES, ZONES, homeOf, spawnOf, ultOpen, villageOpen,
   parseRoomId, roomIdFor,
 } from "../../src/shared/world";
 import { verifyAd } from "./ads";
@@ -55,7 +55,7 @@ function readPose(raw: unknown): Pose | null {
   const counter = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 1e9 ? v : 0);
   return {
     x: p.x, z: p.z, y: finite(p.y) ? Math.min(MAX_JUMP, Math.max(0, p.y)) : 0, yaw: p.yaw,
-    atkSeq: counter(p.atkSeq), atkKind: intIn(p.atkKind, 0, 5) ?? 0, skillSeq: counter(p.skillSeq), skill: intIn(p.skill, 0, 4) ?? 0,
+    atkSeq: counter(p.atkSeq), atkKind: intIn(p.atkKind, 0, 5) ?? 0, skillSeq: counter(p.skillSeq), skill: intIn(p.skill, 0, 5) ?? 0, // 5: the 궁극기 (only shown, never resolved from a pose)
   };
 }
 
@@ -83,6 +83,9 @@ interface Mine {
   /** when the last dash / 바람질주 burst was granted (server clock) */
   dashAt: number;
   windAt: number;
+  /** 궁극기 gauge (0..ULT_MAX) and when it was last unleashed (its i-frames) */
+  ult: number;
+  ultAt: number;
 }
 
 function readMine(state: Record<string, unknown> | null | undefined): Mine {
@@ -101,6 +104,8 @@ function readMine(state: Record<string, unknown> | null | undefined): Mine {
     potAt: finite(s.potAt) ? s.potAt : 0,
     dashAt: finite(s.dashAt) ? s.dashAt : 0,
     windAt: finite(s.windAt) ? s.windAt : 0,
+    ult: finite(s.ult) ? Math.max(0, Math.min(ULT_MAX, s.ult)) : 0,
+    ultAt: finite(s.ultAt) ? s.ultAt : 0,
   };
 }
 
@@ -185,12 +190,13 @@ async function stepOff(): Promise<void> {
   await $room.updateMyState({ gone: true }, { returnState: false });
 }
 
-async function assign(account: string, zone: string, channel: number, x: number, z: number, now: number, hp?: number): Promise<ZoneEntry> {
+async function assign(account: string, zone: string, channel: number, x: number, z: number, now: number, hp?: number, ult?: number): Promise<ZoneEntry> {
   const roomId = roomIdFor(zone, channel);
   const assigned: Assigned = { roomId, zone, channel, x, z, at: now };
   await withProfileLock(account, async () => {
     const p = await myProfile(account);
-    await saveProfile(account, { ...p, zone, channel, hp: hp ?? p.hp });
+    // the 궁극기 gauge goes along with you (the new room starts from the profile's)
+    await saveProfile(account, { ...p, zone, channel, hp: hp ?? p.hp, ult: ult ?? p.ult });
     await $global.updateUserState(account, { assigned });
   });
   return { roomId, zone, channel, x, z };
@@ -214,11 +220,11 @@ function dropOf(rule: [number, number] | undefined, rand: () => number): number 
 }
 
 /** Pays an account's share of what fell (and counts a technique use); answers whether it levelled. */
-async function payOut(account: string, roomId: string, pay: Pay, skillUse: boolean): Promise<boolean> {
+async function payOut(account: string, roomId: string, pay: Pay, skillUse: boolean, ult?: number): Promise<boolean> {
   const done = await withProfileLock(account, async () => {
     const p = await loadStored(account);
     if (!p) return null;
-    const paid = { ...p, pigment: p.pigment + pay.pigment, jade: p.jade + pay.jade, stones: p.stones + pay.stones, shards: p.shards + pay.shards };
+    const paid = { ...p, ult: ult ?? p.ult, pigment: p.pigment + pay.pigment, jade: p.jade + pay.jade, stones: p.stones + pay.stones, shards: p.shards + pay.shards };
     let next = countKills(paid, pay.felled);
     if (skillUse) next = countSkillUse(next);
     const gained = gainExp(next, pay.exp);
@@ -248,7 +254,7 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
 }
 
 async function reward(
-  account: string, roomId: string, zone: string, felled: Felling[], skillUse: boolean, rand: () => number,
+  account: string, roomId: string, zone: string, felled: Felling[], skillUse: boolean, rand: () => number, ult?: number,
 ): Promise<Omit<HitResult, "hits">> {
   const pays = new Map<string, Pay>();
   const payOf = (who: string) => {
@@ -275,7 +281,7 @@ async function reward(
     const isMe = who === account;
     if (!isMe && pay.felled.length === 0) continue;
     if (isMe && pay.felled.length === 0 && !skillUse) continue;
-    const levelUp = await payOut(who, roomId, pay, isMe && skillUse);
+    const levelUp = await payOut(who, roomId, pay, isMe && skillUse, isMe ? ult : undefined);
     if (isMe) mine = { exp: pay.exp, pigment: pay.pigment, jade: pay.jade, stones: pay.stones, shards: pay.shards, levelUp };
   }
   return mine;
@@ -291,6 +297,8 @@ interface Blow {
   echo: number;
   /** null for a basic attack, else the technique (monster defenses care) */
   skill: number | null;
+  /** the 궁극기 itself (it earns no gauge) */
+  ult?: boolean;
 }
 
 async function swing(
@@ -308,7 +316,7 @@ async function swing(
     if (mine.dead) throw new RuleViolation("dead");
     const patch = ready(mine, p, now);
     await $room.updateMyState(patch, { returnState: false });
-    if (!hasMonsters(here.zone)) return { hits: [], felled: [] };
+    if (!hasMonsters(here.zone)) return { hits: [], felled: [], ult: typeof patch.ult === "number" ? patch.ult : mine.ult };
     const blow = blowOf(p, heldTo(mine, x, z, now, ZONES[here.zone].radius));
     const state = await $room.getRoomState(["monsters"]);
     const monsters = readMonsters(here.zone, state.monsters, now, Math.random);
@@ -318,9 +326,18 @@ async function swing(
     if (result.hits.length > 0) {
       await $room.updateRoomState({ monsters: tidy(monsters), now, monstersAt: now }, { returnState: false });
     }
-    return result;
+    // the 궁극기 gauge: what this blow earned (the 궁극기 itself was emptied by `ready`)
+    let ult = typeof patch.ult === "number" ? patch.ult : mine.ult;
+    if (!blow.ult && ultOpen(p)) {
+      const gain = ultGain(result.hits.length, result.hits.filter((h) => h.kill).length);
+      if (gain > 0) {
+        ult = Math.min(ULT_MAX, ult + gain);
+        await $room.updateMyState({ ult }, { returnState: false });
+      }
+    }
+    return { ...result, ult };
   });
-  const paid = await reward(account, here.roomId, here.zone, struck.felled, skillUse, Math.random);
+  const paid = await reward(account, here.roomId, here.zone, struck.felled, skillUse, Math.random, struck.felled.length > 0 ? struck.ult : undefined);
   // A boss felled is told to the room.
   for (const f of struck.felled) {
     if (!MONSTERS[f.kind]?.boss) continue;
@@ -329,7 +346,7 @@ async function swing(
     const line: ChatMessage = { id: chatId(at), account: "", name: "", text, at, sys: true };
     await withRoomLock(here.roomId, () => postLine(line));
   }
-  return { hits: struck.hits, ...paid };
+  return { hits: struck.hits, ...paid, ult: struck.ult };
 }
 
 // ---------- chat ----------
@@ -368,7 +385,7 @@ async function tickRoom(zone: string, delta: number, now: number): Promise<void>
   const effects = readEffects(state.effects);
   const writtenAt = finite(state.monstersAt) ? state.monstersAt : null;
   const stepMs = writtenAt === null ? delta : Math.max(delta, now - writtenAt);
-  const users = await $room.getUserStates(accounts, ["pose", "hp", "maxHp", "dead", "gone", "dashAt"]);
+  const users = await $room.getUserStates(accounts, ["pose", "hp", "maxHp", "dead", "gone", "dashAt", "ultAt"]);
   const fighters = new Map<string, Mine>();
   const prey: Prey[] = [];
   for (const u of users) {
@@ -432,6 +449,8 @@ async function landBites(bites: Bite[], fighters: Map<string, Mine>, now: number
     if (!f || f.dead) continue;
     // mid-roll: the blow passes through
     if (now - f.dashAt < ROLL_IFRAME_MS) continue;
+    // mid-궁극기: untouchable too
+    if (now - f.ultAt < ULT_IFRAME_MS) continue;
     const hp = Math.max(0, Math.round(f.hp - dmg));
     const dead = hp <= 0;
     await $room.updateUserState(account, { hp, dead, hurtAt: now }, { returnState: false });
@@ -662,7 +681,7 @@ export class Server {
     if (Math.hypot(pose.x - portal.x, pose.z - portal.z) > PORTAL_REACH + PROXIMITY_SLACK) throw new RuleViolation("too_far");
     // You keep your channel when it has room: whoever you walked with is on the other side too.
     const channel = await pickChannel(zone, account, here.channel);
-    const entry = await assign(account, zone, channel, portal.arriveX, portal.arriveZ, now, Math.round(mine.hp));
+    const entry = await assign(account, zone, channel, portal.arriveX, portal.arriveZ, now, Math.round(mine.hp), mine.ult);
     await stepOff();
     return entry;
   }
@@ -684,17 +703,19 @@ export class Server {
       const keep = present(mine) && mine.entry === assigned.at;
       const hp = keep ? mine.hp : p.hp <= 0 ? maxHp : Math.min(maxHp, p.hp);
       const pose = keep ? mine.pose! : standingPose(assigned.x, assigned.z);
+      // the 궁극기 gauge: the room's if you never left it, else the one the profile carried over
+      const ult = keep ? mine.ult : p.ult;
       await $room.updateMyState({
         name: p.name, level: p.level, hp, maxHp, dead: keep ? mine.dead : false, pose, look: lookOf(p), at: now,
-        entry: assigned.at, gone: false, ...(keep ? {} : { atkAt: 0, cds: [], potAt: 0 }),
+        entry: assigned.at, gone: false, ult, ...(keep ? {} : { atkAt: 0, cds: [], potAt: 0, ultAt: 0 }),
       });
-      return { x: pose.x, z: pose.z };
+      return { x: pose.x, z: pose.z, ult };
     });
     const goal = MAIN_QUESTS[p.main]?.goal;
     if (goal?.type === "reach" && goal.zone === here.zone) {
       p = await updateProfile(account, (q) => markMain(q, { type: "reach", zone: here.zone }));
     }
-    return { roomId: here.roomId, zone: here.zone, channel: here.channel, x: placed.x, z: placed.z };
+    return { roomId: here.roomId, zone: here.zone, channel: here.channel, x: placed.x, z: placed.z, ult: placed.ult };
   }
 
   /** Where you are: held to walking pace and the zone disc, written for everyone in the room. */
@@ -748,6 +769,25 @@ export class Server {
       cds[req.skill] = now + def.cd * skillCdMul(p.skills[req.skill] ?? 1) * cdMulOf(p) * 1000 * COOLDOWN_GRACE;
       return { cds };
     }, true);
+  }
+
+  /**
+   * 궁극기 「무지개 붓질」: with a full gauge (and 1장's boss behind you), a rainbow ring of ULT_RADIUS around where you
+   * stand strikes everything in it for ULT_MUL × attack; for ULT_IFRAME_MS nothing touches you. Empties the gauge.
+   */
+  async ultimate(raw: unknown): Promise<HitResult> {
+    if (!raw || typeof raw !== "object") throw new RuleViolation("bad_args");
+    const r = raw as Record<string, unknown>;
+    if (!finite(r.x) || !finite(r.z) || !finite(r.yaw)) throw new RuleViolation("bad_args");
+    const yaw = r.yaw;
+    const blow = (_p: Profile, at: { x: number; z: number }): Blow => ({
+      areas: [{ shape: { shape: "ring", r: ULT_RADIUS }, x: at.x, z: at.z, yaw }], kb: ULT_KB, mul: ULT_MUL, echo: 0, skill: null, ult: true,
+    });
+    return swing(r.x, r.z, blow, (mine, p, now) => {
+      if (!ultOpen(p)) throw new RuleViolation("locked");
+      if (mine.ult < ULT_MAX) throw new RuleViolation("on_cooldown");
+      return { ult: 0, ultAt: now };
+    }, false);
   }
 
   async usePotion(): Promise<ProfileView> {
@@ -822,7 +862,7 @@ export class Server {
     const players = await $global.getRoomUserAccounts(roomIdFor(here.zone, rawTo));
     if (!players.includes(account) && players.length >= CHANNEL_CAPACITY) throw new RuleViolation("room_full");
     await $global.updateUserState(account, { chHopAt: now });
-    const entry = await assign(account, here.zone, rawTo, mine.pose.x, mine.pose.z, now, Math.round(mine.hp));
+    const entry = await assign(account, here.zone, rawTo, mine.pose.x, mine.pose.z, now, Math.round(mine.hp), mine.ult);
     await stepOff();
     return entry;
   }
@@ -838,7 +878,7 @@ export class Server {
     const home = here ? homeOf(here.zone) : START_ZONE;
     const at = spawnOf(home);
     const channel = await pickChannel(home, account, here?.channel ?? p.channel);
-    const entry = await assign(account, home, channel, at.x, at.z, Date.now(), maxHpOf(p));
+    const entry = await assign(account, home, channel, at.x, at.z, Date.now(), maxHpOf(p), mine && present(mine) ? mine.ult : undefined);
     await stepOff();
     return entry;
   }
@@ -862,7 +902,7 @@ export class Server {
     if (!villageOpen(p, rawTo)) throw new RuleViolation("locked");
     const at = spawnOf(rawTo);
     const channel = await pickChannel(rawTo, account, here.channel);
-    const entry = await assign(account, rawTo, channel, at.x, at.z, Date.now(), Math.round(mine.hp));
+    const entry = await assign(account, rawTo, channel, at.x, at.z, Date.now(), Math.round(mine.hp), mine.ult);
     await stepOff();
     return entry;
   }
