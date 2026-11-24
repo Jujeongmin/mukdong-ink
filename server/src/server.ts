@@ -1,6 +1,6 @@
 import type { AttackReq, EnhanceResult, GachaPull, GachaResult, HitResult, ProfileView, SkillReq, ZoneEntry } from "../../src/net/api";
 import {
-  BASIC, BASIC_MIN_GAP, MONSTERS, potionCost, POTION_GAP_MS, POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, REGEN_SAFE, SKILLS, ULT_IFRAME_MS, ULT_KB, ULT_MAX, ULT_MUL, ULT_RADIUS, killExp, ultGain, type HitShape,
+  BASIC, BASIC_MIN_GAP, MONSTERS, potionCost, POTION_GAP_MS, POTION_HEAL, REGEN_DELAY_MS, REGEN_FIELD, REGEN_SAFE, SKILLS, ULT_ARM_MS, ULT_IFRAME_MS, ULT_KB, ULT_MAX, ULT_MUL, ULT_RADIUS, killExp, ultGain, type HitShape,
 } from "../../src/shared/combat";
 import {
   DROPS, ENHANCE_MAX, ENHANCE_TABLE, PROTECT_PRICE, SKILL_MAX, UNBREAKABLE, awakeningAt, rollEnhance, skillCdMul, skillDmgMul, trainCost,
@@ -90,6 +90,8 @@ interface Mine {
   /** 궁극기 gauge (0..ULT_MAX) and when it was last unleashed (its i-frames) */
   ult: number;
   ultAt: number;
+  /** the 궁극기's leap began (ultStart); its landing (ultimate) strikes within ULT_ARM_MS */
+  ultArm: number;
 }
 
 function readMine(state: Record<string, unknown> | null | undefined): Mine {
@@ -110,6 +112,7 @@ function readMine(state: Record<string, unknown> | null | undefined): Mine {
     windAt: finite(s.windAt) ? s.windAt : 0,
     ult: finite(s.ult) ? Math.max(0, Math.min(ULT_MAX, s.ult)) : 0,
     ultAt: finite(s.ultAt) ? s.ultAt : 0,
+    ultArm: finite(s.ultArm) ? s.ultArm : 0,
   };
 }
 
@@ -926,6 +929,28 @@ export class Server {
    * 궁극기 「무지개 붓질」: with a full gauge (and 1장's boss behind you), a rainbow ring of ULT_RADIUS around where you
    * stand strikes everything in it for ULT_MUL × attack; for ULT_IFRAME_MS nothing touches you. Empties the gauge.
    */
+  /**
+   * 궁극기, the leap: the gauge is spent and you are untouchable from now (ULT_IFRAME_MS covers the leap); the
+   * blow itself comes with `ultimate` when the brush lands, so nothing is struck before it does.
+   */
+  async ultStart(): Promise<{ ult: number }> {
+    const here = currentRoom();
+    if (!here) throw new RuleViolation("not_ready");
+    const account = $sender.account;
+    const p = await myProfile(account);
+    const now = Date.now();
+    await withRoomLock(here.roomId, async () => {
+      const mine = readMine(await $room.getMyState());
+      if (!present(mine)) throw new RuleViolation("not_ready");
+      if (mine.dead) throw new RuleViolation("dead");
+      if (!ultOpen(p)) throw new RuleViolation("locked");
+      if (mine.ult < ULT_MAX) throw new RuleViolation("on_cooldown");
+      await $room.updateMyState({ ult: 0, ultAt: now, ultArm: now }, { returnState: false });
+    });
+    return { ult: 0 };
+  }
+
+  /** 궁극기, the landing: strikes around you. After ultStart (within ULT_ARM_MS); alone, it spends a full gauge. */
   async ultimate(raw: unknown): Promise<HitResult> {
     if (!raw || typeof raw !== "object") throw new RuleViolation("bad_args");
     const r = raw as Record<string, unknown>;
@@ -936,6 +961,7 @@ export class Server {
     });
     return swing(r.x, r.z, blow, (mine, p, now) => {
       if (!ultOpen(p)) throw new RuleViolation("locked");
+      if (mine.ultArm > 0 && now - mine.ultArm < ULT_ARM_MS) return { ultArm: 0 };
       if (mine.ult < ULT_MAX) throw new RuleViolation("on_cooldown");
       return { ult: 0, ultAt: now };
     }, false);

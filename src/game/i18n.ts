@@ -4,6 +4,8 @@
 // module-level tables may call t() too. Changing the language reloads the page.
 // Keys: `npm run i18n:keys` lists every key the code and the shared data use (tools/i18n-keys.mjs).
 
+import { fillKo } from "./josa";
+
 export type Lang = "ko" | "en" | "ja" | "zh-Hant" | "zh-Hans";
 
 /** Each language named in itself, for the picker. */
@@ -100,6 +102,8 @@ export function setLang(next: Lang): void {
  */
 export function t(ko: string, vars?: Record<string, string | number>): string {
   let s = lang === "ko" ? ko : dict[ko] ?? ko;
-  if (vars) s = s.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
-  return s;
+  if (!vars) return s;
+  if (lang !== "ko") return s.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
+  return fillKo(s, vars);
 }
+

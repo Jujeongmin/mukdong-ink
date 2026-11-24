@@ -12,7 +12,7 @@ export function el<T extends HTMLElement = HTMLElement>(sel: string, root: Paren
 }
 
 /** Each 검법's own color in the UI (cooldown rings, the 수련 sheet), by skill index. */
-export const SKILL_COLOR = ["#2f4f9e", "#d4462a", "#c08a2a", "#8fc7cf", "#3b2a48"];
+export const SKILL_COLOR = ["#2f4f9e", "#d4462a", "#c08a2a", "#4e9aa6", "#3b2a48"]; // 바람 a deeper sky-teal: pale cyan vanished on the light ground
 
 export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
@@ -36,7 +36,6 @@ export function installSprites(): void {
     "--m-splash": "./assets/ui/ui-splash.png",
     "--sheet-mat": "./assets/materials2.webp",
     "--sheet-hud": "./assets/hud_icons3.png",
-    "--ult-icon": "./assets/ui/ult_icon.webp",
   };
   for (const [k, v] of Object.entries(kit)) root.setProperty(k, `url("${url(v)}")`);
   // ink-sketch sheets (v3, redrawn to match the prologue paintings); new names so deploy caches can't serve the old ones

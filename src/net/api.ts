@@ -146,6 +146,8 @@ export interface GameApi {
   castSkill(req: SkillReq): Promise<HitResult>;
   usePotion(): Promise<ProfileView>;
   /** 궁극기 「무지개 붓질」 from where you stand (full gauge, opened). Errors: locked, on_cooldown (not full), dead. */
+  /** 궁극기: the leap (spends the gauge, untouchable from now); then `ultimate` when the brush lands. */
+  ultStart(): Promise<{ ult: number }>;
   ultimate(req: { x: number; z: number; yaw: number }): Promise<HitResult>;
   buyPotions(count: number): Promise<ProfileView>;
   respawn(): Promise<ZoneEntry>;

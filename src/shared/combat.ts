@@ -39,6 +39,8 @@ export const ULT_MUL = 9;
 export const ULT_KB = 10;
 /** the whole leap: asked for as it starts, untouchable until a little after the brush lands */
 export const ULT_IFRAME_MS = 2200;
+/** after ultStart (the leap), the landing's blow is accepted this long (the leap lands at about 1.6 s) */
+export const ULT_ARM_MS = 2600;
 /** The gauge a blow earns: hits (capped) and kills; the 궁극기 itself earns none. */
 export function ultGain(hits: number, kills: number): number {
   return Math.min(ULT_HIT_CAP, hits * ULT_PER_HIT) + kills * ULT_PER_KILL;

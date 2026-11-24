@@ -97,3 +97,19 @@ export async function rolling(values: number | number[], run: () => Promise<any>
 export function ago(ms: number): number {
   return Date.now() - ms;
 }
+
+/**
+ * Runs `run` with the clock moved to a quiet moment of the field boss schedule (between two of its windows), so
+ * a test that counts a field's monsters or its writes doesn't depend on the wall clock.
+ */
+export async function fieldBossQuiet<T>(run: () => Promise<T>): Promise<T> {
+  const quiet = Date.UTC(2026, 10, 23, 15, 10, 0); // 00:10 KST: the 00:00 window has closed, the next opens at 00:20
+  const real = Date.now;
+  const from = real();
+  Date.now = () => quiet + (real() - from);
+  try {
+    return await run();
+  } finally {
+    Date.now = real;
+  }
+}

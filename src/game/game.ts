@@ -823,30 +823,31 @@ export class Game {
     this.unleash();
   }
   /**
-   * The leap starts: the server is asked at once (its untouchable time covers the whole leap, and it strikes
-   * where you stand, which the leap never leaves); the hits are shown when the brush lands.
+   * The leap starts: the server spends the gauge and makes you untouchable now (ultStart); the blow is asked
+   * for when the brush lands (sendUlt), so nothing is struck before it comes down.
    */
   private unleash(): void {
     const a = this.player;
     if (!a.unleash()) return;
     this.ultBusy = true;
-    this.ultLanded = false;
-    this.ultRes = null;
+    this.ultStarted = attempt(this.api.ultStart(), QUIET_COMBAT).then((r) => {
+      if (r) this.setUlt(r.ult);
+      return !!r;
+    });
     this.lastSwingAt = performance.now();
-    void attempt(this.api.ultimate({ x: a.x, z: a.z, yaw: a.head }), QUIET_COMBAT).then((res) => {
+  }
+  private ultStarted: Promise<boolean> | null = null;
+  /** The brush has landed: now it strikes (where you stand; the leap never leaves it). */
+  private sendUlt(a: Actor): void {
+    const started = this.ultStarted;
+    this.ultStarted = null;
+    void (async () => {
+      if (!started || !(await started)) { this.ultBusy = false; return; }
+      const res = await attempt(this.api.ultimate({ x: a.x, z: a.z, yaw: a.head }), QUIET_COMBAT);
       this.ultBusy = false;
       if (!res) return;
-      if (typeof res.ult === "number") this.setUlt(res.ult);
-      if (this.ultLanded) this.queueHits(res, 0, ULT_BLOW);
-      else this.ultRes = res;
-    });
-  }
-  private ultRes: HitResult | null = null;
-  private ultLanded = false;
-  /** The brush has landed: show what the server already struck. */
-  private sendUlt(_a: Actor): void {
-    this.ultLanded = true;
-    if (this.ultRes) { this.queueHits(this.ultRes, 0, ULT_BLOW); this.ultRes = null; }
+      this.queueHits(res, 0, ULT_BLOW);
+    })();
   }
 
   private pressSkill(i: number): void {

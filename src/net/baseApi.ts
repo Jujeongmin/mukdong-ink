@@ -129,6 +129,9 @@ export abstract class BaseGameApi implements GameApi {
   async changeChannel(channel: number): Promise<ZoneEntry> {
     return this.moveTo(await this.call<ZoneEntry>("changeChannel", [channel]));
   }
+  ultStart(): Promise<{ ult: number }> {
+    return this.call<{ ult: number }>("ultStart", []);
+  }
   ultimate(req: { x: number; z: number; yaw: number }): Promise<HitResult> {
     return this.call<HitResult>("ultimate", [req]);
   }

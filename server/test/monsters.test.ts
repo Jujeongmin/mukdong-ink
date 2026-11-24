@@ -1,22 +1,24 @@
 import { MONSTERS, RESPAWN_MS, maxHpFor, monsterAtk } from "../../src/shared/combat";
 import { ROLL_IFRAME_MS, START_POS, ZONES, roomIdFor } from "../../src/shared/world";
 import { MONSTER_SYNC_MS, spawnZone } from "../src/hunt";
-import { ago, errorOf, goTo, inVillage, join, only, profileOf, walkTo } from "./helpers";
+import { ago, errorOf, fieldBossQuiet, goTo, inVillage, join, only, profileOf, walkTo } from "./helpers";
 
 describe("monsters", () => {
   test("a hunting zone fills on its first tick, inside the disc and away from the portals", async (server) => {
-    const entry = await goTo(server, "test-a", "bamboo");
-    await server.simulateTick(entry.roomId, 200);
-    const { monsters, now } = await $room.getRoomState();
-    const ids = Object.keys(spawnZone("bamboo", 0, () => 0.5));
-    expect(Object.keys(monsters).sort()).toEqual(ids.sort());
-    expect(typeof now).toBe("number");
-    for (const m of Object.values(monsters) as any[]) {
-      expect(m.hp).toBe(m.maxHp);
-      expect(Math.hypot(m.x, m.z)).toBeLessThanOrEqual(ZONES.bamboo.radius);
-      // The fixed ones (the vine ring and the lair at the north gate) stand where the zone puts them.
-      if (!["vine", "shadelord", "bigblob"].includes(m.kind)) for (const p of ZONES.bamboo.portals) expect(Math.hypot(m.x - p.x, m.z - p.z)).toBeGreaterThan(6);
-    }
+    await fieldBossQuiet(async () => {
+      const entry = await goTo(server, "test-a", "bamboo");
+      await server.simulateTick(entry.roomId, 200);
+      const { monsters, now } = await $room.getRoomState();
+      const ids = Object.keys(spawnZone("bamboo", 0, () => 0.5));
+      expect(Object.keys(monsters).sort()).toEqual(ids.sort());
+      expect(typeof now).toBe("number");
+      for (const m of Object.values(monsters) as any[]) {
+        expect(m.hp).toBe(m.maxHp);
+        expect(Math.hypot(m.x, m.z)).toBeLessThanOrEqual(ZONES.bamboo.radius);
+        // The fixed ones (the vine ring and the lair at the north gate) stand where the zone puts them.
+        if (!["vine", "shadelord", "bigblob"].includes(m.kind)) for (const p of ZONES.bamboo.portals) expect(Math.hypot(m.x - p.x, m.z - p.z)).toBeGreaterThan(6);
+      }
+    });
   });
 
   test("the village stays empty", async (server) => {
@@ -159,15 +161,17 @@ describe("monsters", () => {
   });
 
   test("walking alone is written at most every MONSTER_SYNC_MS", async (server) => {
-    const entry = await goTo(server, "test-a", "bamboo");
-    await walkTo(server, -20, 0);
-    await only("bamboo", "blob0", 0, 0, { wx: 3, wz: 0 });
-    await $room.updateRoomState({ monstersAt: Date.now() });
-    await server.simulateTick(entry.roomId, 200);
-    expect((await $room.getRoomState()).monsters.blob0.x).toBe(0);
-    await $room.updateRoomState({ monstersAt: ago(MONSTER_SYNC_MS + 50) });
-    await server.simulateTick(entry.roomId, 200);
-    expect((await $room.getRoomState()).monsters.blob0.x).toBeGreaterThan(0);
+    await fieldBossQuiet(async () => {
+      const entry = await goTo(server, "test-a", "bamboo");
+      await walkTo(server, -20, 0);
+      await only("bamboo", "blob0", 0, 0, { wx: 3, wz: 0 });
+      await $room.updateRoomState({ monstersAt: Date.now() });
+      await server.simulateTick(entry.roomId, 200);
+      expect((await $room.getRoomState()).monsters.blob0.x).toBe(0);
+      await $room.updateRoomState({ monstersAt: ago(MONSTER_SYNC_MS + 50) });
+      await server.simulateTick(entry.roomId, 200);
+      expect((await $room.getRoomState()).monsters.blob0.x).toBeGreaterThan(0);
+    });
   });
 
   test("leaving for good keeps your health on the profile", async (server) => {

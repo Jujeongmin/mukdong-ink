@@ -2256,18 +2256,32 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* above the techniques; on a phone's short screen the quest card hangs there, so it sits left of the arc instead */
 .ring-btn.ult { --a: 104deg; }
 @media (max-height: 480px) { .ring-btn.ult { --a: 150deg; } }
-/* no ring round it: the rainbow ensō picture itself is the gauge, grey below and filling with color from the bottom up */
-.ring-btn.ult .ult-ic { position: absolute; inset: 0; border-radius: 50%; background: var(--ult-icon) center / contain no-repeat; filter: grayscale(1) opacity(0.4); }
-.ring-btn.ult .ult-fill { filter: none; clip-path: inset(calc((1 - var(--f, 0)) * 100%) 0 0 0); transition: clip-path 0.25s ease-out; }
-.ring-btn.ult .ult-pct { position: absolute; left: 50%; top: auto; bottom: -4px; transform: translateX(-50%); font-family: var(--f-body); font-size: 10px; font-weight: 700; color: var(--ink); text-shadow: var(--halo); white-space: nowrap; }
-.ring-btn.ult.full .ult-pct { color: var(--cinnabar); }
-/* full: the picture glows and the button breathes */
-.ring-btn.ult.full .ult-fill { filter: drop-shadow(0 0 6px rgba(255, 220, 160, 0.95)); }
+/* the gauge is the brush ensō itself, like the other rings: an empty ink ensō, and over it the same stroke filling
+   clockwise from the top in the five 오방 colors (blue, red, yellow, white, black) as the 궁극기 charges */
+.ring-btn.ult .ult-empty { opacity: 0.32; }
+.ring-btn.ult .ult-gauge {
+  /* the fill starts where the brush lands (the stroke's heavy end, lower left) and runs along it clockwise */
+  background: conic-gradient(from 225deg, #2f4f9e 0 20%, #d4462a 20% 40%, #c08a2a 40% 60%, #e2ddd0 60% 80%, #4a3d5c 80% 100%);
+  -webkit-mask: var(--m-enso) center / 100% 100% no-repeat, conic-gradient(from 225deg, #000 calc(var(--f, 0) * 1turn), transparent 0);
+  -webkit-mask-composite: source-in;
+  mask: var(--m-enso) center / 100% 100% no-repeat, conic-gradient(from 225deg, #000 calc(var(--f, 0) * 1turn), transparent 0);
+  mask-composite: intersect;
+  transition: -webkit-mask 0.25s, mask 0.25s;
+}
+.ring-btn.ult .ult-pct { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: var(--f-brush); font-weight: 700; font-size: 14px;
+  line-height: 1; color: #f3ebdc; text-shadow: 0 0 3px rgba(10, 9, 8, 0.9); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ring-btn.ult.full .ult-pct { color: #f2a28a; font-size: 15px; }
+/* the same soft ink disc the technique rings sit on */
+.ring-btn.ult::before { content: ""; position: absolute; inset: 12%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(27, 23, 20, 0.5) 0 58%, rgba(27, 23, 20, 0.22) 70%, rgba(27, 23, 20, 0) 74%); }
+/* full: the ring turns slowly and the button breathes */
+.ring-btn.ult.full .ult-gauge { animation: ult-turn 6s linear infinite; }
+@keyframes ult-turn { to { transform: rotate(1turn); } }
 .ring-btn.ult.full { animation: ult-breathe 1.4s ease-in-out infinite; }
 .ring-btn.ult.ready { animation: ult-pop 0.9s cubic-bezier(0.3, 1.6, 0.5, 1); }
 @keyframes ult-breathe { 50% { transform: scale(1.06); } }
 @keyframes ult-pop { 30% { transform: scale(1.3); } }
-@media (prefers-reduced-motion: reduce) { .ring-btn.ult.full { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ring-btn.ult.full, .ring-btn.ult.full .ult-gauge { animation: none; } }
 /* the screen's edge through every color at once (the 궁극기 landing) */
 #ui .skill-wash.rainbow { background: radial-gradient(ellipse 80% 75% at 50% 50%, transparent 45%, rgba(255, 250, 235, 0.25) 75%, transparent 100%), conic-gradient(from 0deg, rgba(230, 41, 31, 0.55), rgba(250, 128, 25, 0.55), rgba(249, 214, 42, 0.55), rgba(61, 184, 77, 0.55), rgba(42, 153, 230, 0.55), rgba(56, 78, 209, 0.55), rgba(143, 61, 199, 0.55), rgba(230, 41, 31, 0.55));
   -webkit-mask: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 50%, #000 100%); mask: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 50%, #000 100%); }
@@ -2296,3 +2310,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .tag.elite.fboss small { color: #e9c9a0; font-family: var(--f-body); font-weight: 700; font-size: 11px; }
 .tag.fboss .tag-hp { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 5px; border-radius: 2px; background: rgba(70, 60, 54, 0.95); overflow: hidden; }
 .tag.fboss .tag-hp > i { position: absolute; inset: 0; transform-origin: left center; transform: scaleX(var(--f, 1)); background: linear-gradient(180deg, #ec5a4c, #b0241c); transition: transform 0.25s ease-out; }
+
+/* skill icons sit on a soft ink disc, so a pale technique (바람) still reads on the light ground */
+.ring-btn.sk::before { content: ""; position: absolute; inset: 12%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(27, 23, 20, 0.5) 0 58%, rgba(27, 23, 20, 0.22) 70%, rgba(27, 23, 20, 0) 74%); }

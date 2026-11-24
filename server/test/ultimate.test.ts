@@ -83,4 +83,21 @@ describe("궁극기 「무지개 붓질」", () => {
     expect((await $room.getMyState()).ult).toBe(40);
     void next;
   });
+
+  test("the leap spends the gauge and strikes nothing; the landing strikes", async (server) => {
+    await goTo(server, "test-a", "bamboo");
+    await only("bamboo", "blob0", 1.5, 0, { hp: 5000 });
+    await ready(server);
+    await $room.updateMyState({ ult: ULT_MAX });
+    const hpOf = async () => ((await $room.getRoomState(["monsters"])).monsters as Record<string, { hp: number }>).blob0.hp;
+    expect((await server.ultStart()).ult).toBe(0);
+    expect(await hpOf()).toBe(5000);
+    expect((await $room.getMyState()).ult).toBe(0);
+    const r = await server.ultimate(at());
+    expect(r.hits.length).toBe(1);
+    expect(await hpOf()).toBeLessThan(5000);
+    // one leap, one blow
+    expect(await errorOf(server.ultimate(at()))).toContain("on_cooldown");
+    expect(await errorOf(server.ultStart())).toContain("on_cooldown");
+  });
 });
