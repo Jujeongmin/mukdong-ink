@@ -2256,3 +2256,7 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .skill-wash.rainbow::after { display: none; }
 /* the 궁극기's own damage numbers: white with a rainbow edge */
 #ui .dmg.ult { color: #fffaf0; font-size: 34px; text-shadow: -1px 0 #e6291f, 1px 0 #2a99e6, 0 -1px #f9d62a, 0 1px #8f3dc7, 0 0 6px rgba(0, 0, 0, 0.6); }
+
+/* ---------- no full stops in the UI: a sentence that ended with one now ends the line instead ---------- */
+.dlg-text, .thought p, .toasts, .ink-death-side p, .loading-tip, .sheet-card .say, .sheet-card .cap, .sheet-card .body,
+.sheet-card .first-note, .album-pic.empty span, .qbody .qobj, .photo-hint { white-space: pre-line; }

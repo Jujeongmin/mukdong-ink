@@ -155,7 +155,7 @@ export class Story {
     }
     if (npc.role === "dyer" && !handled && this.ctx.hints?.has("death") && !this.ctx.hints.has("dyer-potion")) {
       this.ctx.hints.mark("dyer-potion");
-      const pick = await dialogue.play([{ who: npc.id, text: t("또 먹에 잠겼다면서요? 물약 몇 개 챙겨 가요! 여기서 팔아요.") }], { choices: [{ label: t("물약 보기"), value: "potion" }, { label: t("그만 가 볼게"), value: "" }] });
+      const pick = await dialogue.play([{ who: npc.id, text: t("또 먹에 잠겼다면서요? 물약 몇 개 챙겨 가요! 여기서 팔아요") }], { choices: [{ label: t("물약 보기"), value: "potion" }, { label: t("그만 가 볼게"), value: "" }] });
       if (pick === "potion") sheets.openNpc(npc, "potion");
       return;
     }
@@ -182,9 +182,9 @@ function pickIdle(id: string): Line[] | null {
 
 /** Each keeper's way of saying how many are left, for a 서브 퀘스트 already under way. */
 const LEFT: Record<string, (n: number) => string> = {
-  baram: (n) => t("아직 {n} 남았어.", { n }),
-  noeul: (n) => t("아직 {n} 남았단다.", { n }),
-  heukwol: (n) => t("{n} 남았다.", { n }),
-  dalrae: (n) => t("아직 {n} 남었어.", { n }),
-  haedam: (n) => t("아직 {n} 남았소.", { n }),
+  baram: (n) => t("아직 {n} 남았어", { n }),
+  noeul: (n) => t("아직 {n} 남았단다", { n }),
+  heukwol: (n) => t("{n} 남았다", { n }),
+  dalrae: (n) => t("아직 {n} 남었어", { n }),
+  haedam: (n) => t("아직 {n} 남았소", { n }),
 };

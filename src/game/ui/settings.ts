@@ -116,7 +116,7 @@ const KEY_ROWS: [string, string][] = [
   [KEYS.move, t("걷기")],
   [t("Space · Shift · 우클릭"), t("구르기 (구르는 동안은 맞지 않는다)")],
   [t("좌클릭 · J"), t("베기 (가까운 적에게), 누르고 있으면 이어 베기")],
-  ["1 · 2 · 3 · 4 · 5", t("오방 검법 (물결·화염·대지·바람·먹), 가까운 적에게. 고리를 눌러도 된다. 자동 사냥 중엔 저절로")],
+  ["1 · 2 · 3 · 4 · 5", t("오방 검법 (물결·화염·대지·바람·먹), 가까운 적에게\n고리를 눌러도 된다\n자동 사냥 중엔 저절로")],
   [KEYS.auto, t("자동 진행")],
   [KEYS.potion, t("물약")],
   [KEYS.talk, t("말 걸기")],
@@ -149,7 +149,7 @@ export function settingsHtml(tab: string, ctx: SettingsCtx): string {
   }
   if (tab === "keys") {
     return `<table class="key-table"><tbody>${KEY_ROWS.map(([k, d]) => `<tr><th><kbd>${esc(k)}</kbd></th><td>${esc(d)}</td></tr>`).join("")}</tbody></table>
-      <p class="sub">${t("모바일: 왼쪽 원으로 걷고, 오른쪽 고리로 베고 구른다. 채팅 버튼으로 이야기한다.")}</p>
+      <p class="sub">${t("모바일: 왼쪽 원으로 걷고, 오른쪽 고리로 베고 구른다\n채팅 버튼으로 이야기한다")}</p>
       <button type="button" class="btn btn-secondary btn-sm" data-open-auto>${t("자동 사냥 설정 열기")}</button>`;
   }
   if (tab === "game") {

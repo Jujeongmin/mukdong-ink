@@ -227,19 +227,19 @@ export class AutoPlay {
   startDaily(i: number, walled = false): string | null {
     const p = this.ctx.profile();
     const d = dailyStatus(p, i);
-    if (d.claimed) return t("오늘은 이미 마친 의뢰다.");
+    if (d.claimed) return t("오늘은 이미 마친 의뢰다");
     this.stop();
     this.progress = true;
     this.daily = i;
     if (d.done) { void this.ctx.claimDailies().then(() => this.carryOn()); this.ctx.changed(); return null; }
     const zone = huntZone(DAILY_QUESTS[i].goal.type === "kill" ? DAILY_QUESTS[i].goal.kind : "any", p.level, this.ctx.zone());
-    if (!zone) { this.stop(); return t("먹귀신이 있는 곳을 모르겠다."); }
+    if (!zone) { this.stop(); return t("먹귀신이 있는 곳을 모르겠다"); }
     this.goal = { kind: "hunt", zone, monster: DAILY_QUESTS[i].goal.type === "kill" ? DAILY_QUESTS[i].goal.kind : "any", daily: i };
     this.traveling = true;
     this.fails = 0;
     this.stuckT = 0;
     this.hasWp = false;
-    if (walled) this.ctx.think("auto-wall", t("경지 {n}이 모자라다… 오늘의 의뢰로 먼저 강해지자.", { n: mainWall(p) }));
+    if (walled) this.ctx.think("auto-wall", t("경지 {n}이 모자라다… 오늘의 의뢰로 먼저 강해지자", { n: mainWall(p) }));
     this.ctx.changed();
     return null;
   }
@@ -251,7 +251,7 @@ export class AutoPlay {
   startSub(walled = false): string | null {
     const p = this.ctx.profile();
     const s = subStatus(p);
-    if (!s) return t("지금은 맡을 서브 의뢰가 없다.");
+    if (!s) return t("지금은 맡을 서브 의뢰가 없다");
     this.stop();
     this.progress = true;
     this.sub = true;
@@ -262,7 +262,7 @@ export class AutoPlay {
     this.fails = 0;
     this.stuckT = 0;
     this.hasWp = false;
-    if (walled) this.ctx.think("auto-wall", t("경지 {n}이 모자라다… 서브 의뢰로 더 강해지자.", { n: mainWall(p) }));
+    if (walled) this.ctx.think("auto-wall", t("경지 {n}이 모자라다… 서브 의뢰로 더 강해지자", { n: mainWall(p) }));
     this.ctx.changed();
     return null;
   }
@@ -297,7 +297,7 @@ export class AutoPlay {
   startTravel(): string | null {
     const p = this.ctx.profile();
     const s = mainStatus(p);
-    if (!s) return t("이어지는 의뢰가 없다.");
+    if (!s) return t("이어지는 의뢰가 없다");
     const q = s.q;
     let goal: Goal | null = null;
     const npcGoal = (id: string): Goal | null => {
@@ -316,8 +316,8 @@ export class AutoPlay {
     } else if (q.goal.type === "reach") goal = { kind: "zone", zone: q.goal.zone };
     else if (q.goal.type === "talk") goal = npcGoal(q.goal.npc);
     else if (q.goal.type === "dye") goal = npcGoal("dyer");
-    else if (q.goal.type === "level") return t("더 강해져야 한다… 사냥하며 경지를 올리자.");
-    if (!goal) return t("어디로 가야 할지 모르겠다.");
+    else if (q.goal.type === "level") return t("더 강해져야 한다… 사냥하며 경지를 올리자");
+    if (!goal) return t("어디로 가야 할지 모르겠다");
     this.goal = goal;
     this.traveling = true;
     this.fails = 0;
@@ -525,7 +525,7 @@ export class AutoPlay {
     if (!block) return false;
     const weak = block.def.weakTo ?? [];
     const canBurn = weak.some((i) => this.settings.skills[i] && this.ctx.profile().level >= SKILLS[i].unlock);
-    if (!canBurn) { this.giveUp(t("불이라도 있으면… 바람이에게 가 보자.")); return true; }
+    if (!canBurn) { this.giveUp(t("불이라도 있으면… 바람이에게 가 보자")); return true; }
     const d = Math.hypot(block.x - pl.x, block.z - pl.z) - block.def.radius;
     this.target = block;
     if (d > 2.6) this.setWp(block.x - dx * (block.def.radius + 2), block.z - dz * (block.def.radius + 2));

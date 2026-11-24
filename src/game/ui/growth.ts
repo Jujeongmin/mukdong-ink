@@ -79,7 +79,7 @@ export function skillsHtml(p: ProfileView, busy: boolean, st: GrowthState): stri
     </button></li>`;
   }).join("");
 
-  const help = t("경지가 오를 때마다 수련 포인트 하나, 의뢰로도 얻는다.\n5와 10단계에서 검법이 깨어난다 (색 조각이 든다).");
+  const help = t("경지가 오를 때마다 수련 포인트 하나, 의뢰로도 얻는다\n5와 10단계에서 검법이 깨어난다 (색 조각이 든다)");
   const bar = resBar([["points", pts], ["pigment", p.pigment], ["shard", p.shards ?? 0], ["stone", p.stones ?? 0], ["protect", p.protects ?? 0], ["jade", p.jade]], help);
   return `${bar}<div class="gr2${st.detail ? " detail-up" : ""}"><ol class="gr2-list">${rows}</ol>${skillDetail(p, sel, pts, busy, st)}</div>`;
 }
@@ -122,7 +122,7 @@ function skillDetail(p: ProfileView, i: number, pts: number, busy: boolean, st: 
     </div>
     ${next}
     <ol class="gr2-tl" aria-label="${t("각성")}">${tl}</ol>
-    ${focus ? `<p class="gr2-note">${t("{n}단계에서 검법이 깨어난다. {mat}이 하나 든다.", { n: AWAKEN_AT[0], mat: t(MATERIALS.shard.name) })}</p>` : ""}
+    ${focus ? `<p class="gr2-note">${t("{n}단계에서 검법이 깨어난다\n{mat}이 하나 든다", { n: AWAKEN_AT[0], mat: t(MATERIALS.shard.name) })}</p>` : ""}
     ${act}
   </section>`;
 }
@@ -144,7 +144,7 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
 
   let detail = "";
   if (it && plus >= ENHANCE_MAX) {
-    detail = `<p class="enh2-done">${t("+{n}, 더 갈 데가 없는 붓이다.", { n: ENHANCE_MAX })}</p>`;
+    detail = `<p class="enh2-done">${t("+{n}, 더 갈 데가 없는 붓이다", { n: ENHANCE_MAX })}</p>`;
   } else if (it) {
     const step = ENHANCE_TABLE[plus];
     const breaks = step.destroyOnFail > 0;
@@ -174,12 +174,12 @@ export function enhanceHtml(p: ProfileView, st: GrowthState, busy: boolean): str
   }
   const odds = st.focus === "odds";
   const rows = ENHANCE_TABLE.map((s) => `<tr class="${s.destroyOnFail > 0 ? "risk" : ""}${odds && ((s.to >= 4 && s.to <= 6) || s.to === DESTROY_FROM) ? " focus" : ""}"><td>+${s.to}</td><td>${pct(s.success)}</td><td>${s.destroyOnFail > 0 ? pct(s.destroyOnFail) : "-"}</td><td>${s.destroyOnFail > 0 ? pct((1 - s.success) * s.destroyOnFail) : "-"}</td><td>${s.stones}</td><td>${s.pigment}</td></tr>`).join("");
-  const help = t("+{n}부터는 실패하면 붓이 부서질 수 있다.\n{mat}을 쓰면 부서지지 않는다. 처음 받은 먹붓은 +0으로 돌아갈 뿐.", { n: DESTROY_FROM, mat: t(MATERIALS.protect.name) });
+  const help = t("+{n}부터는 실패하면 붓이 부서질 수 있다\n{mat}을 쓰면 부서지지 않는다\n처음 받은 먹붓은 +0으로 돌아갈 뿐", { n: DESTROY_FROM, mat: t(MATERIALS.protect.name) });
   return `${resBar([["stone", p.stones ?? 0], ["protect", p.protects ?? 0], ["pigment", p.pigment], ["jade", p.jade]], help)}
     <div class="enh2">
       <div class="enh2-pick"><h4 class="sec">${t("무기 고르기")}</h4><div class="tiles">${tiles}</div>
         <details class="rate-detail"${odds ? " open" : ""}><summary>${t("강화 확률표")}</summary>
-          <p class="cap${odds ? " focus" : ""}">${t("+{n}부터는 실패하면 붓이 부서질 수 있다. {mat}을 쓰면 부서지지 않고 단계만 그대로 남는다. 처음 받은 먹붓은 부서지지 않고 +0으로 돌아간다.", { n: DESTROY_FROM, mat: t(MATERIALS.protect.name) })}</p>
+          <p class="cap${odds ? " focus" : ""}">${t("+{n}부터는 실패하면 붓이 부서질 수 있다\n{mat}을 쓰면 부서지지 않고 단계만 그대로 남는다\n처음 받은 먹붓은 부서지지 않고 +0으로 돌아간다", { n: DESTROY_FROM, mat: t(MATERIALS.protect.name) })}</p>
           <div class="rate-table"><table><thead><tr><th>${t("목표")}</th><th>${t("성공")}</th><th>${t("실패 시 파괴")}</th><th>${t("한 번에 파괴")}</th><th>${t("먹돌")}</th><th>${t("안료")}</th></tr></thead><tbody>${rows}</tbody></table></div>
         </details>
       </div>
@@ -239,7 +239,7 @@ export async function growthAction(
     // 먹붓 only resets, so it sounds like a failure; "protected" too
     audio.play(r.outcome === "success" ? "enhance-success" : r.outcome === "destroyed" && !kept ? "enhance-destroy" : "enhance-fail");
     if (r.outcome === "success") toast(t("강화 성공! {name} +{n}", { name, n: r.plus }));
-    else if (r.outcome === "fail") toast(t("강화 실패. 재료만 사라졌다 (+{n})", { n: r.plus }), true);
+    else if (r.outcome === "fail") toast(t("강화 실패\n재료만 사라졌다 (+{n})", { n: r.plus }), true);
     else if (r.outcome === "protected") toast(t("{mat}이 {name}을 지켰다 (+{n})", { mat: t(MATERIALS.protect.name), name, n: r.plus }));
     else toast(kept ? t("{name} 강화 수치 초기화 (+0)", { name }) : t("{name}이 부서졌다…", { name }), true);
     window.setTimeout(() => { if (st.stage !== "" && st.stage !== "trying") { st.stage = ""; redraw(); } }, 1800);

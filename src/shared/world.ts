@@ -244,34 +244,34 @@ export interface QuestDef {
 
 /** Chapter 1 「물빛 조각」. Dialogue for each step is in story.ts (QUEST_STORY[id]). */
 export const MAIN_QUESTS: QuestDef[] = [
-  { id: "c1q3", title: "죽림의 먹방울", text: "죽림에서 먹방울 8마리를 베고 바람이를 찾아가자.", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 8 }, giver: "elder", turnIn: "baram", reward: { exp: 160, pigment: 130, potions: 3 } },
-  { id: "c1q4", title: "대숲의 시험", text: "4단계까지 수련해 바람이에게 화염선풍을 인정받자.", goal: { type: "level", level: 4 }, giver: "baram", turnIn: "baram", reward: { exp: 80, pigment: 60, potions: 2 } },
-  { id: "c1q5", title: "그림자 무사", text: "죽림 북쪽 문, 덩굴 너머 굴의 그림자 무사를 베자.", goal: { type: "kill", kind: "shadelord", zone: "bamboo", count: 1 }, giver: "baram", turnIn: "baram", reward: { exp: 250, pigment: 80, jade: 40, shards: 1, points: 1 } },
-  { id: "c1q6", title: "연못으로", text: "죽림 북쪽 문을 지나 연못가의 노을을 찾아가자.", goal: { type: "reach", zone: "pond" }, giver: "baram", turnIn: "noeul", reward: { exp: 200, pigment: 60 } },
-  { id: "c1q7", title: "먹두꺼비", text: "연못을 더럽히는 먹두꺼비 10마리를 쫓아내자.", goal: { type: "kill", kind: "spitter", zone: "pond", count: 10 }, giver: "noeul", turnIn: "noeul", reward: { exp: 900, pigment: 150, potions: 3, stones: 10, shards: 1 } },
-  { id: "c1q8", title: "시든 연꽃", text: "먹봉우리에 오를 만큼, 15단계까지 붓을 깊게 하자.", goal: { type: "level", level: 15 }, giver: "noeul", turnIn: "noeul", reward: { exp: 600, pigment: 150, jade: 40 } },
-  { id: "c1q9", title: "봉우리로", text: "연못가 북쪽 문을 지나 먹봉우리의 흑월을 만나자.", goal: { type: "reach", zone: "peak" }, giver: "noeul", turnIn: "heukwol", reward: { exp: 800, pigment: 150 } },
-  { id: "c1q10", title: "대먹귀", text: "먹봉우리의 대먹귀를 베고 물빛 조각을 되찾자.", goal: { type: "kill", kind: "boss", zone: "peak", count: 1 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 3000, pigment: 500, jade: 160, shards: 3, protects: 1, points: 2 } },
+  { id: "c1q3", title: "죽림의 먹방울", text: "죽림에서 먹방울 8마리를 베고 바람이를 찾아가자", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 8 }, giver: "elder", turnIn: "baram", reward: { exp: 160, pigment: 130, potions: 3 } },
+  { id: "c1q4", title: "대숲의 시험", text: "4단계까지 수련해 바람이에게 화염선풍을 인정받자", goal: { type: "level", level: 4 }, giver: "baram", turnIn: "baram", reward: { exp: 80, pigment: 60, potions: 2 } },
+  { id: "c1q5", title: "그림자 무사", text: "죽림 북쪽 문, 덩굴 너머 굴의 그림자 무사를 베자", goal: { type: "kill", kind: "shadelord", zone: "bamboo", count: 1 }, giver: "baram", turnIn: "baram", reward: { exp: 250, pigment: 80, jade: 40, shards: 1, points: 1 } },
+  { id: "c1q6", title: "연못으로", text: "죽림 북쪽 문을 지나 연못가의 노을을 찾아가자", goal: { type: "reach", zone: "pond" }, giver: "baram", turnIn: "noeul", reward: { exp: 200, pigment: 60 } },
+  { id: "c1q7", title: "먹두꺼비", text: "연못을 더럽히는 먹두꺼비 10마리를 쫓아내자", goal: { type: "kill", kind: "spitter", zone: "pond", count: 10 }, giver: "noeul", turnIn: "noeul", reward: { exp: 900, pigment: 150, potions: 3, stones: 10, shards: 1 } },
+  { id: "c1q8", title: "시든 연꽃", text: "먹봉우리에 오를 만큼, 15단계까지 붓을 깊게 하자", goal: { type: "level", level: 15 }, giver: "noeul", turnIn: "noeul", reward: { exp: 600, pigment: 150, jade: 40 } },
+  { id: "c1q9", title: "봉우리로", text: "연못가 북쪽 문을 지나 먹봉우리의 흑월을 만나자", goal: { type: "reach", zone: "peak" }, giver: "noeul", turnIn: "heukwol", reward: { exp: 800, pigment: 150 } },
+  { id: "c1q10", title: "대먹귀", text: "먹봉우리의 대먹귀를 베고 물빛 조각을 되찾자", goal: { type: "kill", kind: "boss", zone: "peak", count: 1 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 3000, pigment: 500, jade: 160, shards: 3, protects: 1, points: 2 } },
   /** Chapter 2 「불빛 조각」. Dialogue for each step is in story.ts (QUEST_STORY[id]). */
-  { id: "c2q1", title: "흑월의 전갈", text: "산을 내려가 먹노인에게 흑월의 말을 전하자.", goal: { type: "talk", npc: "elder" }, giver: "heukwol", turnIn: "elder", reward: { exp: 1000, pigment: 200, potions: 5 } },
-  { id: "c2q2", title: "그을린 천", text: "먹노인이 건넨 그을린 천을 단이에게 보이자.", goal: { type: "talk", npc: "dyer" }, giver: "elder", turnIn: "dyer", reward: { exp: 1000, pigment: 200 } },
-  { id: "c2q3", title: "봉우리 너머", text: "먹봉우리 동쪽 문 너머 솔재 마을을 지나 옛 가마터로 가자.", goal: { type: "reach", zone: "kiln" }, giver: "dyer", turnIn: "dalrae", reward: { exp: 1500, pigment: 250, potions: 5 } },
-  { id: "c2q4", title: "깨진 옹기", text: "옛 가마터에서 옹기귀 15마리를 깨자.", goal: { type: "kill", kind: "jar", zone: "kiln", count: 15 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 2500, pigment: 300, stones: 5, shards: 1, points: 1 } },
-  { id: "c2q5", title: "가마 지킴이", text: "큰 가마 입구의 가마 지킴이를 베자. 깨어난 화염선풍이 필요하다.", goal: { type: "kill", kind: "kilnlord", zone: "kiln", count: 1 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 3000, pigment: 400, jade: 40, stones: 5, points: 1 } },
-  { id: "c2q6", title: "하나 남은 등불", text: "27단계까지 붓을 깊게 하고, 불탄 절터의 등지기를 찾자.", goal: { type: "level", level: 27 }, giver: "dalrae", turnIn: "haedam", reward: { exp: 2500, pigment: 300, potions: 5 } },
-  { id: "c2q7", title: "그림자 승병", text: "불탄 절터의 그림자 승병 15명을 쉬게 하자.", goal: { type: "kill", kind: "shademonk", zone: "temple", count: 15 }, giver: "haedam", turnIn: "haedam", reward: { exp: 3500, pigment: 400, shards: 1 } },
-  { id: "c2q8", title: "꺼진 석등", text: "향로 마당 가는 길을 막은 석등지기 6기를 쓰러뜨리자.", goal: { type: "kill", kind: "lantern", zone: "temple", count: 6 }, giver: "haedam", turnIn: "haedam", reward: { exp: 4000, pigment: 450, stones: 10, potions: 5 } },
-  { id: "c2q9", title: "해담의 고백", text: "잿불귀와 맞설 만큼, 32단계까지 붓을 깊게 하자.", goal: { type: "level", level: 32 }, giver: "haedam", turnIn: "haedam", reward: { exp: 3000, pigment: 400, jade: 60, protects: 1, points: 1 } },
-  { id: "c2q10", title: "잿불귀", text: "향로 마당의 잿불귀를 베고 불빛 조각을 되찾자.", goal: { type: "kill", kind: "ashboss", zone: "censer", count: 1 }, giver: "haedam", turnIn: "haedam", reward: { exp: 8000, pigment: 1000, jade: 200, stones: 15, shards: 4, protects: 2, points: 2 } },
+  { id: "c2q1", title: "흑월의 전갈", text: "산을 내려가 먹노인에게 흑월의 말을 전하자", goal: { type: "talk", npc: "elder" }, giver: "heukwol", turnIn: "elder", reward: { exp: 1000, pigment: 200, potions: 5 } },
+  { id: "c2q2", title: "그을린 천", text: "먹노인이 건넨 그을린 천을 단이에게 보이자", goal: { type: "talk", npc: "dyer" }, giver: "elder", turnIn: "dyer", reward: { exp: 1000, pigment: 200 } },
+  { id: "c2q3", title: "봉우리 너머", text: "먹봉우리 동쪽 문 너머 솔재 마을을 지나 옛 가마터로 가자", goal: { type: "reach", zone: "kiln" }, giver: "dyer", turnIn: "dalrae", reward: { exp: 1500, pigment: 250, potions: 5 } },
+  { id: "c2q4", title: "깨진 옹기", text: "옛 가마터에서 옹기귀 15마리를 깨자", goal: { type: "kill", kind: "jar", zone: "kiln", count: 15 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 2500, pigment: 300, stones: 5, shards: 1, points: 1 } },
+  { id: "c2q5", title: "가마 지킴이", text: "큰 가마 입구의 가마 지킴이를 베자\n깨어난 화염선풍이 필요하다", goal: { type: "kill", kind: "kilnlord", zone: "kiln", count: 1 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 3000, pigment: 400, jade: 40, stones: 5, points: 1 } },
+  { id: "c2q6", title: "하나 남은 등불", text: "27단계까지 붓을 깊게 하고, 불탄 절터의 등지기를 찾자", goal: { type: "level", level: 27 }, giver: "dalrae", turnIn: "haedam", reward: { exp: 2500, pigment: 300, potions: 5 } },
+  { id: "c2q7", title: "그림자 승병", text: "불탄 절터의 그림자 승병 15명을 쉬게 하자", goal: { type: "kill", kind: "shademonk", zone: "temple", count: 15 }, giver: "haedam", turnIn: "haedam", reward: { exp: 3500, pigment: 400, shards: 1 } },
+  { id: "c2q8", title: "꺼진 석등", text: "향로 마당 가는 길을 막은 석등지기 6기를 쓰러뜨리자", goal: { type: "kill", kind: "lantern", zone: "temple", count: 6 }, giver: "haedam", turnIn: "haedam", reward: { exp: 4000, pigment: 450, stones: 10, potions: 5 } },
+  { id: "c2q9", title: "해담의 고백", text: "잿불귀와 맞설 만큼, 32단계까지 붓을 깊게 하자", goal: { type: "level", level: 32 }, giver: "haedam", turnIn: "haedam", reward: { exp: 3000, pigment: 400, jade: 60, protects: 1, points: 1 } },
+  { id: "c2q10", title: "잿불귀", text: "향로 마당의 잿불귀를 베고 불빛 조각을 되찾자", goal: { type: "kill", kind: "ashboss", zone: "censer", count: 1 }, giver: "haedam", turnIn: "haedam", reward: { exp: 8000, pigment: 1000, jade: 200, stones: 15, shards: 4, protects: 2, points: 2 } },
 ];
 
 /** Daily quests are given and handed in at 먹노인 (elder). */
 export const DAILY_GIVER = "elder";
 
 export const DAILY_QUESTS: QuestDef[] = [
-  { id: "d1", title: "오늘의 사냥", text: "먹귀신 30마리를 베어라.", goal: { type: "kill", kind: "any", count: 30 }, giver: "elder", turnIn: "elder", reward: { exp: 150, pigment: 80, stones: 5 } },
-  { id: "d2", title: "검법 수련", text: "오방 검법을 15번 써라.", goal: { type: "kill", kind: "skill", count: 15 }, giver: "elder", turnIn: "elder", reward: { exp: 100, pigment: 60 } },
-  { id: "d3", title: "먹그림자 퇴치", text: "먹그림자 5마리를 물리쳐라.", goal: { type: "kill", kind: "shade", count: 5 }, giver: "elder", turnIn: "elder", reward: { exp: 120, pigment: 60, jade: 10, shards: 1 } },
+  { id: "d1", title: "오늘의 사냥", text: "먹귀신 30마리를 베어라", goal: { type: "kill", kind: "any", count: 30 }, giver: "elder", turnIn: "elder", reward: { exp: 150, pigment: 80, stones: 5 } },
+  { id: "d2", title: "검법 수련", text: "오방 검법을 15번 써라", goal: { type: "kill", kind: "skill", count: 15 }, giver: "elder", turnIn: "elder", reward: { exp: 100, pigment: 60 } },
+  { id: "d3", title: "먹그림자 퇴치", text: "먹그림자 5마리를 물리쳐라", goal: { type: "kill", kind: "shade", count: 5 }, giver: "elder", turnIn: "elder", reward: { exp: 120, pigment: 60, jade: 10, shards: 1 } },
 ];
 
 /**
@@ -281,21 +281,21 @@ export const DAILY_QUESTS: QuestDef[] = [
  * experience at the field's middle level, with pigment and ink stones.
  */
 export const SUB_QUESTS: (QuestDef & { zone: string })[] = [
-  { id: "s_bam1", zone: "bamboo", title: "대숲 청소", text: "죽림의 먹방울 12마리를 쓸어내자.", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 12 }, giver: "baram", turnIn: "baram", reward: { exp: 90, pigment: 30, stones: 1 } },
-  { id: "s_bam2", zone: "bamboo", title: "그림자 몰기", text: "대숲에 숨은 먹그림자 4마리를 몰아내자.", goal: { type: "kill", kind: "shade", zone: "bamboo", count: 4 }, giver: "baram", turnIn: "baram", reward: { exp: 100, pigment: 35, stones: 1 } },
-  { id: "s_bam3", zone: "bamboo", title: "대숲 순찰", text: "죽림을 돌며 먹귀신 15마리를 베자.", goal: { type: "kill", kind: "any", zone: "bamboo", count: 15 }, giver: "baram", turnIn: "baram", reward: { exp: 110, pigment: 40, stones: 2 } },
-  { id: "s_pond1", zone: "pond", title: "물가의 먹방울", text: "연못가의 먹방울 12마리를 걷어내자.", goal: { type: "kill", kind: "blob", zone: "pond", count: 12 }, giver: "noeul", turnIn: "noeul", reward: { exp: 400, pigment: 60, stones: 2 } },
-  { id: "s_pond2", zone: "pond", title: "두꺼비 쫓기", text: "먹물을 뱉는 먹두꺼비 8마리를 쫓아내자.", goal: { type: "kill", kind: "spitter", zone: "pond", count: 8 }, giver: "noeul", turnIn: "noeul", reward: { exp: 430, pigment: 65, stones: 2 } },
-  { id: "s_pond3", zone: "pond", title: "연못 순찰", text: "연못가를 돌며 먹귀신 18마리를 베자.", goal: { type: "kill", kind: "any", zone: "pond", count: 18 }, giver: "noeul", turnIn: "noeul", reward: { exp: 460, pigment: 70, stones: 3 } },
-  { id: "s_peak1", zone: "peak", title: "봉우리 그림자", text: "먹봉우리의 먹그림자 10마리를 베자.", goal: { type: "kill", kind: "shade", zone: "peak", count: 10 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 800, pigment: 90, stones: 3 } },
-  { id: "s_peak2", zone: "peak", title: "바위틈 두꺼비", text: "바위틈의 먹두꺼비 10마리를 몰아내자.", goal: { type: "kill", kind: "spitter", zone: "peak", count: 10 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 850, pigment: 95, stones: 3 } },
-  { id: "s_peak3", zone: "peak", title: "봉우리 순찰", text: "먹봉우리를 돌며 먹귀신 20마리를 베자.", goal: { type: "kill", kind: "any", zone: "peak", count: 20 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 900, pigment: 100, stones: 4 } },
-  { id: "s_kiln1", zone: "kiln", title: "깨진 옹기", text: "가마터를 뛰노는 옹기귀 12마리를 깨뜨리자.", goal: { type: "kill", kind: "jar", zone: "kiln", count: 12 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1300, pigment: 120, stones: 4 } },
-  { id: "s_kiln2", zone: "kiln", title: "잿빛 날개", text: "재를 뿌리는 잿까마귀 8마리를 떨어뜨리자.", goal: { type: "kill", kind: "crow", zone: "kiln", count: 8 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1350, pigment: 125, stones: 4 } },
-  { id: "s_kiln3", zone: "kiln", title: "가마터 순찰", text: "옛 가마터를 돌며 먹귀신 20마리를 베자.", goal: { type: "kill", kind: "any", zone: "kiln", count: 20 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1400, pigment: 130, stones: 5 } },
-  { id: "s_tem1", zone: "temple", title: "승병의 그림자", text: "절터를 지키던 그림자 승병 10명을 쉬게 하자.", goal: { type: "kill", kind: "shademonk", zone: "temple", count: 10 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2000, pigment: 150, stones: 5 } },
-  { id: "s_tem2", zone: "temple", title: "꺼진 석등", text: "길을 막는 석등지기 4기를 무너뜨리자.", goal: { type: "kill", kind: "lantern", zone: "temple", count: 4 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2100, pigment: 160, stones: 5 } },
-  { id: "s_tem3", zone: "temple", title: "절터 순찰", text: "불탄 절터를 돌며 먹귀신 22마리를 베자.", goal: { type: "kill", kind: "any", zone: "temple", count: 22 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2200, pigment: 170, stones: 6 } },
+  { id: "s_bam1", zone: "bamboo", title: "대숲 청소", text: "죽림의 먹방울 12마리를 쓸어내자", goal: { type: "kill", kind: "blob", zone: "bamboo", count: 12 }, giver: "baram", turnIn: "baram", reward: { exp: 90, pigment: 30, stones: 1 } },
+  { id: "s_bam2", zone: "bamboo", title: "그림자 몰기", text: "대숲에 숨은 먹그림자 4마리를 몰아내자", goal: { type: "kill", kind: "shade", zone: "bamboo", count: 4 }, giver: "baram", turnIn: "baram", reward: { exp: 100, pigment: 35, stones: 1 } },
+  { id: "s_bam3", zone: "bamboo", title: "대숲 순찰", text: "죽림을 돌며 먹귀신 15마리를 베자", goal: { type: "kill", kind: "any", zone: "bamboo", count: 15 }, giver: "baram", turnIn: "baram", reward: { exp: 110, pigment: 40, stones: 2 } },
+  { id: "s_pond1", zone: "pond", title: "물가의 먹방울", text: "연못가의 먹방울 12마리를 걷어내자", goal: { type: "kill", kind: "blob", zone: "pond", count: 12 }, giver: "noeul", turnIn: "noeul", reward: { exp: 400, pigment: 60, stones: 2 } },
+  { id: "s_pond2", zone: "pond", title: "두꺼비 쫓기", text: "먹물을 뱉는 먹두꺼비 8마리를 쫓아내자", goal: { type: "kill", kind: "spitter", zone: "pond", count: 8 }, giver: "noeul", turnIn: "noeul", reward: { exp: 430, pigment: 65, stones: 2 } },
+  { id: "s_pond3", zone: "pond", title: "연못 순찰", text: "연못가를 돌며 먹귀신 18마리를 베자", goal: { type: "kill", kind: "any", zone: "pond", count: 18 }, giver: "noeul", turnIn: "noeul", reward: { exp: 460, pigment: 70, stones: 3 } },
+  { id: "s_peak1", zone: "peak", title: "봉우리 그림자", text: "먹봉우리의 먹그림자 10마리를 베자", goal: { type: "kill", kind: "shade", zone: "peak", count: 10 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 800, pigment: 90, stones: 3 } },
+  { id: "s_peak2", zone: "peak", title: "바위틈 두꺼비", text: "바위틈의 먹두꺼비 10마리를 몰아내자", goal: { type: "kill", kind: "spitter", zone: "peak", count: 10 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 850, pigment: 95, stones: 3 } },
+  { id: "s_peak3", zone: "peak", title: "봉우리 순찰", text: "먹봉우리를 돌며 먹귀신 20마리를 베자", goal: { type: "kill", kind: "any", zone: "peak", count: 20 }, giver: "heukwol", turnIn: "heukwol", reward: { exp: 900, pigment: 100, stones: 4 } },
+  { id: "s_kiln1", zone: "kiln", title: "깨진 옹기", text: "가마터를 뛰노는 옹기귀 12마리를 깨뜨리자", goal: { type: "kill", kind: "jar", zone: "kiln", count: 12 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1300, pigment: 120, stones: 4 } },
+  { id: "s_kiln2", zone: "kiln", title: "잿빛 날개", text: "재를 뿌리는 잿까마귀 8마리를 떨어뜨리자", goal: { type: "kill", kind: "crow", zone: "kiln", count: 8 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1350, pigment: 125, stones: 4 } },
+  { id: "s_kiln3", zone: "kiln", title: "가마터 순찰", text: "옛 가마터를 돌며 먹귀신 20마리를 베자", goal: { type: "kill", kind: "any", zone: "kiln", count: 20 }, giver: "dalrae", turnIn: "dalrae", reward: { exp: 1400, pigment: 130, stones: 5 } },
+  { id: "s_tem1", zone: "temple", title: "승병의 그림자", text: "절터를 지키던 그림자 승병 10명을 쉬게 하자", goal: { type: "kill", kind: "shademonk", zone: "temple", count: 10 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2000, pigment: 150, stones: 5 } },
+  { id: "s_tem2", zone: "temple", title: "꺼진 석등", text: "길을 막는 석등지기 4기를 무너뜨리자", goal: { type: "kill", kind: "lantern", zone: "temple", count: 4 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2100, pigment: 160, stones: 5 } },
+  { id: "s_tem3", zone: "temple", title: "절터 순찰", text: "불탄 절터를 돌며 먹귀신 22마리를 베자", goal: { type: "kill", kind: "any", zone: "temple", count: 22 }, giver: "haedam", turnIn: "haedam", reward: { exp: 2200, pigment: 170, stones: 6 } },
 ];
 
 /* ---------- store (VXShop) and rewarded ads ---------- */

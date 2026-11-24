@@ -7,9 +7,9 @@
 
 /* ---------- materials ---------- */
 export const MATERIALS = {
-  stone: { name: "먹돌", text: "먹귀신 안에서 굳은 먹. 붓을 강화할 때 쓴다." },
-  shard: { name: "색 조각", text: "번짐이 미처 삼키지 못한 색의 부스러기. 검법을 각성시킨다." },
-  protect: { name: "파괴방지권", text: "강화가 실패해도 붓이 부서지지 않게 지켜 준다. 시도할 때 한 장 쓴다." },
+  stone: { name: "먹돌", text: "먹귀신 안에서 굳은 먹\n붓을 강화할 때 쓴다" },
+  shard: { name: "색 조각", text: "번짐이 미처 삼키지 못한 색의 부스러기\n검법을 각성시킨다" },
+  protect: { name: "파괴방지권", text: "강화가 실패해도 붓이 부서지지 않게 지켜 준다\n시도할 때 한 장 쓴다" },
 } as const;
 
 /** Chance per kill (rolled on the server) and amount. */
@@ -70,24 +70,24 @@ export interface Awakening {
 }
 export const AWAKENINGS: Record<number, Record<5 | 10, Awakening>> = {
   0: {
-    5: { area: 0, reach: 0, echo: 0, extraWaves: 2, text: "물결이 세 갈래로 퍼진다." },
-    10: { area: 0.6, reach: 4, echo: 0, extraWaves: 2, text: "물결이 더 넓고 멀리 간다." },
+    5: { area: 0, reach: 0, echo: 0, extraWaves: 2, text: "물결이 세 갈래로 퍼진다" },
+    10: { area: 0.6, reach: 4, echo: 0, extraWaves: 2, text: "물결이 더 넓고 멀리 간다" },
   },
   1: {
-    5: { area: 1, reach: 0, echo: 0, extraWaves: 0, text: "불길이 더 넓게 돈다." },
-    10: { area: 1, reach: 0, echo: 0.6, extraWaves: 0, text: "지나간 자리에 불씨가 남아 한 번 더 태운다." },
+    5: { area: 1, reach: 0, echo: 0, extraWaves: 0, text: "불길이 더 넓게 돈다" },
+    10: { area: 1, reach: 0, echo: 0.6, extraWaves: 0, text: "지나간 자리에 불씨가 남아 한 번 더 태운다" },
   },
   2: {
-    5: { area: 1.2, reach: 0, echo: 0, extraWaves: 0, text: "내려찍는 범위가 넓어진다." },
-    10: { area: 1.2, reach: 0, echo: 0.6, extraWaves: 0, text: "땅이 한 번 더 갈라진다." },
+    5: { area: 1.2, reach: 0, echo: 0, extraWaves: 0, text: "내려찍는 범위가 넓어진다" },
+    10: { area: 1.2, reach: 0, echo: 0.6, extraWaves: 0, text: "땅이 한 번 더 갈라진다" },
   },
   3: {
-    5: { area: 0.4, reach: 3, echo: 0, extraWaves: 0, text: "더 멀리 내달린다." },
-    10: { area: 0.4, reach: 3, echo: 0.6, extraWaves: 0, text: "지나간 길에 바람 칼날이 한 번 더 인다." },
+    5: { area: 0.4, reach: 3, echo: 0, extraWaves: 0, text: "더 멀리 내달린다" },
+    10: { area: 0.4, reach: 3, echo: 0.6, extraWaves: 0, text: "지나간 길에 바람 칼날이 한 번 더 인다" },
   },
   4: {
-    5: { area: 1, reach: 0, echo: 0, extraWaves: 0, text: "먹감옥이 더 넓게 끌어당긴다." },
-    10: { area: 1, reach: 0, echo: 0.6, extraWaves: 0, text: "감옥이 두 번 터진다." },
+    5: { area: 1, reach: 0, echo: 0, extraWaves: 0, text: "먹감옥이 더 넓게 끌어당긴다" },
+    10: { area: 1, reach: 0, echo: 0.6, extraWaves: 0, text: "감옥이 두 번 터진다" },
   },
 };
 /** The awakening in force at skill level `lv` (the highest reached), or null. */

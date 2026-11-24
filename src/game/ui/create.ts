@@ -84,7 +84,7 @@ export class CharacterCreator {
         <div class="create-wrap">
         <form class="create-panel" data-form>
           <h2>${t("나를 그리다")}</h2>
-          <p class="sub">${t("목도리와 허리띠 색을 고른다.")}</p>
+          <p class="sub">${t("목도리와 허리띠 색을 고른다")}</p>
           <label class="create-name"><span>${t("이름")}</span><input data-name maxlength="8" autocomplete="off" placeholder="${t("2~8자 · 한글, 영문, 숫자")}" aria-label="${t("이름")}"></label>
           <div class="create-row"><span>${t("목도리")}</span><div class="swatches" data-sw="scarf"></div></div>
           <div class="create-row"><span>${t("허리띠")}</span><div class="swatches" data-sw="sash"></div></div>
@@ -128,7 +128,7 @@ export class CharacterCreator {
       const form = el<HTMLFormElement>("[data-form]", this.box);
       const go = (e: Event) => {
         e.preventDefault();
-        if (!input.value.trim()) { this.error(t("이름부터 적어 주자.")); input.focus(); return; }
+        if (!input.value.trim()) { this.error(t("이름부터 적어 주자")); input.focus(); return; }
         form.removeEventListener("submit", go);
         resolve({ name: input.value.trim(), scarf: this.scarf, sash: this.sash });
       };

@@ -439,7 +439,7 @@ export class Game {
     this.dialogue.autoNext = () => this.auto.progress;
     this.dialogue.autoHold = () => this.sheets.isOpen();
     this.monsters.onEffect = (kind) => {
-      if (kind === "shot" && this.questIs("c1q7")) this.hints.think("gate5", t("떨어질 자리를 보고 굴러야겠다."), { key: KEYS.roll, urgent: true });
+      if (kind === "shot" && this.questIs("c1q7")) this.hints.think("gate5", t("떨어질 자리를 보고 굴러야겠다"), { key: KEYS.roll, urgent: true });
       if (kind === "slam" && this.zone.def.id === "peak" && this.questIs("c1q10")) this.hints.think("gate7", t("지금이다!"), { key: KEYS.roll, urgent: true });
       if (kind === "slam" && this.zone.def.id === "censer" && this.questIs("c2q10")) this.hints.think("gate10", t("고리가 넓다… 끝까지!"), { key: KEYS.roll, urgent: true });
     };
@@ -606,7 +606,7 @@ export class Game {
     if (dead && !this.dead) {
       this.auto.stop();
       this.hud.deathCause(performance.now() - this.lastHurtAt < 6000 ? DEATH_BY[this.lastHurtKind] ?? DEATH_BY[""] : DEATH_BY[""]);
-      if (!this.hints.has("death")) { this.hints.mark("death"); this.hud.deathThought(t("물약을 챙길 걸… 단이에게 가 보자.")); }
+      if (!this.hints.has("death")) { this.hints.mark("death"); this.hud.deathThought(t("물약을 챙길 걸… 단이에게 가 보자")); }
       else this.hud.deathThought(null);
       this.dead = true;
       this.player.die();
@@ -716,11 +716,11 @@ export class Game {
         sparkBurst(hv.x, hv.def.height * 0.6, hv.z, 10, GREY, 0.7, 1);
         if (hv.kind === "shadelord" && this.questIs("c1q5")) this.hints.think("gate4", t("칼이 미끄러진다…"), { key: KEYS.growth, urgent: true });
         if (hv.def.boss && this.questIs("c1q10")) this.hints.think("gate6", t("무딘 붓으론 안 된다…"), { key: KEYS.growth, urgent: true });
-        if (hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8", t("불씨가 얕다… 화염선풍을 깨워야 한다."), { key: KEYS.growth, urgent: true });
-        if (hv.kind === "ashboss" && this.questIs("c2q10")) this.hints.think("gate9", t("불길이 붓을 밀어낸다… 붓을 더 벼려야 한다."), { key: KEYS.growth, urgent: true });
+        if (hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8", t("불씨가 얕다… 화염선풍을 깨워야 한다"), { key: KEYS.growth, urgent: true });
+        if (hv.kind === "ashboss" && this.questIs("c2q10")) this.hints.think("gate9", t("불길이 붓을 밀어낸다… 붓을 더 벼려야 한다"), { key: KEYS.growth, urgent: true });
       }
       // 8b: the awakened fire gets through the shell (shown once, also to those who never saw gate 8)
-      if (!h.resisted && hv && hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8b", t("깨어난 불이 껍데기를 녹인다."), { urgent: true });
+      if (!h.resisted && hv && hv.kind === "kilnlord" && this.questIs("c2q5")) this.hints.think("gate8b", t("깨어난 불이 껍데기를 녹인다"), { urgent: true });
       if (h.kill) {
         this.kills++;
         if (this.zone.def.id === "bamboo" && this.questIs("c1q3")) {
@@ -728,7 +728,7 @@ export class Game {
           if (this.gateKills >= 3 && !this.hints.has("ui:auto")) {
             this.hints.mark("ui:auto");
             this.hud.reveal("auto", true);
-            this.hints.think("gate2", t("손에 익었다… 붓이 알아서 움직일 것 같다."), { urgent: true });
+            this.hints.think("gate2", t("손에 익었다… 붓이 알아서 움직일 것 같다"), { urgent: true });
           }
         }
       }
@@ -802,8 +802,8 @@ export class Game {
   private pressUlt(): void {
     if (!this.player || !this.profile || this.sheets.isOpen() || this.transitioning || this.memory || this.dead) return;
     if (!ultOpen(this.profile)) return;
-    if (this.zone.def.safe) { this.hints.think("ult-safe", t("마을에선 붓을 내리칠 곳이 없다."), { repeat: true, urgent: true }); return; }
-    if (this.ultGauge < ULT_MAX) { this.hints.think("ult-wait", t("무지개가 아직 덜 찼다… 더 베자."), { repeat: true, urgent: true }); return; }
+    if (this.zone.def.safe) { this.hints.think("ult-safe", t("마을에선 붓을 내리칠 곳이 없다"), { repeat: true, urgent: true }); return; }
+    if (this.ultGauge < ULT_MAX) { this.hints.think("ult-wait", t("무지개가 아직 덜 찼다… 더 베자"), { repeat: true, urgent: true }); return; }
     if (!this.ultReady()) return;
     this.lastManualAt = performance.now();
     this.unleash();
@@ -1046,7 +1046,7 @@ export class Game {
       this.rebuild(entry);
     } catch (e) {
       const code = errorCode(e);
-      toast(code === "locked" ? t("아직 가 보지 못한 마을이다.") : code === "dead" ? t("쓰러진 채로는 옮길 수 없다") : errorText(e), true);
+      toast(code === "locked" ? t("아직 가 보지 못한 마을이다") : code === "dead" ? t("쓰러진 채로는 옮길 수 없다") : errorText(e), true);
     } finally {
       await this.loading.hide();
       this.transitioning = false;
@@ -1389,14 +1389,14 @@ export class Game {
     if (this.dead || this.transitioning || this.memory || this.dialogue.isOpen() || this.sheets.isOpen()) return;
     const h = this.hints;
     // a first-timer's controls, once each: walking in the village, the brush once out among monsters
-    if (!h.has("f-move") && this.zone.def.safe && performance.now() - this.begunAt > 2500) { h.think("f-move", t("몸이 가볍다… 좀 걸어 볼까."), { key: KEYS.move }); return; }
-    if (!h.has("f-atk") && !this.zone.def.safe && performance.now() - this.begunAt > 1500) { h.think("f-atk", t("다가오면 붓으로 벤다."), { key: KEYS.attack, urgent: true }); return; }
-    if (!h.has("f-sub") && mainWall(this.profile)) { h.think("f-sub", t("본편은 아직 무리다… 서브 의뢰부터 해 볼까.")); return; }
+    if (!h.has("f-move") && this.zone.def.safe && performance.now() - this.begunAt > 2500) { h.think("f-move", t("몸이 가볍다… 좀 걸어 볼까"), { key: KEYS.move }); return; }
+    if (!h.has("f-atk") && !this.zone.def.safe && performance.now() - this.begunAt > 1500) { h.think("f-atk", t("다가오면 붓으로 벤다"), { key: KEYS.attack, urgent: true }); return; }
+    if (!h.has("f-sub") && mainWall(this.profile)) { h.think("f-sub", t("본편은 아직 무리다… 서브 의뢰부터 해 볼까")); return; }
     if (!h.has("f-quest") && !this.auto.progress && performance.now() - this.begunAt > 12000 && this.hints.has("ui:auto")) {
-      h.think("f-quest", t("퀘스트를 누르면 알아서 찾아가겠지."), { key: KEYS.auto });
+      h.think("f-quest", t("퀘스트를 누르면 알아서 찾아가겠지"), { key: KEYS.auto });
       return;
     }
-    if (!h.has("f-channel") && !this.zone.def.safe && this.remotes.size >= 6) h.think("f-channel", t("사람이 많다… 이름 아래 채널을 눌러 옮겨 볼까."));
+    if (!h.has("f-channel") && !this.zone.def.safe && this.remotes.size >= 6) h.think("f-channel", t("사람이 많다… 이름 아래 채널을 눌러 옮겨 볼까"));
   }
 
   private questTick(): void {
@@ -1452,7 +1452,7 @@ export class Game {
     // gate 1: the swollen blob gathers itself for the first time (c1q3)
     if (!h.has("gate1") && this.questIs("c1q3")) {
       for (const v of this.monsters.views.values()) {
-        if (v.kind === "bigblob" && v.mode === "wind") { h.think("gate1", t("뭔가 온다… 굴러서 피하자."), { key: KEYS.roll, urgent: true }); break; }
+        if (v.kind === "bigblob" && v.mode === "wind") { h.think("gate1", t("뭔가 온다… 굴러서 피하자"), { key: KEYS.roll, urgent: true }); break; }
       }
     }
     // gate 3: the first touch of the ink vines before the pond gate
@@ -1462,7 +1462,7 @@ export class Game {
         const o = obs[i];
         if (Math.hypot(o.x - pl.x, o.z - pl.z) < o.r + 1.1) {
           if (p.level >= SKILLS[1].unlock) h.think("gate3", t("불이라도 있으면… 화염선풍으로 태워 보자"), { key: "2", urgent: true });
-          else h.think("gate3", t("불이라도 있으면… 바람이에게 가 보자."), { urgent: true });
+          else h.think("gate3", t("불이라도 있으면… 바람이에게 가 보자"), { urgent: true });
           break;
         }
       }
@@ -1551,7 +1551,7 @@ export async function boot(): Promise<void> {
   } catch (e) {
     console.error(e);
     title.busy();
-    title.status(t("이 브라우저에서 WebGL을 켤 수 없어 화면을 그리지 못했습니다. 하드웨어 가속을 켜고 다시 열어 보세요."));
+    title.status(t("이 브라우저에서 WebGL을 켤 수 없어 화면을 그리지 못했습니다\n하드웨어 가속을 켜고 다시 열어 보세요"));
     return;
   }
   const loading = new Loading(root);

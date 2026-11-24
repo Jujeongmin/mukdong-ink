@@ -281,7 +281,7 @@ export class Minimap {
     this.el.type = "button";
     this.el.className = "minimap";
     this.el.dataset.tipTitle = `${t("지도")} (N)`;
-    this.el.dataset.tip = t("눌러서 지도를 편다. 몬스터, 드랍, NPC, 순간이동.");
+    this.el.dataset.tip = t("눌러서 지도를 편다\n몬스터, 드랍, NPC, 순간이동");
     this.el.setAttribute("aria-label", `${t("지도")} (N)`);
     this.el.appendChild(this.map.canvas);
     this.name = document.createElement("b");

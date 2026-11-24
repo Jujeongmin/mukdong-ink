@@ -76,7 +76,7 @@ const MARKUP = `
     <span class="who"><span data-name>${t("나그네")}</span><b class="lv-seal" data-lv title="${t("레벨")}">1</b></span>
     <div class="hp gauge" title="${t("생명")}" data-hpbar><i class="track"></i><i class="chip" data-hpchip></i><i class="fill" data-hp></i><span data-hpt></span></div>
     <div class="exp gauge" title="${t("경험")}" data-expbar><i class="track"></i><i class="fill" data-exp></i></div>
-    <button type="button" class="zone-mini" data-zone data-tip-title="${t("채널")}" data-tip="${t("눌러서 채널을 고른다. 서 있던 자리 그대로 옮긴다.")}"></button>
+    <button type="button" class="zone-mini" data-zone data-tip-title="${t("채널")}" data-tip="${t("눌러서 채널을 고른다\n서 있던 자리 그대로 옮긴다")}"></button>
     <span class="brush-name" data-brush></span>
     <span class="power" data-power><small>${t("전투력")}</small><b data-powv>0</b><i class="power-up" data-powup aria-hidden="true"></i></span>
   </div>
@@ -84,21 +84,21 @@ const MARKUP = `
 <div class="power-pop passive" data-powpop aria-hidden="true"><small>${t("전투력")}</small><b data-powpopv></b><i data-powpopd></i>
 </div>
 <div class="purse">
-  <span class="ui-later" data-ui="gear" data-tip-title="${t("안료")}" data-tip="${t("사냥으로 얻는 재화. 수련, 염색, 물약에 쓴다.")}"><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
-  <span class="ui-later" data-ui="gear" data-tip-title="${t("묵옥")}" data-tip="${t("뽑기와 파괴방지권에 쓰는 귀한 옥. 광고 보상, 보스, 상점에서 얻는다.")}"><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
-  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="${t("소리 설정 ({key} 음소거)", { key: KEYS.mute })}" data-tip-title="${t("소리")}" data-tip="${t("음량 조절. {key} 키로 끄고 켠다.", { key: KEYS.mute })}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
-  <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="${t("설정")} (Esc)" data-tip-title="${t("설정")} (Esc)" data-tip="${t("소리, 그래픽, 조작, 게임 설정.")}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
+  <span class="ui-later" data-ui="gear" data-tip-title="${t("안료")}" data-tip="${t("사냥으로 얻는 재화\n수련, 염색, 물약에 쓴다")}"><i class="spr ic-pigment" aria-hidden="true"></i><b data-pig>0</b></span>
+  <span class="ui-later" data-ui="gear" data-tip-title="${t("묵옥")}" data-tip="${t("뽑기와 파괴방지권에 쓰는 귀한 옥\n광고 보상, 보스, 상점에서 얻는다")}"><i class="spr ic-jade" aria-hidden="true"></i><b data-jade>0</b></span>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-sound aria-label="${t("소리 설정 ({key} 음소거)", { key: KEYS.mute })}" data-tip-title="${t("소리")}" data-tip="${t("음량 조절\n{key} 키로 끄고 켠다", { key: KEYS.mute })}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8h3l4-3.5v11L6 12H3z" fill="currentColor"/><path class="snd-w" d="M13 7.2c1.2 1.6 1.2 4 0 5.6M15.2 5.4c2.2 2.7 2.2 6.5 0 9.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path class="snd-x" d="M13 7.5l4.5 5M17.5 7.5l-4.5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+  <button class="btn btn-secondary btn-sm snd" type="button" data-settings aria-label="${t("설정")} (Esc)" data-tip-title="${t("설정")} (Esc)" data-tip="${t("소리, 그래픽, 조작, 게임 설정")}"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.6l1.3 2.1 2.4-.6.6 2.4 2.1 1.3-1.2 2.2 1.2 2.2-2.1 1.3-.6 2.4-2.4-.6L10 17.4l-1.3-2.1-2.4.6-.6-2.4-2.1-1.3L4.8 10 3.6 7.8l2.1-1.3.6-2.4 2.4.6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10" cy="10" r="2.4" fill="currentColor"/></svg></button>
   <i class="purse-break" aria-hidden="true"></i>
   <div class="menu open" data-menu>
   <button class="menu-rod-l" type="button" data-menu-close aria-label="${t("메뉴 접기")}" tabindex="-1"></button>
   <div class="menu-items" data-menu-items>
-  <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="${t("수련")} (${KEYS.growth})" data-tip="${t("검법 단련과 붓 강화. 붉은 숫자는 남은 수련 포인트.")}"><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>${t("수련")}</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
-  <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="${t("장비")} (${KEYS.gear})" data-tip="${t("붓, 머리, 띠를 바꿔 낀다.")}"><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>${t("장비")}</span><kbd>${KEYS.gear}</kbd></button>
-  <button class="brush-label btn btn-sm" type="button" data-shop data-tip-title="${t("상점")} (${KEYS.shop})" data-tip="${t("오방 병기전: 어디서든 뽑기, 확률표, 묵옥 얻기.")}"><i class="hud-ic" style="--c:4" aria-hidden="true"></i><span>${t("상점")}</span><kbd>${KEYS.shop}</kbd></button>
-  <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="${t("화첩")} (${KEYS.album})" data-tip="${t("벤 몬스터와 보스를 벤 순간 돌아온 색을 그림으로 모아 둔다.")}"><i class="hud-ic" style="--c:2" aria-hidden="true"></i><span>${t("화첩")}</span><kbd>${KEYS.album}</kbd></button>
-  <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="${t("랭킹")} (${KEYS.rank})" data-tip="${t("전투력 순위.")}"><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>${t("랭킹")}</span><kbd>${KEYS.rank}</kbd></button>
+  <button class="brush-label btn btn-sm growth ui-later" data-ui="growth" type="button" data-growth data-tip-title="${t("수련")} (${KEYS.growth})" data-tip="${t("검법 단련과 붓 강화\n붉은 숫자는 남은 수련 포인트")}"><i class="hud-ic" style="--c:0" aria-hidden="true"></i><span>${t("수련")}</span><kbd>${KEYS.growth}</kbd><b class="pts" data-pts hidden></b></button>
+  <button class="brush-label btn btn-sm ui-later" data-ui="gear" type="button" data-gear data-tip-title="${t("장비")} (${KEYS.gear})" data-tip="${t("붓, 머리, 띠를 바꿔 낀다")}"><i class="hud-ic" style="--c:1" aria-hidden="true"></i><span>${t("장비")}</span><kbd>${KEYS.gear}</kbd></button>
+  <button class="brush-label btn btn-sm" type="button" data-shop data-tip-title="${t("상점")} (${KEYS.shop})" data-tip="${t("오방 병기전: 어디서든 뽑기, 확률표, 묵옥 얻기")}"><i class="hud-ic" style="--c:4" aria-hidden="true"></i><span>${t("상점")}</span><kbd>${KEYS.shop}</kbd></button>
+  <button class="brush-label btn btn-sm ui-later" data-ui="album" type="button" data-album data-tip-title="${t("화첩")} (${KEYS.album})" data-tip="${t("벤 몬스터와 보스를 벤 순간 돌아온 색을 그림으로 모아 둔다")}"><i class="hud-ic" style="--c:2" aria-hidden="true"></i><span>${t("화첩")}</span><kbd>${KEYS.album}</kbd></button>
+  <button class="brush-label btn btn-sm" type="button" data-rank data-tip-title="${t("랭킹")} (${KEYS.rank})" data-tip="${t("전투력 순위")}"><i class="hud-ic" style="--c:3" aria-hidden="true"></i><span>${t("랭킹")}</span><kbd>${KEYS.rank}</kbd></button>
   </div>
-  <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="true" aria-label="${t("메뉴 접기")}" data-tip-title="${t("메뉴")}" data-tip="${t("수련·장비·상점·화첩·랭킹을 접고 편다.")}"><i aria-hidden="true"></i><b class="menu-dot" data-menu-dot hidden></b></button>
+  <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="true" aria-label="${t("메뉴 접기")}" data-tip-title="${t("메뉴")}" data-tip="${t("수련·장비·상점·화첩·랭킹을 접고 편다")}"><i aria-hidden="true"></i><b class="menu-dot" data-menu-dot hidden></b></button>
   </div>
 </div>
 <aside class="jokja" data-quest hidden></aside>
@@ -108,16 +108,16 @@ const MARKUP = `
 <div class="tags passive" data-tags></div>
 <div class="tags passive" data-dmg></div>
 <div class="arc" data-arc>
-  <button class="ring-btn atk" type="button" data-act="atk" aria-label="${t("베기 (클릭, J)")}" data-tip-title="${t("베기 (클릭 · J)")}" data-tip="${t("누르고 있으면 이어 벤다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>${t("베기")}</b><kbd>${KEYS.attack}</kbd></button>
-  <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="${t("구르기")}" data-tip-title="${t("구르기")} (Space)" data-tip="${t("구르는 동안은 맞지 않는다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>${t("구르기")}</b></button>
-  <button class="ring-btn ult" type="button" data-ult hidden aria-label="${t("무지개 붓질")} (F)" data-tip-title="${t("궁극기 · 무지개 붓질")} (F)" data-tip="${t("베고 쓰러뜨릴수록 무지개가 찬다. 가득 차면 높이 뛰어올라 주변을 모두 벤다. 그동안은 맞지 않는다.")}"><i class="ult-ic" aria-hidden="true"></i><i class="ult-ic ult-fill" aria-hidden="true"></i><b class="ult-pct" data-ultpct>0%</b><kbd>F</kbd></button>
-  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="${t("자동 진행")} (Z)" aria-pressed="false" data-tip-title="${t("자동 진행")} (Z)" data-tip="${t("의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 갈 곳이 없으면 그 자리에서 사냥한다. 검법도 저절로 쓴다.")}"><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>${t("자동")}</b></button>
-  <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="${t("자동 사냥 설정")}" data-tip-title="${t("자동 사냥 설정")}" data-tip="${t("쓸 검법, 물약 기준, 의뢰 대상 먼저.")}">${t("설정")}</button>
+  <button class="ring-btn atk" type="button" data-act="atk" aria-label="${t("베기 (클릭, J)")}" data-tip-title="${t("베기 (클릭 · J)")}" data-tip="${t("누르고 있으면 이어 벤다")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>${t("베기")}</b><kbd>${KEYS.attack}</kbd></button>
+  <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="${t("구르기")}" data-tip-title="${t("구르기")} (Space)" data-tip="${t("구르는 동안은 맞지 않는다")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>${t("구르기")}</b></button>
+  <button class="ring-btn ult" type="button" data-ult hidden aria-label="${t("무지개 붓질")} (F)" data-tip-title="${t("궁극기 · 무지개 붓질")} (F)" data-tip="${t("베고 쓰러뜨릴수록 무지개가 찬다\n가득 차면 높이 뛰어올라 주변을 모두 벤다\n그동안은 맞지 않는다")}"><i class="ult-ic" aria-hidden="true"></i><i class="ult-ic ult-fill" aria-hidden="true"></i><b class="ult-pct" data-ultpct>0%</b><kbd>F</kbd></button>
+  <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="${t("자동 진행")} (Z)" aria-pressed="false" data-tip-title="${t("자동 진행")} (Z)" data-tip="${t("의뢰를 받고, 사냥하고, 보고하러 저절로 간다\n갈 곳이 없으면 그 자리에서 사냥한다\n검법도 저절로 쓴다")}"><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>${t("자동")}</b></button>
+  <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="${t("자동 사냥 설정")}" data-tip-title="${t("자동 사냥 설정")}" data-tip="${t("쓸 검법, 물약 기준, 의뢰 대상 먼저")}">${t("설정")}</button>
   <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip-title="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip="${t("길게 누르거나 우클릭: 자동 사용 켜기/끄기")}" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
 </div>
 <div class="keyhelp passive" data-help hidden>
   <p>${t("<kbd>WASD</kbd> 걷기 <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>우클릭</kbd> 구르기, 구르는 동안은 맞지 않는다")}</p>
-  <p>${t("<kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기. <kbd>1</kbd>–<kbd>5</kbd> 오방 검법 (가까운 적에게), 자동 사냥 중엔 저절로")}</p>
+  <p>${t("<kbd>클릭</kbd> 베기, 누르고 있으면 이어 베기\n<kbd>1</kbd>–<kbd>5</kbd> 오방 검법 (가까운 적에게), 자동 사냥 중엔 저절로")}</p>
   <p>${t("<kbd>Z</kbd> 자동 진행 <kbd>Q</kbd> 물약 <kbd>G</kbd> 말 걸기 <kbd>I</kbd> 장비 <kbd>K</kbd> 수련 <kbd>H</kbd> 이 안내 접기")}</p>
   <p>${t("<kbd>Enter</kbd> 채팅 <kbd>M</kbd> 소리 끄기 <kbd>Esc</kbd> 설정")}</p>
 </div>
@@ -125,7 +125,7 @@ const MARKUP = `
 <div class="auto-pop" data-autopop hidden role="dialog" aria-label="${t("자동 사냥 설정")}"></div>
 <div class="auto-pop channel-pop" data-chpop hidden role="dialog" aria-label="${t("채널")}"></div>
 <div class="reward-show passive" data-reward hidden aria-live="polite"></div>
-<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="${t("채팅")}" data-tip-title="${t("채팅")} (Enter)" data-tip="${t("같은 채널 사람들과 말한다.")}">${t("채팅")}</button>
+<button class="btn btn-secondary btn-sm chat-btn touch" type="button" data-chatbtn aria-label="${t("채팅")}" data-tip-title="${t("채팅")} (Enter)" data-tip="${t("같은 채널 사람들과 말한다")}">${t("채팅")}</button>
 <div class="toasts passive"></div>
 <div class="stick"><i></i></div>
 <div class="levelup passive" data-lvup hidden><i class="spr-enso"></i><b>${t("경지 상승")}</b><small data-lvtext></small></div>
@@ -650,7 +650,7 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     const s = subStatus(p);
     if (!s) return "";
     const going = this.travelling && this.autoFocus === -3;
-    const tip = s.done ? `data-tip-title="${t("보상 받기")}" data-tip="${esc(t("보상 · {reward}", { reward: rewardText(s.q) }))}"` : `data-tip-title="${going ? t("자동 진행 중 · 누르면 멈춘다") : t("서브 · 누르면 자동 진행")}" data-tip="${esc(t(s.q.text))}\n${esc(t("{name}의 의뢰 · 끝내면 다음 의뢰가 이어진다.", { name: t(npcName(s.q.giver)) }))}"`;
+    const tip = s.done ? `data-tip-title="${t("보상 받기")}" data-tip="${esc(t("보상 · {reward}", { reward: rewardText(s.q) }))}"` : `data-tip-title="${going ? t("자동 진행 중 · 누르면 멈춘다") : t("서브 · 누르면 자동 진행")}" data-tip="${esc(t(s.q.text))}\n${esc(t("{name}의 의뢰 · 끝내면 다음 의뢰가 이어진다", { name: t(npcName(s.q.giver)) }))}"`;
     return `<ul class="qcard daily qdaily qsub${walled ? " lit" : ""}"><li class="${s.done ? "done" : ""}${going ? " going" : ""}" data-sub="${s.done ? "done" : "go"}" role="button" tabindex="0" ${tip}><i class="qd-tag sub">${t("서브")}</i><span>${esc(t(s.q.title))}</span>${s.done ? `<b class="qd-get">${t("받기")}</b>` : `<b>${s.prog}/${s.target}</b>`}</li></ul>`;
   }
 
@@ -1037,7 +1037,7 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     pop.innerHTML = `<h4>${t("채널")}</h4><p class="ch-note">${t("불러오는 중…")}</p>`;
     const list = await this.h.channels();
     if (pop.hidden) return;
-    if (!list) { pop.innerHTML = `<h4>${t("채널")}</h4><p class="ch-note">${t("지금은 채널을 볼 수 없다.")}</p><button type="button" class="btn btn-sm close" data-chclose>${t("닫기")}</button>`; return; }
+    if (!list) { pop.innerHTML = `<h4>${t("채널")}</h4><p class="ch-note">${t("지금은 채널을 볼 수 없다")}</p><button type="button" class="btn btn-sm close" data-chclose>${t("닫기")}</button>`; return; }
     const cap = CHANNEL_CAPACITY;
     const rows = list.players.map((n, i) => {
       const ch = i + 1, mine = ch === list.current, full = n >= cap && !mine;
