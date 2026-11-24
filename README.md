@@ -7,6 +7,8 @@
 기술을 쓰면 회색 들판 위로 색이 번쩍이는 게 멀리서도 보입니다.
 Verse8(Agent8) 플랫폼용으로 만들었고, 설치 없이 PC와 모바일(가로) 브라우저에서 돌아갑니다.
 
+**▶ 플레이: https://verse8.io/dl/games/S5X3M5t?referral=RCNU6B**
+
 <p>
   <img src="docs/screenshots/title.jpg" width="780" alt="타이틀 화면">
 </p>
