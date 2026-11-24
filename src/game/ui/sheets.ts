@@ -4,19 +4,20 @@
 // tiles in rarity frames, cost chips, one big primary tablet per screen, captions instead of paragraphs.
 
 import {
-  AD_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, villageOpen, type Npc, type QuestDef, type ZoneDef,
+  AD_DAILY, AD_DOUBLE_DAILY, AD_PULL_DAILY, AD_REWARD_JADE, DAILY_QUESTS, JADE_PRODUCTS, ZONES, villageOpen, type Npc, type QuestDef, type ZoneDef,
 } from "../../shared/world";
 import {
   COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, ITEM, ITEMS, PITY, RARITY_RATES, dupeGrant, harmonySkill, HARMONY_BONUS, hatHpBonus, itemOdds, sashCdCut, type Grant, type ItemDef,
 } from "../../shared/items";
 import { DROPS, atkText, enhancedAtk } from "../../shared/growth";
+import { adUsesLeft, dailyAllClaimed } from "../../shared/profile";
 import { MONSTERS, SKILLS, isObstacle, potionCost } from "../../shared/combat";
 import { BOOK, BOOK_STEP, bookBonus, bookStage } from "../../shared/book";
 import { NPC_INFO } from "../../shared/story";
 import { ZoneMap, type MapLive } from "./minimap";
 import type { RankBoard, RankRow, RankView } from "../../shared/rank";
 import type { SlotId } from "../../shared/types";
-import type { GachaPull, GameApi, ProfileView } from "../../net/api";
+import type { GachaPull, GachaResult, GameApi, ProfileView } from "../../net/api";
 import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../quests";
 import { fmt, hexCss } from "../util";
 import { attempt, el, esc, itemIcon, resBar, resChip, resIcon, tipAttr, toast, type ResKind } from "./dom";
@@ -570,7 +571,10 @@ export class Sheets {
       }).join("");
       const ready = DAILY_QUESTS.filter((_, k) => { const d = dailyStatus(p, k); return d.done && !d.claimed; }).length;
       const all = ready > 1 ? `<button class="btn btn-lg daily-all" type="button" data-do="claimDailyAll" ${this.busy ? "disabled" : ""}>${t("모두 받기 ({n})", { n: ready })}</button>` : "";
-      return `${this.head(npcName(this.npcId))}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], t("하루에 한 번씩 새로 맡긴다\n다 하면 여기서, 또는 오른쪽 의뢰 칸에서 바로 받는다"))}<ol class="qrows">${daily}</ol>${all}`;
+      const left = adUsesLeft(p, "double");
+      const double = dailyAllClaimed(p) && this.ctx.api.adsAvailable()
+        ? `<div class="ad-row daily-ad"><button class="btn btn-secondary" type="button" data-do="adDouble" ${left <= 0 || this.busy ? "disabled" : ""}>${t("광고 보고 오늘의 의뢰 보상 한 번 더")}</button><span class="cap">${t("오늘 {n} / {max}", { n: left, max: AD_DOUBLE_DAILY })}</span></div>` : "";
+      return `${this.head(npcName(this.npcId))}${resBar([["pigment", p.pigment], ["jade", p.jade], ["potion", p.potions]], t("하루에 한 번씩 새로 맡긴다\n다 하면 여기서, 또는 오른쪽 의뢰 칸에서 바로 받는다"))}<ol class="qrows">${daily}</ol>${all}${double}`;
     }
     let main = `<p class="cap">${t("이어지는 의뢰가 없다")}</p>`;
     if (s) {
@@ -631,7 +635,7 @@ export class Sheets {
       const shop = JADE_PRODUCTS.map((j, k) => `<button type="button" class="shop-tile" data-do="buy" data-id="${esc(j.productId)}" ${this.busy ? "disabled" : ""}>
         <span class="pic jade-pile n${k + 1}">${resIcon("jade", "xl")}</span><b class="sec">${esc(t(j.label))}</b><small class="cap price">${fmt(this.prices[j.productId] ?? j.vx)}VX${local ? ` · ${t("모의")}` : ""}</small></button>`).join("");
       return `${head}${bar}
-        <div class="ad-row"><button class="btn btn-secondary" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>${t("광고 보고")} ${resIcon("jade")} ${AD_REWARD_JADE}</button><span class="cap">${t("오늘 {n} / {max}", { n: Math.max(0, p.adsLeft), max: AD_DAILY })}</span></div>
+        ${this.ctx.api.adsAvailable() ? `<div class="ad-row"><button class="btn btn-secondary" type="button" data-do="ad" ${p.adsLeft <= 0 || this.busy ? "disabled" : ""}>${t("광고 보고")} ${resIcon("jade")} ${AD_REWARD_JADE}</button><span class="cap">${t("오늘 {n} / {max}", { n: Math.max(0, p.adsLeft), max: AD_DAILY })}</span></div>` : ""}
         <div class="shop-tiles">${shop}</div>
         <p class="mock">${local ? t("오프라인(로컬) 모드: 충전은 <b>모의 결제</b>로 바로 지급, 실제 돈은 나가지 않는다\n광고도 모의 화면") : t("충전은 Verse8 결제 창에서 진행된다")} ${t("광고는 버튼을 누를 때만\n경지와 진행은 팔지 않는다")}</p>`;
     }
@@ -662,6 +666,7 @@ export class Sheets {
         <button class="pull btn btn-lg" type="button" data-do="pull" data-n="1" ${p.jade < COST1 || this.busy ? "disabled" : ""}><b>${t("1회 뽑기")}</b><span class="cost">${resIcon("jade")}${fmt(COST1)}</span></button>
         <button class="pull btn btn-lg" type="button" data-do="pull" data-n="10" ${p.jade < COST10 || this.busy ? "disabled" : ""}><b>${t("10회 뽑기")}</b><span class="cost">${resIcon("jade")}${fmt(COST10)}</span></button>
       </div>
+      ${this.ctx.api.adsAvailable() ? `<div class="ad-row pull-ad"><button class="btn btn-secondary" type="button" data-do="adPull" ${adUsesLeft(p, "pull") <= 0 || this.busy ? "disabled" : ""}>${t("광고 보고 무료 1회 뽑기")}</button><span class="cap">${t("오늘 {n} / {max}", { n: adUsesLeft(p, "pull"), max: AD_PULL_DAILY })}</span></div>` : ""}
       <div class="results${pull && pull.pulls.length > 1 ? " ten" : ""}" aria-live="polite">${results}</div>`;
   }
 
@@ -701,6 +706,20 @@ export class Sheets {
       </div>`;
   }
 
+  /** A pull's draws shown on the altar (a jade pull or the ad's free one). */
+  private showPull(r: GachaResult & { profile: ProfileView }): void {
+    // an older server answers without `pulls`: rebuild the rows from ids / dupes
+    const pulls: GachaPull[] = r.pulls ?? r.ids.map((id, k): GachaPull => {
+      const it = ITEM[id];
+      const g = GACHA_EXTRA_BY_ID[id];
+      return it ? { id, name: it.name, r: it.r, kind: "item", dupe: !!r.dupes[k], grant: r.dupes[k] ? dupeGrant(it) : undefined }
+        : { id, name: g?.name ?? id, r: g?.r ?? "일반", kind: "material", dupe: false, grant: g?.grant };
+    });
+    this.pull = { pulls, at: performance.now() };
+    this.ctx.apply(r.profile);
+    if (r.ids.some((id) => ITEM[id]?.r === "전설")) toast(t("전설 장비를 얻었다!"));
+  }
+
   /* ---------- actions ---------- */
   private async act(b: HTMLElement): Promise<void> {
     if (this.busy) return;
@@ -738,18 +757,13 @@ export class Sheets {
       } else if (what === "pull") {
         const n = b.dataset.n === "10" ? 10 : 1;
         const r = await attempt(api.pullGacha(n));
-        if (r) {
-          // an older server answers without `pulls`: rebuild the rows from ids / dupes
-          const pulls: GachaPull[] = r.pulls ?? r.ids.map((id, k): GachaPull => {
-            const it = ITEM[id];
-            const g = GACHA_EXTRA_BY_ID[id];
-            return it ? { id, name: it.name, r: it.r, kind: "item", dupe: !!r.dupes[k], grant: r.dupes[k] ? dupeGrant(it) : undefined }
-              : { id, name: g?.name ?? id, r: g?.r ?? "일반", kind: "material", dupe: false, grant: g?.grant };
-          });
-          this.pull = { pulls, at: performance.now() };
-          this.ctx.apply(r.profile);
-          if (r.ids.some((id) => ITEM[id]?.r === "전설")) toast(t("전설 장비를 얻었다!"));
-        }
+        if (r) this.showPull(r);
+      } else if (what === "adPull") {
+        const r = await attempt(api.freePullWithAd());
+        if (r) this.showPull(r);
+      } else if (what === "adDouble") {
+        const p = await attempt(api.dailyDoubleWithAd());
+        if (p) { this.ctx.apply(p); toast(t("오늘의 의뢰 보상을 한 번 더 받았다")); audio.play("quest-done"); }
       } else if (what === "ad") {
         const p = await attempt(api.watchAdForJade());
         if (p) { this.ctx.apply(p); toast(t("묵옥 +{n}", { n: AD_REWARD_JADE })); }

@@ -5,6 +5,9 @@ import {
 import { REACH_SLACK, inShape } from "../../src/shared/hit";
 import type { MonsterMode, MonsterState } from "../../src/shared/types";
 import { ZONES, type SpawnRule, type ZoneDef } from "../../src/shared/world";
+import {
+  FB_LINGER_MS, FB_UP_MS, FIELD_BOSS, FIELD_BOSS_ID, fieldBossHp, fieldBossLevel, fieldBossUp, fieldBossWindow, FB_SPOTS, type FbState,
+} from "../../src/shared/fieldboss";
 
 // Hunting, all decided here: a zone room's monsters live in its room state and move on every room
 // tick; players' health lives in their room user state. Everything below the I/O helpers is pure, so
@@ -63,6 +66,9 @@ const LEASH = 1.6; // a chase is given up past aggro × this
 const KEEP_FROM_PORTAL = 12; // spawns stay this far from gates and arrival points, so entering is safe
 const KNOCKBACK = 0.08; // metres per point of kb
 const BOSS_HITTERS = 20;
+// a field boss's spat ink: a little wider than a shot, and lighter than its slam
+const SPIT_RADIUS = 1.3;
+const SPIT_SHARE = 0.45;
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
@@ -195,7 +201,9 @@ export function readMonsters(zoneId: string, raw: unknown, now: number, rand: ()
   const out: Record<string, MonsterRow> = {};
   for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
     const m = value as Record<string, unknown> | null;
-    if (!m || typeof m.kind !== "string" || !MONSTERS[m.kind] || !fresh[id]) continue;
+    if (!m || typeof m.kind !== "string" || !MONSTERS[m.kind]) continue;
+    // the field boss is not one of the zone's spawns: it stays while the room keeps it
+    if (!fresh[id] && !(id === FIELD_BOSS_ID && MONSTERS[m.kind].field)) continue;
     const mode = MODES.includes(m.mode as MonsterMode) ? (m.mode as MonsterMode) : "idle";
     const row: MonsterRow = {
       id, kind: m.kind, x: num(m.x), z: num(m.z), yaw: num(m.yaw), hp: num(m.hp), maxHp: num(m.maxHp, 1), level: num(m.level, 1),
@@ -258,6 +266,8 @@ export function stepMonsters(
   for (const m of Object.values(monsters)) {
     const def = MONSTERS[m.kind];
     if (m.mode === "dead") {
+      // the field boss never stands again by itself (fieldBossStep clears it away)
+      if (def.field) continue;
       const delay = def.boss && zone.boss ? zone.boss.respawnMs : def.respawnMs ?? RESPAWN_MS;
       if (now - m.deadAt >= delay) {
         // A fixed one stands again on its own spot.
@@ -312,6 +322,8 @@ export function stepMonsters(
         } else {
           if (def.attack === "slam") {
             effects.push({ id: `${m.id}:${now}`, kind: "slam", x: round(m.x), z: round(m.z), tx: m.tx, tz: m.tz, r: def.slamR ?? SLAM_RADIUS, at: now + def.windMs, dmg });
+            // and ink spat at the others around it, landing with the slam
+            if (def.spit) spitAround(m, def, prey, target.p.account, effects, now, dmg);
           }
           set(m, "wind");
         }
@@ -367,6 +379,82 @@ export function stepMonsters(
     urgent = true;
   }
   return { bites, urgent, walked };
+}
+
+/** A field boss's slam comes with an ink shot at up to def.spit of the others in its aggro, nearest first. */
+function spitAround(m: MonsterRow, def: MonsterDef, prey: Prey[], skip: string, effects: StoredEffect[], now: number, dmg: number): void {
+  const near = prey
+    .filter((p) => p.account !== skip && Math.hypot(p.x - m.x, p.z - m.z) <= def.aggro)
+    .sort((a, b) => Math.hypot(a.x - m.x, a.z - m.z) - Math.hypot(b.x - m.x, b.z - m.z))
+    .slice(0, def.spit ?? 0);
+  for (const p of near) {
+    effects.push({
+      id: `${m.id}:${now}:${p.account}`, kind: "shot", x: round(m.x), z: round(m.z), tx: round(p.x), tz: round(p.z), r: SPIT_RADIUS,
+      at: now + def.windMs, dmg: Math.round(dmg * SPIT_SHARE),
+    });
+  }
+}
+
+/* ---------- the field boss ---------- */
+
+export interface FieldBossStep {
+  fb: FbState | null;
+  /** monsters or fb changed: write both */
+  changed: boolean;
+  /** what happened this step (for the room's line) */
+  event: "spawn" | "gone" | "cleared" | null;
+}
+
+/** The field boss's row, freshly come down at its spot with its life set by how many are here. */
+export function fieldBossRow(zone: string, players: number, now: number, at?: { x: number; z: number }): MonsterRow {
+  const level = fieldBossLevel(zone);
+  const spot = at ?? FB_SPOTS[zone] ?? { x: 0, z: 0 };
+  const row = newRow(FIELD_BOSS_ID, MONSTERS[FIELD_BOSS], level, spot.x, spot.z, now);
+  const hp = fieldBossHp(level, players);
+  row.hp = hp;
+  row.maxHp = hp;
+  return row;
+}
+
+/**
+ * One room tick of the field boss (monsters changed in place): it comes down once per window when the window's
+ * field is this room's and someone is here; it leaves when its time is up; felled, it lies FB_LINGER_MS and is
+ * cleared away (the room keeps only that this window is done); a done window's record goes once it is over.
+ */
+export function fieldBossStep(zone: string, monsters: Record<string, MonsterRow>, fb: FbState | null, players: number, now: number): FieldBossStep {
+  const row = monsters[FIELD_BOSS_ID];
+  if (fb && !fb.done) {
+    if (!row) return { fb: { ...fb, hits: {}, done: true }, changed: true, event: "gone" };
+    if (row.mode === "dead") {
+      if (now - (fb.dead || row.deadAt) < FB_LINGER_MS) return { fb, changed: false, event: null };
+      delete monsters[FIELD_BOSS_ID];
+      return { fb: { win: fb.win, zone: fb.zone, end: fb.end, hits: {}, dead: fb.dead, done: true }, changed: true, event: "cleared" };
+    }
+    if (now >= fb.end) {
+      delete monsters[FIELD_BOSS_ID];
+      return { fb: { win: fb.win, zone: fb.zone, end: fb.end, hits: {}, dead: 0, done: true }, changed: true, event: "gone" };
+    }
+    return { fb, changed: false, event: null };
+  }
+  // a row left without its record (an older write): gone
+  if (row && (!fb || fb.done)) {
+    delete monsters[FIELD_BOSS_ID];
+    return { fb, changed: true, event: null };
+  }
+  const w = fieldBossWindow(now);
+  if (w.zone === zone && fieldBossUp(w, now) && players > 0 && fb?.win !== w.id) {
+    monsters[FIELD_BOSS_ID] = fieldBossRow(zone, players, now, w);
+    return { fb: { win: w.id, zone, end: w.end, hits: {}, dead: 0, done: false }, changed: true, event: "spawn" };
+  }
+  // a finished window's record is dropped once that window is over (the next one starts fresh)
+  if (fb && fb.done && fb.end <= now) return { fb: null, changed: true, event: null };
+  return { fb, changed: false, event: null };
+}
+
+/** A local test's field boss (offline only, see Server.debugFieldBoss): here, now, for FB_UP_MS. */
+export function forceFieldBoss(zone: string, monsters: Record<string, MonsterRow>, players: number, now: number, at?: { x: number; z: number }): FbState {
+  monsters[FIELD_BOSS_ID] = fieldBossRow(zone, players, now, at);
+  return { win: `dbg${now}`, zone, end: now + FB_UP_MS, hits: {}, dead: 0, done: false };
 }
 
 export interface Felling {

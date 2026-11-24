@@ -3,7 +3,7 @@
 // (profile, names, receipts) is kept in localStorage between visits.
 
 import { Server } from "../../server/src/server";
-import type { ProfileView } from "./api";
+import type { AdKind } from "./api";
 import { BaseGameApi, type Json, type Link } from "./baseApi";
 import { LocalWorld, type WorldSnapshot } from "./local/localWorld";
 
@@ -118,12 +118,16 @@ export class LocalGameApi extends BaseGameApi {
     }
   }
 
-  /** Local: the game's mock ad, then the same claim the server makes for a real one. */
-  async watchAdForJade(): Promise<ProfileView | null> {
+  adsAvailable(): boolean {
+    return !!this.opts.adPresenter;
+  }
+
+  /** Local: the game's mock ad; the requestId the in-page server's verifier then accepts. */
+  async watchAd(_kind: AdKind): Promise<string | null> {
     if (!this.opts.adPresenter) return null;
     const watched = await this.opts.adPresenter();
     if (!watched) return null;
-    return this.claimAd(`local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
+    return `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
   /** Local: a mock purchase, delivered to the server as the platform would ($onItemPurchased). */

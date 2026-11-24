@@ -26,6 +26,8 @@ export interface MapLive {
   others: readonly { x: number; z: number }[];
   count: number;
   marks: (id: string) => NpcMarkKind;
+  /** the room's 필드 보스 while it is up (`on`), where it is */
+  fb: { on: boolean; x: number; z: number };
 }
 
 export class ZoneMap {
@@ -228,6 +230,16 @@ export class ZoneMap {
     g.clearRect(0, 0, S, S);
     g.drawImage(this.base, 0, 0);
     const here = !!live && live.zone === def.id;
+    if (here && live.fb.on) {
+      // the field boss: a cinnabar mark that breathes, so it is found at a glance
+      const x = this.px(live.fb.x), y = this.pz(live.fb.z), pulse = 0.5 + 0.5 * Math.sin(performance.now() / 260);
+      g.fillStyle = `rgba(184, 50, 31, ${(0.18 + 0.2 * pulse).toFixed(3)})`;
+      g.beginPath(); g.arc(x, y, (8 + 3 * pulse) * d * k, 0, Math.PI * 2); g.fill();
+      g.fillStyle = CINNABAR;
+      g.strokeStyle = PAPER;
+      g.lineWidth = 1.4 * d;
+      g.beginPath(); g.arc(x, y, 4.2 * d * k, 0, Math.PI * 2); g.fill(); g.stroke();
+    }
     if (here) {
       g.fillStyle = "rgba(60, 74, 110, 0.85)";
       for (let i = 0; i < live.count; i++) {

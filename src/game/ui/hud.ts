@@ -7,8 +7,8 @@ import * as THREE from "three";
 import { SKILLS } from "../../shared/combat";
 import { ITEM } from "../../shared/items";
 import { AWAKENINGS, pointsEarned, pointsSpent, skillCdMul } from "../../shared/growth";
-import { cdMulOf } from "../../shared/profile";
-import { CHANNEL_CAPACITY, DAILY_QUESTS, ZONES } from "../../shared/world";
+import { adUsesLeft, cdMulOf, dailyAllClaimed } from "../../shared/profile";
+import { AD_REVIVE_DAILY, CHANNEL_CAPACITY, DAILY_QUESTS, ZONES } from "../../shared/world";
 import type { ProfileView } from "../../net/api";
 import { camera } from "../render/gfx";
 import { fmt, hexCss } from "../util";
@@ -51,6 +51,12 @@ export interface HudHandlers {
   interact(): void;
   skill(i: number): void;
   respawn(): void;
+  /** rewarded ads can be shown here (the ad buttons hide otherwise) */
+  adsAvailable(): boolean;
+  /** fallen: watch an ad and stand up where you fell */
+  adRevive(): void;
+  /** every daily quest handed in: watch an ad for their rewards once more */
+  adDouble(): void;
   /** the settings menu, optionally on one tab */
   settings(tab?: string): void;
   /** open the chat input (mobile 말 button) */
@@ -105,6 +111,7 @@ const MARKUP = `
 <div class="memory-bar" data-memory hidden><div class="mb-t"><b data-memory-t></b><small data-memory-p></small></div><button class="btn btn-sm" type="button" data-memory-exit>${t("돌아가기")}<kbd>Esc</kbd></button></div>
 <div class="zone-paint passive" data-zonepaint hidden><b data-zpname></b><span class="seal" data-zpch></span></div>
 <div class="bossbar passive" data-boss hidden><span class="tg-pic" data-tgpic aria-hidden="true"></span><b data-bossname></b><div class="hp gauge boss"><i class="track"></i><i class="chip" data-bosschip></i><i class="fill" data-bosshp></i></div></div>
+<div class="fb-banner passive" data-fb hidden aria-live="polite"><i class="fb-mark" aria-hidden="true"></i><b data-fbname></b><span data-fbtime></span></div>
 <div class="tags passive" data-tags></div>
 <div class="tags passive" data-dmg></div>
 <div class="arc" data-arc>
@@ -139,6 +146,7 @@ const MARKUP = `
     <div class="enso-load" data-rise-enso><i class="bloom" aria-hidden="true"></i><i class="ring-track" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i><i class="seam" aria-hidden="true"></i><i class="head" aria-hidden="true"></i></div>
     <small>${t("누르고 있으면 다시 일어난다")}</small>
   </div>
+  <button type="button" class="ink-death-ad" data-ad-revive hidden></button>
 </div>
 <div class="fade" data-fade><span data-fadetext></span></div>
 `;
@@ -315,6 +323,12 @@ export class Hud {
     el("[data-memory-exit]", root).addEventListener("click", () => this.h.exitMemory());
     // the daily card is rebuilt often; one delegated listener on its box
     el("[data-quest]", root).addEventListener("click", (e) => {
+      const ad = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-ad-double]");
+      if (ad) {
+        e.stopPropagation();
+        if (!ad.disabled) { ad.disabled = true; this.h.adDouble(); }
+        return;
+      }
       const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-claim-daily]");
       if (!b || b.disabled) return;
       e.stopPropagation();
@@ -690,7 +704,10 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
       const tip = d.done ? `data-tip-title="${t("보상 받기")}" data-tip="${esc(rewardLine(d.q))}"` : `data-tip-title="${going ? t("자동 진행 중 · 누르면 멈춘다") : t("누르면 자동 진행")}" data-tip="${esc(t(d.q.text))}"`;
       rows += `<li class="${d.done ? "done" : ""}${going ? " going" : ""}" ${d.done ? "data-claim-daily" : `data-daily="${i}"`} role="button" tabindex="0" ${tip}><i class="qd-tag">${t("일일")}</i><span>${esc(t(d.q.title))}</span>${d.done ? `<b class="qd-get">${t("받기")}</b>` : `<b>${d.prog}/${d.target}</b>`}</li>`;
     }
-    return rows ? `<ul class="qcard daily qdaily${walled ? " lit" : ""}">${rows}</ul>` : "";
+    if (rows) return `<ul class="qcard daily qdaily${walled ? " lit" : ""}">${rows}</ul>`;
+    // all handed in: the day's rewarded ad (rewards once more) until it is used
+    if (!dailyAllClaimed(p) || adUsesLeft(p, "double") <= 0 || !this.h.adsAvailable()) return "";
+    return `<ul class="qcard daily qdaily qad"><li><button type="button" class="qad-btn" data-ad-double data-tip-title="${t("광고 보고 오늘의 의뢰 보상 한 번 더")}" data-tip="${esc(t("오늘 받은 의뢰 보상을 한 번 더 받는다\n하루 한 번"))}"><i class="qd-tag">${t("일일")}</i><span>${t("광고 보고 오늘의 의뢰 보상 한 번 더")}</span></button></li></ul>`;
   }
 
   /** Phones: the tracker folds to a one-line chip and back. */
@@ -792,6 +809,19 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     chip.style.setProperty("--f", f.toFixed(3));
     void chip.offsetWidth;
     chip.classList.remove("snap");
+  }
+
+  /** 필드 보스 up in this room: its name and the time it has left under the target frame (null hides it). */
+  fieldBoss(name: string | null, secs: number): void {
+    const box = el("[data-fb]", this.root);
+    if (!name) { box.hidden = true; return; }
+    if (box.hidden) {
+      box.hidden = false;
+      el("[data-fbname]", this.root).textContent = t("필드 보스 · {name}", { name });
+    }
+    const m = Math.floor(secs / 60), s = secs % 60;
+    el("[data-fbtime]", this.root).textContent = t("남은 시간 {time}", { time: `${m}:${String(s).padStart(2, "0")}` });
+    box.classList.toggle("late", secs <= 60);
   }
 
   /* ---------- floating numbers ---------- */
@@ -1095,6 +1125,17 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     el("[data-death-cause]", this.root).textContent = text;
   }
 
+  /**
+   * The death screen's rewarded-ad button (stand up where you fell): `left` uses today, or null to hide it
+   * (none left, no ads here). busy: the ad or its claim is under way.
+   */
+  reviveAd(left: number | null, busy = false): void {
+    const b = el<HTMLButtonElement>("[data-ad-revive]", this.root);
+    b.hidden = left === null || left <= 0;
+    b.disabled = busy;
+    if (left !== null) b.textContent = t("광고 보고 이 자리에서 일어나기 ({n}/{max})", { n: left, max: AD_REVIVE_DAILY });
+  }
+
   /* ---------- death: the ink takes the screen; hold the ensō to rise ---------- */
   private deathShownAt = 0;
   private riseTimer = 0;
@@ -1164,12 +1205,15 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
       box.classList.remove("rising");
       this.setRise(0, false);
     };
+    const ad = el<HTMLButtonElement>("[data-ad-revive]", this.root);
+    ad.addEventListener("click", () => { if (ready() && !ad.disabled) this.h.adRevive(); });
     rise.addEventListener("pointerdown", (e) => { e.preventDefault(); rise.setPointerCapture?.(e.pointerId); start(); });
     rise.addEventListener("pointerup", () => stop(true));
     rise.addEventListener("pointercancel", () => stop(false));
     rise.addEventListener("lostpointercapture", () => stop(false));
     const isKey = (e: KeyboardEvent) => e.code === "Space" || e.code === "Enter" || e.code === "NumpadEnter";
-    window.addEventListener("keydown", (e) => { if (!box.hidden && isKey(e)) { e.preventDefault(); if (!e.repeat) start(); } });
+    // Space/Enter on the focused ad button presses it, it does not start the hold
+    window.addEventListener("keydown", (e) => { if (!box.hidden && isKey(e) && e.target !== ad) { e.preventDefault(); if (!e.repeat) start(); } });
     window.addEventListener("keyup", (e) => { if (!box.hidden && isKey(e)) stop(true); });
   }
 

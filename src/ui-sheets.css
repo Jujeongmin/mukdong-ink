@@ -285,6 +285,7 @@
 .rate-table .tcell { display: inline-flex; align-items: center; gap: 6px; }
 .ad-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .ad-row .ic-res { width: 20px; height: 20px; }
+.ad-row.daily-ad, .ad-row.pull-ad { margin-top: 10px; }
 
 /* shop tiles: potions, jade */
 .shop-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }

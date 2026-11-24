@@ -314,3 +314,10 @@ export const JADE_PRODUCTS: JadeProduct[] = [
 export const AD_PLACEMENT = "jade_reward";
 export const AD_REWARD_JADE = 40;
 export const AD_DAILY = 3;
+/** The other rewarded ads: their Verse8 placements and how many times a KST day each may be used. */
+export const AD_PLACEMENT_REVIVE = "revive_in_place";
+export const AD_PLACEMENT_DOUBLE = "daily_double";
+export const AD_PLACEMENT_PULL = "free_pull";
+export const AD_REVIVE_DAILY = 3;
+export const AD_DOUBLE_DAILY = 1;
+export const AD_PULL_DAILY = 1;

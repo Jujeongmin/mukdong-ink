@@ -1345,17 +1345,27 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 .ink-death.risen .enso-load .head { opacity: 0; scale: 0.3; animation: none; }
 .ink-death.risen .enso-load .bloom { animation: enso-bloom 0.5s 0.1s ease-out both; }
 .ink-death:not(.rising):not(.risen) .enso-load .head { opacity: 0; }
+/* the rewarded ad (stand up where you fell): above the ensō, a pale ink-rule tablet on the dark wash */
+.ink-death-ad { position: absolute; left: 50%; bottom: calc(192px + var(--safe-b)); transform: translateX(-50%); pointer-events: auto; cursor: pointer;
+  max-width: calc(100vw - 32px); padding: 9px 18px 8px; border: 1px solid rgba(236, 226, 208, 0.55); border-radius: 3px 8px 4px 7px; background: rgba(18, 15, 12, 0.55);
+  font-family: var(--f-brush); font-size: 15px; line-height: 1.35; letter-spacing: 0.06em; color: #f2e9d8; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  text-wrap: balance; word-break: keep-all; opacity: 0; animation: ink-fade 0.8s 1.6s ease forwards; transition: background-color 0.15s ease, border-color 0.15s ease; }
+.ink-death-ad[hidden] { display: none; }
+.ink-death-ad:hover:not(:disabled), .ink-death-ad:focus-visible { background: rgba(168, 38, 27, 0.4); border-color: rgba(236, 226, 208, 0.85); outline: none; }
+.ink-death-ad:disabled { cursor: wait; opacity: 0.5 !important; animation: none; }
+.ink-death.out .ink-death-ad, .ink-death.risen .ink-death-ad { opacity: 0 !important; pointer-events: none; transition: opacity 0.3s ease; }
 
 @media (max-width: 640px), (max-aspect-ratio: 9/10) {
   .ink-death-words { right: calc(22px + var(--safe-r)); top: calc(84px + var(--safe-t)); gap: 12px; }
   .ink-death-ins { font-size: clamp(46px, 7vh, 64px); }
   .ink-death-side p { font-size: 15px; }
   .ink-death-rise { bottom: calc(64px + var(--safe-b)); }
+  .ink-death-ad { bottom: calc(204px + var(--safe-b)); font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ink-death-bleed { animation-duration: 0.01s; }
   .ink-death-ins span { animation-duration: 0.01s; animation-delay: 0s; }
-  .ink-death-side, .ink-death-rise { animation-delay: 0s; }
+  .ink-death-side, .ink-death-rise, .ink-death-ad { animation-delay: 0s; }
 }
 
 /* chapter endings and other dark narration: words on the dark, written in, no box and no centred heading */
@@ -1815,6 +1825,14 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 #ui .ring-btn.sk.later { display: none; }
 /* 서브 퀘스트 row: its own tag color (indigo), between 본편 and 오늘의 의뢰 */
 #ui .qd-tag.sub { color: #f3ecdf; background: #2a4f8a; }
+/* all of today's quests handed in: the rewarded ad for their rewards once more, one wrapping line */
+#ui .qdaily.qad li { display: block; padding: 0; }
+#ui .qad-btn { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px; width: 100%; padding: 3px 4px; border: 0; border-radius: 3px; background: none;
+  font: inherit; font-size: 12.5px; line-height: 1.3; color: inherit; text-align: left; cursor: pointer; transition: background-color 0.12s ease; }
+#ui .qad-btn span { white-space: normal; text-wrap: balance; word-break: keep-all; }
+#ui .qad-btn:hover:not(:disabled) { background: rgba(43, 38, 34, 0.08); }
+#ui .qad-btn:focus-visible { outline: 2px solid var(--cinnabar); outline-offset: 1px; }
+#ui .qad-btn:disabled { opacity: 0.5; cursor: wait; }
 #ui .qpanel .qsub.qcard { padding-bottom: 0; }
 #ui .qpanel .qsub + .qdaily::before { content: none; }
 /* a reward, shown where you look with no panel: brush letters, then each gain as its picture and amount, rising */
@@ -2260,3 +2278,21 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* ---------- no full stops in the UI: a sentence that ended with one now ends the line instead ---------- */
 .dlg-text, .thought p, .toasts, .ink-death-side p, .loading-tip, .sheet-card .say, .sheet-card .cap, .sheet-card .body,
 .sheet-card .first-note, .album-pic.empty span, .qbody .qobj, .photo-hint { white-space: pre-line; }
+
+/* ---------- 필드 보스: the banner under the target frame, and its plate's life bar ---------- */
+.fb-banner { position: fixed; left: 50%; top: calc(76px + var(--safe-t)); transform: translateX(-50%); z-index: 12; display: flex; align-items: baseline; gap: 10px;
+  padding: 5px 18px 6px; border-radius: 3px; background: rgba(21, 17, 14, 0.82); color: #f3ead8; white-space: nowrap; pointer-events: none;
+  box-shadow: inset 0 0 0 1px #0b0908, inset 0 0 0 3px rgba(21, 17, 14, 0.82), inset 0 0 0 3.5px rgba(200, 50, 42, 0.75), 0 3px 10px rgba(0, 0, 0, 0.35); }
+.fb-banner[hidden] { display: none; }
+.fb-banner b { font-family: var(--f-brush); font-weight: 700; font-size: 16px; letter-spacing: 0.06em; }
+.fb-banner span { font-family: var(--f-body); font-size: 13px; font-weight: 700; color: #e9c9a0; font-variant-numeric: tabular-nums; }
+.fb-banner.late span { color: #ff8a70; }
+.fb-banner .fb-mark { align-self: center; width: 9px; height: 9px; border-radius: 50%; background: #c8322a; box-shadow: 0 0 0 2px rgba(200, 50, 42, 0.35); animation: fb-pulse 1.4s ease-in-out infinite; }
+@keyframes fb-pulse { 50% { box-shadow: 0 0 0 5px rgba(200, 50, 42, 0); } }
+@media (prefers-reduced-motion: reduce) { .fb-banner .fb-mark { animation: none; } }
+@media (max-height: 480px) { .fb-banner { top: calc(40px + var(--safe-t)); padding: 3px 12px 4px; gap: 7px; } .fb-banner b { font-size: 13px; } .fb-banner span { font-size: 11px; } }
+@media (max-width: 520px) { .fb-banner { top: calc(150px + var(--safe-t)); max-width: calc(100vw - 32px); } .fb-banner b { font-size: 14px; } }
+#ui .tag.elite.fboss { font-size: 15.5px; padding-bottom: 12px; color: #f6eedd; }
+#ui .tag.elite.fboss small { color: #e9c9a0; font-family: var(--f-body); font-weight: 700; font-size: 11px; }
+.tag.fboss .tag-hp { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 5px; border-radius: 2px; background: rgba(70, 60, 54, 0.95); overflow: hidden; }
+.tag.fboss .tag-hp > i { position: absolute; inset: 0; transform-origin: left center; transform: scaleX(var(--f, 1)); background: linear-gradient(180deg, #ec5a4c, #b0241c); transition: transform 0.25s ease-out; }

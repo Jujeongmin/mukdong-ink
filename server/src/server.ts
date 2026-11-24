@@ -14,7 +14,10 @@ import { forwardX, forwardZ } from "../../src/shared/hit";
 import { RANK_BOARDS, RANK_TOP, type RankBoard, type RankRow, type RankView } from "../../src/shared/rank";
 import { COST1, COST10, DYES, DYE_COST, GACHA_EXTRA_BY_ID, HARMONY_BONUS, ITEM, harmonySkill, STARTER_EQUIP, dupeGrant, rollGacha } from "../../src/shared/items";
 import {
-  MAX_POTIONS, atkOf, cdMulOf, countKills, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, maxHpOf, nextSub, pointsLeft, profileView, settleSub, subDef, subDone,
+  FB_MIN_HITS, FIELD_BOSS, FIELD_BOSS_ID, addHit, fieldBossEarners, fieldBossReward, readFb, type FbReward, type FbState,
+} from "../../src/shared/fieldboss";
+import {
+  MAX_POTIONS, adUsesLeft, fbLeft, atkOf, cdMulOf, countKills, dailyAllClaimed, countSkillUse, dailyDone, gainExp, giveReward, lookOf, mainDone, markMain, maxHpOf, nextSub, pointsLeft, profileView, settleSub, subDef, subDone,
   type Felled,
 } from "../../src/shared/profile";
 import { PROTOCOL_VERSION, RuleViolation, type Pose, type Profile } from "../../src/shared/types";
@@ -24,7 +27,8 @@ import {
 } from "../../src/shared/world";
 import { verifyAd } from "./ads";
 import {
-  MONSTER_SYNC_MS, hasMonsters, readEffects, readMonsters, stepMonsters, strikeAreas, tidy, type Bite, type Felling, type Prey, type Swept,
+  MONSTER_SYNC_MS, fieldBossStep, forceFieldBoss, hasMonsters, readEffects, readMonsters, stepMonsters, strikeAreas, tidy, type Bite, type Felling,
+  type MonsterRow, type Prey, type Swept,
 } from "./hunt";
 import {
   AD_GRANTS, PURCHASES, RANKS, claimName, createProfile, currentRoom, loadAssigned, loadStored, oncePer, parseName, pickChannel, releaseName,
@@ -232,6 +236,12 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
     await syncRank(account, p, gained.profile);
     return { ...gained, grew: maxHpOf(gained.profile) !== maxHpOf(p) };
   });
+  await showGrowth(account, roomId, done);
+  return done?.levelUp ?? false;
+}
+
+/** After a payout: a new level (or a larger max health) shown in the room the account stands in. */
+async function showGrowth(account: string, roomId: string, done: { profile: Profile; levelUp: boolean; grew: boolean } | null): Promise<void> {
   const levelUp = done?.levelUp ?? false;
   if (done && levelUp) {
     const level = done.profile.level;
@@ -250,7 +260,40 @@ async function payOut(account: string, roomId: string, pay: Pay, skillUse: boole
       await $room.updateUserState(account, { maxHp: maxHpOf(done.profile) }, { returnState: false });
     });
   }
-  return levelUp;
+}
+
+/**
+ * One account's 필드 보스 reward, under its lock: FB_DAILY a KST day (past that, null and nothing paid). The kill
+ * counts for "any" quests like any other.
+ */
+async function payFieldBoss(account: string, roomId: string, zone: string, level: number, rand: () => number): Promise<FbReward | null> {
+  const done = await withProfileLock(account, async () => {
+    const p = await loadStored(account);
+    if (!p || fbLeft(p) <= 0) return null;
+    const r = fieldBossReward(level, rand);
+    const paid = { ...p, pigment: p.pigment + r.pigment, jade: p.jade + r.jade, stones: p.stones + r.stones, shards: p.shards + r.shards, fb: { day: p.fb.day, n: p.fb.n + 1 } };
+    const gained = gainExp(countKills(paid, [{ kind: FIELD_BOSS, zone }]), r.exp);
+    await saveProfile(account, gained.profile);
+    await syncRank(account, p, gained.profile);
+    return { reward: r, profile: gained.profile, levelUp: gained.levelUp, grew: maxHpOf(gained.profile) !== maxHpOf(p) };
+  });
+  await showGrowth(account, roomId, done);
+  return done?.reward ?? null;
+}
+
+/**
+ * The field boss fell in this room (the blow that felled it was settled under the room's lock, its contributions
+ * cleared): each earner paid once, then the room told who got what (clients show their own line).
+ */
+async function settleFieldBoss(roomId: string, zone: string, win: string, level: number, earners: string[]): Promise<void> {
+  const paid: Record<string, FbReward | null> = {};
+  for (const account of earners) paid[account] = await payFieldBoss(account, roomId, zone, level, Math.random);
+  await withRoomLock(roomId, async () => {
+    const state = await $room.getRoomState(["fb"]);
+    const fb = readFb(state.fb);
+    if (!fb || fb.win !== win) return;
+    await $room.updateRoomState({ fb: { ...fb, paid } }, { returnState: false });
+  });
 }
 
 async function reward(
@@ -265,6 +308,8 @@ async function reward(
   payOf(account);
   for (const f of felled) {
     const def = MONSTERS[f.kind];
+    // the field boss is paid to everyone who did a share of it (settleFieldBoss), not to the one who felled it
+    if (def.field) continue;
     for (const who of f.credit) {
       const pay = payOf(who);
       pay.exp += killExp(def, f.level);
@@ -301,6 +346,28 @@ interface Blow {
   ult?: boolean;
 }
 
+/**
+ * The caller's blows on the field boss added to its contributions; on the felling blow the earners are taken and
+ * the contributions cleared at once (in the same write), so it is settled exactly once.
+ */
+function fieldBossBlows(
+  fb: FbState | null, row: MonsterRow | undefined, hits: { id: string; dmg: number; kill: boolean }[], account: string, now: number,
+): { fb: FbState; fell: { win: string; level: number; earners: string[] } | null } | null {
+  if (!fb || fb.done || fb.dead > 0 || !row) return null;
+  let struck = false;
+  let felled = false;
+  for (const h of hits) {
+    if (h.id !== FIELD_BOSS_ID || h.dmg <= 0) continue;
+    addHit(fb.hits, account, h.dmg);
+    struck = true;
+    felled = felled || h.kill;
+  }
+  if (!struck) return null;
+  if (!felled) return { fb, fell: null };
+  const earners = fieldBossEarners(fb.hits, row.maxHp);
+  return { fb: { ...fb, hits: {}, dead: now, paid: {} }, fell: { win: fb.win, level: row.level, earners } };
+}
+
 async function swing(
   x: number, z: number, blowOf: (p: Profile, at: { x: number; z: number }) => Blow,
   ready: (mine: Mine, p: Profile, now: number) => Record<string, unknown>, skillUse: boolean,
@@ -316,15 +383,16 @@ async function swing(
     if (mine.dead) throw new RuleViolation("dead");
     const patch = ready(mine, p, now);
     await $room.updateMyState(patch, { returnState: false });
-    if (!hasMonsters(here.zone)) return { hits: [], felled: [], ult: typeof patch.ult === "number" ? patch.ult : mine.ult };
+    if (!hasMonsters(here.zone)) return { hits: [], felled: [], ult: typeof patch.ult === "number" ? patch.ult : mine.ult, fell: null };
     const blow = blowOf(p, heldTo(mine, x, z, now, ZONES[here.zone].radius));
-    const state = await $room.getRoomState(["monsters"]);
+    const state = await $room.getRoomState(["monsters", "fb"]);
     const monsters = readMonsters(here.zone, state.monsters, now, Math.random);
     const damage = atkOf(p) * blow.mul;
     const who = { account, skill: blow.skill, skills: p.skills, plus: p.enh[p.equip.weapon] ?? 0 };
     const result = strikeAreas(monsters, blow.areas, blow.kb, damage, blow.echo, now, who);
+    const field = fieldBossBlows(readFb(state.fb), monsters[FIELD_BOSS_ID], result.hits, account, now);
     if (result.hits.length > 0) {
-      await $room.updateRoomState({ monsters: tidy(monsters), now, monstersAt: now }, { returnState: false });
+      await $room.updateRoomState({ monsters: tidy(monsters), now, monstersAt: now, ...(field ? { fb: field.fb } : {}) }, { returnState: false });
     }
     // the 궁극기 gauge: what this blow earned (the 궁극기 itself was emptied by `ready`)
     let ult = typeof patch.ult === "number" ? patch.ult : mine.ult;
@@ -335,8 +403,12 @@ async function swing(
         await $room.updateMyState({ ult }, { returnState: false });
       }
     }
-    return { ...result, ult };
+    return { ...result, ult, fell: field?.fell ?? null };
   });
+  if (struck.fell) {
+    await settleFieldBoss(here.roomId, here.zone, struck.fell.win, struck.fell.level, struck.fell.earners);
+    await sysLine(here.roomId, FB_LINES.felled);
+  }
   const paid = await reward(account, here.roomId, here.zone, struck.felled, skillUse, Math.random, struck.felled.length > 0 ? struck.ult : undefined);
   // A boss felled is told to the room.
   for (const f of struck.felled) {
@@ -353,6 +425,15 @@ async function swing(
 
 /** What the room is told when a boss falls ("○○ 님이 …"). */
 const BOSS_FELLED: Record<string, string> = { boss: "대먹귀를 쓰러뜨렸다", ashboss: "잿불귀를 잠재웠다" };
+
+/** What a room is told of its field boss (the client shows them in its language). */
+const FB_LINES = { spawn: "떠도는 먹구름이 몰려왔다", felled: "떠도는 먹구름이 흩어졌다", gone: "떠도는 먹구름이 다른 들판으로 흘러갔다" };
+
+async function sysLine(roomId: string, text: string): Promise<void> {
+  const at = Date.now();
+  const line: ChatMessage = { id: chatId(at), account: "", name: "", text, at, sys: true };
+  await withRoomLock(roomId, () => postLine(line));
+}
 
 function chatId(now: number): string {
   return `${now.toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -377,10 +458,10 @@ async function postLine(line: ChatMessage): Promise<void> {
 
 // ---------- the room tick ----------
 
-async function tickRoom(zone: string, delta: number, now: number): Promise<void> {
-  const state = await $room.getRoomState(["monsters", "effects", "monstersAt"]);
+async function tickRoom(zone: string, delta: number, now: number): Promise<string | null> {
+  const state = await $room.getRoomState(["monsters", "effects", "monstersAt", "fb"]);
   const accounts: string[] = Array.isArray(state.$users) ? state.$users : [];
-  if (accounts.length === 0) return;
+  if (accounts.length === 0) return null;
   const monsters = readMonsters(zone, state.monsters, now, Math.random);
   const effects = readEffects(state.effects);
   const writtenAt = finite(state.monstersAt) ? state.monstersAt : null;
@@ -394,12 +475,21 @@ async function tickRoom(zone: string, delta: number, now: number): Promise<void>
     // beside a quest NPC (talking, reading the story) monsters leave you be
     if (present(m) && !m.dead && m.hp > 0 && !nearSafeNpc(zone, m.pose.x, m.pose.z)) prey.push({ account: u.account, x: m.pose.x, z: m.pose.z });
   }
+  // the field boss: comes down on the clock, leaves when its time is up, cleared away after it falls
+  let standing = 0;
+  for (const m of fighters.values()) if (present(m)) standing++;
+  const field = fieldBossStep(zone, monsters, readFb(state.fb), standing, now);
   const out = stepMonsters(zone, monsters, effects, prey, stepMs, now, Math.random);
   await landBites(out.bites, fighters, now);
   const walkDue = out.walked && (writtenAt === null || now - writtenAt >= MONSTER_SYNC_MS);
-  if (state.monsters === undefined || out.urgent || out.bites.length > 0 || walkDue) {
+  if (state.monsters === undefined || out.urgent || out.bites.length > 0 || walkDue || field.changed) {
     await $room.updateRoomState({ monsters: tidy(monsters), effects, now, monstersAt: now }, { returnState: false });
   }
+  if (field.changed) {
+    if (field.fb) await $room.updateRoomState({ fb: field.fb }, { returnState: false });
+    else await $room.clearRoomState(["fb"]);
+  }
+  return field.event === "spawn" ? FB_LINES.spawn : field.event === "gone" ? FB_LINES.gone : null;
 }
 
 /**
@@ -504,6 +594,67 @@ function fanYaws(yaw: number, extra: number): number[] {
   const out = [yaw];
   for (let k = 1; k <= extra; k++) out.push(yaw + (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * WAVE_FAN);
   return out;
+}
+
+/** `n` altar pulls rolled into the profile (gear owned, duplicates and materials paid, pity moved); no cost taken. */
+function rollPulls(q: Profile, n: 1 | 10, rand: () => number): { profile: Profile; pulls: GachaPull[] } {
+  const rolled = rollGacha(n, q.pity, rand);
+  const owned = [...q.owned];
+  let stones = 0;
+  let shards = 0;
+  const pulls = rolled.ids.map((id): GachaPull => {
+    const extra = GACHA_EXTRA_BY_ID[id];
+    if (extra) {
+      stones += extra.grant.stones ?? 0;
+      shards += extra.grant.shards ?? 0;
+      return { id, name: extra.name, r: extra.r, kind: "material", dupe: false, grant: { ...extra.grant } };
+    }
+    const item = ITEM[id];
+    if (!owned.includes(id)) {
+      owned.push(id);
+      return { id, name: item.name, r: item.r, kind: "item", dupe: false };
+    }
+    // Gear you already have turns into enhancement materials.
+    const grant = dupeGrant(item);
+    stones += grant.stones ?? 0;
+    shards += grant.shards ?? 0;
+    return { id, name: item.name, r: item.r, kind: "item", dupe: true, grant };
+  });
+  return { profile: { ...q, owned, pity: rolled.pity, stones: q.stones + stones, shards: q.shards + shards }, pulls };
+}
+
+/** A rewarded ad's requestId as the client sends it (Verse8's ids, or the local mock's). */
+function readRequestId(raw: unknown): string {
+  if (typeof raw !== "string" || raw.length < 8 || raw.length > 100) throw new RuleViolation("bad_args");
+  return raw;
+}
+
+/** The Verse8 verifier's answer about a rewarded ad: pending → not_ready (ask again), rejected → bad_args. */
+async function adWatched(requestId: string): Promise<void> {
+  const check = await verifyAd(requestId);
+  if (check === "pending") throw new RuleViolation("not_ready");
+  if (check === "rejected") throw new RuleViolation("bad_args");
+}
+
+/**
+ * A verified ad's reward paid once per requestId (one AD_GRANTS row for every kind of ad), under the
+ * account's lock. `pay` reads the profile again, checks the day's limit and answers the profile to save.
+ */
+async function payAd(account: string, requestId: string, kind: string, pay: (p: Profile) => Profile): Promise<{ before: Profile; after: Profile }> {
+  const paid: { before: Profile | null; after: Profile | null } = { before: null, after: null };
+  const granted = await withProfileLock(account, () =>
+    oncePer(AD_GRANTS, "requestId", requestId, { account, kind }, async (credited) => {
+      const q = await myProfile(account);
+      const next = pay(q);
+      await saveProfile(account, next);
+      credited();
+      paid.before = q;
+      paid.after = next;
+    }),
+  );
+  if (!granted || !paid.before || !paid.after) throw new RuleViolation("already_claimed");
+  await syncRank(account, paid.before, paid.after);
+  return { before: paid.before, after: paid.after };
 }
 
 const dyeOk = (hex: unknown): hex is number | null => hex === null || DYES.some((d) => d.hex !== null && d.hex === hex);
@@ -955,29 +1106,9 @@ export class Server {
     const p = await updateProfile(account, (q) => {
       const cost = n === 1 ? COST1 : COST10;
       if (q.jade < cost) throw new RuleViolation("no_currency");
-      const rolled = rollGacha(n, q.pity, Math.random);
-      const owned = [...q.owned];
-      let stones = 0;
-      let shards = 0;
-      pulls = rolled.ids.map((id): GachaPull => {
-        const extra = GACHA_EXTRA_BY_ID[id];
-        if (extra) {
-          stones += extra.grant.stones ?? 0;
-          shards += extra.grant.shards ?? 0;
-          return { id, name: extra.name, r: extra.r, kind: "material", dupe: false, grant: { ...extra.grant } };
-        }
-        const item = ITEM[id];
-        if (!owned.includes(id)) {
-          owned.push(id);
-          return { id, name: item.name, r: item.r, kind: "item", dupe: false };
-        }
-        // Gear you already have turns into enhancement materials.
-        const grant = dupeGrant(item);
-        stones += grant.stones ?? 0;
-        shards += grant.shards ?? 0;
-        return { id, name: item.name, r: item.r, kind: "item", dupe: true, grant };
-      });
-      return { ...q, jade: q.jade - cost, owned, pity: rolled.pity, stones: q.stones + stones, shards: q.shards + shards };
+      const rolled = rollPulls(q, n, Math.random);
+      pulls = rolled.pulls;
+      return { ...rolled.profile, jade: q.jade - cost };
     });
     return { ids: pulls.map((x) => x.id), dupes: pulls.map((x) => x.dupe), pity: p.pity, pulls, profile: profileView(account, p) };
   }
@@ -1173,6 +1304,80 @@ export class Server {
     return profileView(account, paid.profile);
   }
 
+  /**
+   * 광고 보고 이 자리에서 일어나기: fallen in the room you are in, a watched ad stands you up where you fell with
+   * full health (instead of respawn's walk home). AD_REVIVE_DAILY a KST day, once per requestId.
+   */
+  async adRevive(rawRequestId: unknown): Promise<ProfileView> {
+    const requestId = readRequestId(rawRequestId);
+    const account = $sender.account;
+    const here = currentRoom();
+    if (!here) throw new RuleViolation("not_dead");
+    const fallen = (mine: Mine) => present(mine) && mine.dead;
+    const before = await myProfile(account);
+    if (adUsesLeft(before, "revive") <= 0) throw new RuleViolation("no_ads_left");
+    if (!fallen(readMine(await $room.getMyState()))) throw new RuleViolation("not_dead");
+    await adWatched(requestId);
+    const p = await withRoomLock(here.roomId, async () => {
+      if (!fallen(readMine(await $room.getMyState()))) throw new RuleViolation("not_dead");
+      const { after } = await payAd(account, requestId, "revive", (q) => {
+        if (adUsesLeft(q, "revive") <= 0) throw new RuleViolation("no_ads_left");
+        return { ...q, hp: maxHpOf(q), adUse: { ...q.adUse, revive: q.adUse.revive + 1 } };
+      });
+      const maxHp = maxHpOf(after);
+      await $room.updateMyState({ hp: maxHp, maxHp, dead: false }, { returnState: false });
+      return after;
+    });
+    return profileView(account, p);
+  }
+
+  /**
+   * 광고 보고 오늘의 의뢰 보상 한 번 더: once every daily quest of the day is handed in, a watched ad pays all of
+   * their rewards again. AD_DOUBLE_DAILY a KST day, once per requestId.
+   */
+  async adDailyDouble(rawRequestId: unknown): Promise<ProfileView> {
+    const requestId = readRequestId(rawRequestId);
+    const account = $sender.account;
+    const before = await myProfile(account);
+    if (adUsesLeft(before, "double") <= 0) throw new RuleViolation("no_ads_left");
+    if (!dailyAllClaimed(before)) throw new RuleViolation("quest_not_done");
+    await adWatched(requestId);
+    let levelUp = false;
+    const { after } = await payAd(account, requestId, "double", (q) => {
+      if (adUsesLeft(q, "double") <= 0) throw new RuleViolation("no_ads_left");
+      if (!dailyAllClaimed(q)) throw new RuleViolation("quest_not_done");
+      let cur = q;
+      for (const d of DAILY_QUESTS) {
+        const paid = giveReward(cur, d.reward);
+        levelUp ||= paid.levelUp;
+        cur = paid.profile;
+      }
+      return { ...cur, adUse: { ...cur.adUse, double: cur.adUse.double + 1 } };
+    });
+    if (levelUp) await showInRoom({ level: after.level, maxHp: maxHpOf(after), hp: maxHpOf(after) });
+    return profileView(account, after);
+  }
+
+  /**
+   * 광고 보고 무료 1회 뽑기: one altar pull without jade (pity counts as for any pull). AD_PULL_DAILY a KST day,
+   * once per requestId.
+   */
+  async adFreePull(rawRequestId: unknown): Promise<GachaResult & { profile: ProfileView }> {
+    const requestId = readRequestId(rawRequestId);
+    const account = $sender.account;
+    const before = await myProfile(account);
+    if (adUsesLeft(before, "pull") <= 0) throw new RuleViolation("no_ads_left");
+    await adWatched(requestId);
+    let pulls: GachaPull[] = [];
+    const { after } = await payAd(account, requestId, "pull", (q) => {
+      if (adUsesLeft(q, "pull") <= 0) throw new RuleViolation("no_ads_left");
+      const rolled = rollPulls(q, 1, Math.random);
+      pulls = rolled.pulls;
+      return { ...rolled.profile, adUse: { ...q.adUse, pull: q.adUse.pull + 1 } };
+    });
+    return { ids: pulls.map((x) => x.id), dupes: pulls.map((x) => x.dupe), pity: after.pity, pulls, profile: profileView(account, after) };
+  }
+
   // Verse8 calls this when a VXShop purchase completes. It may call again with the same receipt, so each
   // purchaseId pays once; a replay still answers success so the platform stops retrying.
   async $onItemPurchased(raw: unknown): Promise<{ success: boolean; code: string }> {
@@ -1193,6 +1398,36 @@ export class Server {
     return { success: true, code: granted ? "granted" : "already_granted" };
   }
 
+  /**
+   * Offline test hook: the field boss comes down in the caller's hunting room now (at the field's spot, or a few
+   * metres ahead of the caller with `near`), optionally with only `hp` life left. Only the in-page local server
+   * sets $localMode; on Verse8 this always refuses.
+   */
+  async debugFieldBoss(rawNear?: unknown, rawHp?: unknown): Promise<{ ok: boolean }> {
+    if ((globalThis as Record<string, unknown>).$localMode !== true) throw new RuleViolation("locked");
+    const here = currentRoom();
+    if (!here || !hasMonsters(here.zone)) throw new RuleViolation("bad_args");
+    const now = Date.now();
+    await withRoomLock(here.roomId, async () => {
+      const mine = readMine(await $room.getMyState());
+      if (!present(mine)) throw new RuleViolation("not_ready");
+      const state = await $room.getRoomState(["monsters"]);
+      const accounts: string[] = Array.isArray(state.$users) ? state.$users : [];
+      const monsters = readMonsters(here.zone, state.monsters, now, Math.random);
+      const at = rawNear === true ? { x: mine.pose.x + 7, z: mine.pose.z } : undefined;
+      const fb = forceFieldBoss(here.zone, monsters, Math.max(1, accounts.length), now, at);
+      const row = monsters[FIELD_BOSS_ID];
+      // with only `hp` left, the caller is taken to have done the rest (so its fall pays the caller)
+      if (row && finite(rawHp) && rawHp > 0) {
+        row.hp = Math.min(row.maxHp, Math.round(rawHp));
+        fb.hits[$sender.account] = { d: row.maxHp - row.hp, n: FB_MIN_HITS };
+      }
+      await $room.updateRoomState({ monsters: tidy(monsters), fb, now, monstersAt: now }, { returnState: false });
+      await postLine({ id: chatId(now), account: "", name: "", text: FB_LINES.spawn, at: now, sys: true });
+    });
+    return { ok: true };
+  }
+
   // Every room tick (about every 200 ms): the monsters of a hunting zone move and fight; everywhere, health
   // comes back to whoever nothing has hit for a while.
   async $roomTick(delta: number, roomId: string): Promise<void> {
@@ -1200,7 +1435,8 @@ export class Server {
     if (!zone) return;
     await withRoomLock(roomId, async () => {
       const now = Date.now();
-      if (hasMonsters(zone)) await tickRoom(zone, delta, now);
+      const line = hasMonsters(zone) ? await tickRoom(zone, delta, now) : null;
+      if (line) await postLine({ id: chatId(now), account: "", name: "", text: line, at: now, sys: true });
       await regenRoom(zone, now, roomId);
     });
   }

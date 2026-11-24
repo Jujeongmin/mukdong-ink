@@ -213,6 +213,7 @@ const RULE_TEXT: Record<RuleCode, string> = {
   too_far: t("너무 멀다\n조금 더 다가가자"),
   on_cooldown: t("아직이다\n조금 기다리자"),
   locked: t("아직 쓸 수 없다\n경지를 더 올리자"),
+  not_dead: t("이미 일어나 있다"),
   dead: t("먹에 잠긴 채로는 할 수 없다"),
   not_owned: t("가지고 있지 않은 장비다"),
   no_currency: t("재화가 모자라다"),

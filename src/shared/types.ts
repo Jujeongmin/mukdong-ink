@@ -78,9 +78,21 @@ export interface Profile {
   book: Record<string, number>;
   adsDay: string;
   adsLeft: number;
+  /** the other rewarded ads used on `day` (KST): revives in place, the daily double, the free pull */
+  adUse: AdUse;
+  /** 필드 보스 rewards taken on `day` (KST), at most FB_DAILY (shared/fieldboss.ts); started over by freshDay */
+  fb: { day: string; n: number };
   zone: string;
   channel: number;
   createdAt: number;
+}
+
+/** Rewarded ads (besides the jade one) used on one KST day; started over by freshDay. */
+export interface AdUse {
+  day: string;
+  revive: number;
+  double: number;
+  pull: number;
 }
 
 /** Room user state written by the server for every player in a room. */
@@ -123,6 +135,8 @@ export const RULE_ERRORS = [
   "too_far",
   "on_cooldown",
   "locked",
+  // before "dead": a code is found inside a message by substring
+  "not_dead",
   "dead",
   "not_owned",
   "no_currency",

@@ -15,6 +15,10 @@ function sysText(text: string): string {
   if (m) return t("{name} 님이 잿불귀를 잠재웠다", { name: m[1] });
   m = /^(.+) 님이 (.+)를 쓰러뜨렸다$/.exec(text);
   if (m) return t("{name} 님이 {monster}를 쓰러뜨렸다", { name: m[1], monster: t(m[2]) });
+  // the field boss's lines (server.ts FB_LINES), written out so the language packs list them
+  if (text === "떠도는 먹구름이 몰려왔다") return t("떠도는 먹구름이 몰려왔다");
+  if (text === "떠도는 먹구름이 흩어졌다") return t("떠도는 먹구름이 흩어졌다");
+  if (text === "떠도는 먹구름이 다른 들판으로 흘러갔다") return t("떠도는 먹구름이 다른 들판으로 흘러갔다");
   return t(text);
 }
 

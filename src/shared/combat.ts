@@ -127,6 +127,13 @@ export interface MonsterDef {
   awakenSkill?: number;
   /** never strays further than this from its spawn spot (metres) */
   leash?: number;
+  /**
+   * 필드 보스 (shared/fieldboss.ts): comes on the clock instead of a spawn rule, never stands again by itself, and
+   * is paid by its own rules (everyone who did a share of it), not by `exp`/`pigment` to the one who fells it.
+   */
+  field?: boolean;
+  /** with a slam: this many other players in its aggro get an ink shot each, landing with the slam */
+  spit?: number;
 }
 
 /** Damage factor while a monster's armor holds. */
@@ -172,6 +179,9 @@ export const MONSTERS: Record<string, MonsterDef> = {
   kilnlord: { kind: "kilnlord", name: "가마 지킴이", hp: 180, atk: 12, speed: 2.2, radius: 1.1, height: 2.6, exp: 140, pigment: 40, attack: "slam", range: 3, windMs: 900, cooldownMs: 2600, aggro: 9, slamR: 3.0, armor: "awaken", awakenSkill: 1, leash: 2, respawnMs: 30_000 },
   // 2장 보스. 관문 B: 붓 +6 미만이면 먹 갑옷이 버틴다.
   ashboss: { kind: "ashboss", name: "잿불귀", hp: 1100, atk: 23, speed: 2.2, radius: 1.8, height: 3.4, exp: 600, pigment: 200, jade: 40, attack: "slam", range: 6, windMs: 1200, cooldownMs: 2400, aggro: 20, boss: true, armor: "plus6", slamR: 4.0 },
+  // 필드 보스: a storm cloud of spilt ink that drifts from field to field on the clock (shared/fieldboss.ts). No
+  // armor (anyone can hurt it); its HP is set by how many stand in the room when it comes (fieldBossHp).
+  inkcloud: { kind: "inkcloud", name: "떠도는 먹구름", hp: 1800, atk: 30, speed: 1.7, radius: 2.3, height: 4.2, exp: 0, pigment: 0, attack: "slam", range: 7, windMs: 1400, cooldownMs: 2600, aggro: 16, slamR: 4.8, leash: 9, field: true, spit: 3 },
 };
 
 export function monsterHp(def: MonsterDef, level: number): number {

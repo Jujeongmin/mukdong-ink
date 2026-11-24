@@ -4,10 +4,10 @@
 
 import type { GameServerStore } from "@agent8/gameserver/dist/src/store/useGameServerStore";
 import { PROTOCOL_VERSION } from "../shared/types";
-import { AD_PLACEMENT } from "../shared/world";
-import type { ProfileView } from "./api";
+import { AD_PLACEMENT, AD_PLACEMENT_DOUBLE, AD_PLACEMENT_PULL, AD_PLACEMENT_REVIVE } from "../shared/world";
+import type { AdKind } from "./api";
 import { BaseGameApi, type Json, type Link } from "./baseApi";
-import { errorCode, sleep, withTimeout } from "./errors";
+import { withTimeout } from "./errors";
 
 type Server = GameServerStore["server"];
 interface Store {
@@ -18,9 +18,9 @@ interface Store {
 // A call the server never answers gives up after this long (the slowest take a lock or two).
 const CALL_TIMEOUT_MS = 15_000;
 const CONNECT_TIMEOUT_MS = 40_000;
-// The verifier may still say "pending" right after the ad; asked again this often (the docs' numbers).
-const AD_CLAIM_ATTEMPTS = 4;
-const AD_CLAIM_RETRY_MS = 1500;
+const AD_PLACEMENTS: Record<AdKind, string> = {
+  jade: AD_PLACEMENT, revive: AD_PLACEMENT_REVIVE, double: AD_PLACEMENT_DOUBLE, pull: AD_PLACEMENT_PULL,
+};
 
 // The Agent8 v2 editor preview runs on its own host, which the platform SDK does not recognise as a
 // preview, so there the shop dialog is opened with the PREVIEW stage spelled out (as Grove Hunters does).
@@ -118,18 +118,20 @@ export class Verse8GameApi extends BaseGameApi {
     }
   }
 
-  async watchAdForJade(): Promise<ProfileView | null> {
+  // unsupported_env once: no ad buttons for the rest of the session
+  private adsOff = false;
+
+  adsAvailable(): boolean {
+    return !this.adsOff;
+  }
+
+  /** A rewarded ad of `kind` (called only from a press): its requestId when it was watched, else null. */
+  async watchAd(kind: AdKind): Promise<string | null> {
+    if (this.adsOff) return null;
     const { Verse8Ads } = await import("@verse8/ads");
-    const result = await Verse8Ads.showRewarded({ placementId: AD_PLACEMENT });
-    if (result.status !== "rewarded") return null;
-    for (let attempt = 1; ; attempt++) {
-      try {
-        return await this.claimAd(result.requestId);
-      } catch (error) {
-        if (errorCode(error) !== "not_ready" || attempt >= AD_CLAIM_ATTEMPTS) throw error;
-        await sleep(AD_CLAIM_RETRY_MS);
-      }
-    }
+    const result = await Verse8Ads.showRewarded({ placementId: AD_PLACEMENTS[kind] });
+    if (result.status === "failed" && result.error.code === "unsupported_env") this.adsOff = true;
+    return result.status === "rewarded" ? result.requestId : null;
   }
 
   /** Opens Verse8's purchase dialog; resolves when it closes. The jade arrives through $onItemPurchased. */

@@ -4,7 +4,8 @@
 import type { MonsterMode, MonsterState, Pose, RoomPlayer } from "../shared/types";
 import { SKILLS } from "../shared/combat";
 import { freshDay, profileView, readProfile } from "../shared/profile";
-import type { ProfileView, RoomEffect, RoomView } from "./api";
+import type { FieldBossView, ProfileView, RoomEffect, RoomView } from "./api";
+import { readFb } from "../shared/fieldboss";
 
 type Json = Record<string, unknown>;
 
@@ -38,7 +39,12 @@ export function roomViewOf(state: Json): RoomView {
     }
   }
   const effects = Array.isArray(state.effects) ? state.effects.map(readEffect).filter((e): e is RoomEffect => e !== null) : [];
-  return { monsters, effects, now: num(state.now, Date.now()) };
+  return { monsters, effects, now: num(state.now, Date.now()), fb: fieldBossOf(state.fb) };
+}
+
+function fieldBossOf(raw: unknown): FieldBossView | null {
+  const fb = readFb(raw);
+  return fb ? { win: fb.win, end: fb.end, dead: fb.dead, done: fb.done, paid: fb.paid ?? null } : null;
 }
 
 export function membersOf(state: Json): string[] {

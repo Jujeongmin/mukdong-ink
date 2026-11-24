@@ -69,7 +69,7 @@ function merge(target: Json, patch: Json): void {
   }
 }
 
-const GLOBAL_NAMES = ["$global", "$room", "$sender", "$lock", "$asset", "$verifyAd"] as const;
+const GLOBAL_NAMES = ["$global", "$room", "$sender", "$lock", "$asset", "$verifyAd", "$localMode"] as const;
 const NO_ROOM = "__no_room__";
 
 // The Verse8 globals are process-wide, so every world must take turns, not just calls within one world.
@@ -231,6 +231,8 @@ export class LocalWorld {
     scope.$asset = this.assetApi(account);
     // Offline there is no ad network: the local mock ad is what was watched (see ads.ts).
     scope.$verifyAd = async () => "verified";
+    // the in-page server: offline-only test hooks (Server.debugFieldBoss) may run
+    scope.$localMode = true;
     try {
       return await fn();
     } finally {

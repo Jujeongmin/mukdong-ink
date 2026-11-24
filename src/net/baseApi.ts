@@ -3,10 +3,10 @@
 // supplies a Link (how calls and room subscriptions reach the server) plus ads and the shop.
 
 import type { Pose, RoomPlayer } from "../shared/types";
-import type { AttackReq, EnhanceResult, GachaResult, GameApi, HitResult, ProfileView, RoomView, SkillReq, ZoneEntry } from "./api";
+import type { AdKind, AttackReq, EnhanceResult, GachaResult, GameApi, HitResult, ProfileView, RoomView, SkillReq, ZoneEntry } from "./api";
 import { readChatLine, type ChatMessage } from "../shared/chat";
 import type { RankBoard, RankView } from "../shared/rank";
-import { sleep } from "./errors";
+import { errorCode, sleep } from "./errors";
 import { membersOf, playersOf, profileOf, roomViewOf } from "./feed";
 import { PoseThrottle } from "./poseThrottle";
 
@@ -25,12 +25,16 @@ export interface Link {
 // servers can be away for a few seconds at a time; Grove Hunters' numbers).
 const JOIN_ATTEMPTS = 7;
 const JOIN_RETRY_MS = 900;
+// The ad verifier may still say "pending" right after the ad; the claim is asked again this often (the docs' numbers).
+const AD_CLAIM_ATTEMPTS = 4;
+const AD_CLAIM_RETRY_MS = 1500;
 
 export abstract class BaseGameApi implements GameApi {
   abstract readonly mode: "verse8" | "local";
   abstract readonly account: string;
   abstract connect(): Promise<void>;
-  abstract watchAdForJade(): Promise<ProfileView | null>;
+  abstract watchAd(kind: AdKind): Promise<string | null>;
+  abstract adsAvailable(): boolean;
   abstract buyJade(productId: string): Promise<void>;
 
   protected link: Link | null = null;
@@ -290,6 +294,38 @@ export abstract class BaseGameApi implements GameApi {
   }
   protected async claimAd(requestId: string): Promise<ProfileView> {
     return this.viewed(await this.call<ProfileView>("claimAdReward", [requestId]));
+  }
+
+  /** A claim for a watched ad, asked again while the verifier has not seen it yet (not_ready). */
+  private async claimWatched<T>(claim: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await claim();
+      } catch (error) {
+        if (errorCode(error) !== "not_ready" || attempt >= AD_CLAIM_ATTEMPTS) throw error;
+        await sleep(AD_CLAIM_RETRY_MS);
+      }
+    }
+  }
+
+  async watchAdForJade(): Promise<ProfileView | null> {
+    const requestId = await this.watchAd("jade");
+    return requestId ? this.claimWatched(() => this.claimAd(requestId)) : null;
+  }
+  async reviveWithAd(): Promise<ProfileView | null> {
+    const requestId = await this.watchAd("revive");
+    return requestId ? this.claimWatched(async () => this.viewed(await this.call<ProfileView>("adRevive", [requestId]))) : null;
+  }
+  async dailyDoubleWithAd(): Promise<ProfileView | null> {
+    const requestId = await this.watchAd("double");
+    return requestId ? this.claimWatched(async () => this.viewed(await this.call<ProfileView>("adDailyDouble", [requestId]))) : null;
+  }
+  async freePullWithAd(): Promise<(GachaResult & { profile: ProfileView }) | null> {
+    const requestId = await this.watchAd("pull");
+    if (!requestId) return null;
+    const result = await this.claimWatched(() => this.call<GachaResult & { profile: ProfileView }>("adFreePull", [requestId]));
+    this.viewed(result.profile);
+    return result;
   }
 
   onRoom(cb: (room: RoomView) => void): () => void {

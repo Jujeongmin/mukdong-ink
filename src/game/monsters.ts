@@ -12,6 +12,7 @@ import { angDiff, clamp, type RGB } from "./util";
 import { G, M_enemy, M_eye, M_flash, M_shadow } from "./render/materials";
 import { colorBloom, colorStain, feel, overlay, scene, screenSplash } from "./render/gfx";
 import { QUAD_VERT, addDecal, inkBurst, inkDrop, ring, sparkBurst, sparks } from "./render/fx";
+import { ReachMark } from "./render/reach-mark";
 
 interface Look {
   group: THREE.Group;
@@ -316,6 +317,33 @@ function buildLook(kind: string): Look {
     brush.rotation.x = -0.6;
     armR.add(brush);
     group.add(mesh(G.head, M_aura, 0, 3.2, 0, 1.8, 2.8, 1.8));
+  } else if (kind === "inkcloud") {
+    // 떠도는 먹구름: a storm cloud of spilt ink hanging over the field, heavy puffs around a dark core, two pale
+    // eyes, ink rain trailing under it and two long trailing arms of cloud it brings down for the slam
+    add(mesh(G.head, M_enemy, 0, 2.6, 0, 1.9, 1.25, 1.7));
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2, r = 1.55 + (k % 2) * 0.35, s = 0.85 + (k % 3) * 0.22;
+      const puff = add(mesh(G.head, M_enemy, Math.cos(a) * r, 2.5 + (k % 3) * 0.35, Math.sin(a) * r * 0.9, s, s * 0.8, s));
+      puff.userData.puff = k;
+      extra.push(puff);
+    }
+    add(mesh(G.head, M_enemy, 0.2, 3.65, 0, 1.15, 0.8, 1.05));
+    for (const z of [0.45, -0.45]) add(mesh(G.eye, M_eye, 1.72, 2.85, z, 0.2, 0.13, 0.2), false);
+    add(mesh(G.box, M_eye, 1.78, 2.35, 0, 0.05, 0.07, 0.7), false); // a thin, ragged mouth
+    // ink rain under it (animated: each strand stretches and drips)
+    for (let k = 0; k < 9; k++) {
+      const a = k * 2.4, r = 0.4 + (k % 3) * 0.55;
+      const strand = mesh(G.cone, M_enemy, Math.cos(a) * r, 1.0, Math.sin(a) * r, 0.07, 1.4 + (k % 3) * 0.4, 0.07);
+      strand.rotation.x = Math.PI; // point down
+      strand.userData.rain = k;
+      body.add(strand);
+      extra.push(strand);
+    }
+    armL = arm(body, 0.3, 2.6, -1.9, 2.0, 0.32, 0.6, flash);
+    armR = arm(body, 0.3, 2.6, 1.9, 2.0, 0.32, 0.6, flash);
+    // a little under life size: it hangs over the fight, but the fighters below must still be seen
+    body.scale.setScalar(0.85);
+    group.add(mesh(G.head, M_aura, 0, 2.2, 0, 2.7, 2.0, 2.7));
   } else if (kind === "bigblob") {
     add(mesh(G.head, M_enemy, 0, 0.85, 0, 1.0, 0.85, 1.0));
     for (const z of [0.32, -0.32]) add(mesh(G.eye, M_eye, 0.82, 1.05, z, 0.14, 0.14, 0.14), false);
@@ -436,6 +464,13 @@ export class Monsters {
   onSound: ((ev: "shot" | "land" | "slam", src: string, x: number, z: number) => void) | null = null;
   /** a monster changed mode (wind, attack, dead…), for sounds */
   onMode: ((v: MView, prev: string) => void) | null = null;
+  /** the room's field boss record (shared/fieldboss.ts), as last reported */
+  fb: RoomView["fb"] = null;
+  /** the field boss fell (everyone in the room sees it) */
+  onFieldFall: ((x: number, z: number) => void) | null = null;
+  /** the ground circle under a floating field boss (render/reach-mark.ts) */
+  private reachMark: ReachMark | null = null;
+
   /** a chapter boss fell in view; may return a hook for the canvas at the color bloom's peak (화첩) */
   onBossFall: ((kind: string, x: number, z: number) => ((canvas: HTMLCanvasElement) => void) | null) | null = null;
 
@@ -463,8 +498,9 @@ export class Monsters {
     for (const v of this.views.values()) {
       if (v.mode === "dead") continue;
       if (isObstacle(v.def)) { v.obst.x = v.x; v.obst.z = v.z; v.obst.r = v.def.radius; this.obstacles.push(v.obst); }
-      if (v.def.armor === "training" || v.def.armor === "awaken") this.elites.push(v);
+      if (v.def.armor === "training" || v.def.armor === "awaken" || v.def.field) this.elites.push(v);
     }
+    this.fb = room.fb;
     const now = this.serverNow();
     for (const e of room.effects) {
       let f = this.fx.get(e.id);
@@ -542,6 +578,22 @@ export class Monsters {
       addDecal(v.x, v.z, 0.9);
       v.look.group.visible = false;
       v.shadow.visible = false;
+    } else if (s.mode === "dead" && !wasDead && v.def.field) {
+      // the field boss bursts: a great spray of ink over the field (no color: it was never a shard's keeper)
+      const h = v.def.height * 0.6;
+      inkBurst(v.x, h, v.z, 120, 0, 0, 3.2);
+      inkBurst(v.x, h + 1.2, v.z, 60, 0, 0, 2.2);
+      ring(v.x, v.z, v.def.slamR ?? 4.8, INK, 0.9, 0, SPLAT_EDGE);
+      for (let k = 0; k < 8; k++) addDecal(v.x + (Math.random() - 0.5) * 9, v.z + (Math.random() - 0.5) * 9, 0.4 + Math.random() * 0.7);
+      if (Math.hypot(v.x - px, v.z - pz) < 30) {
+        screenSplash(v.x, h, v.z, 0.18);
+        feel.hitstop = Math.max(feel.hitstop, 0.08);
+        feel.shake = Math.max(feel.shake, 0.9);
+      }
+      this.onFieldFall?.(v.x, v.z);
+      v.dying = DIE;
+      v.dieTinted = false;
+      if (v.dieCol && performance.now() - v.dieAt < 1500) this.tintBody(v);
     } else if (s.mode === "dead" && !wasDead) {
       const h = v.def.height * 0.5;
       inkBurst(v.x, h, v.z, v.def.boss ? 60 : 24, 0, 0, v.def.boss ? 2 : 1.2);
@@ -657,6 +709,11 @@ export class Monsters {
 
   update(dt: number, time: number, px: number, pz: number): void {
     const now = this.serverNow();
+    // a floating field boss gets its hit circle painted on the ground under it (where blows land)
+    let floater: MView | null = null;
+    for (const v of this.views.values()) if (v.def.field && v.mode !== "dead" && v.dying <= 0 && v.look.group.visible) { floater = v; break; }
+    if (floater) (this.reachMark ??= new ReachMark()).show(floater.x, floater.z, floater.def.radius, time);
+    else this.reachMark?.hide();
     for (const v of this.views.values()) {
       if (v.dying > 0) { this.dyingStep(v, dt); continue; }
       if (v.mode === "dead" || !v.look.group.visible) continue;
@@ -822,6 +879,19 @@ export class Monsters {
       if (v.mode === "attack") { a = 2.7 - atkU * 2.6; y = Math.max(0, 1.6 - atkU * 5); }
       if (L.armL && L.armR) { L.armL.rotation.z = a; L.armR.rotation.z = a * 0.95; }
       if (L.sac) L.sac.scale.set(0.16 + Math.sin(time * 9) * 0.02, 0.24 + Math.sin(time * 11) * 0.04, 0.16);
+    } else if (v.kind === "inkcloud") {
+      // drifts and churns; for the slam it rises and swells, then drops with both arms down
+      y = 0.35 + Math.sin(time * 1.2 + v.phase) * 0.18;
+      for (let k = 0; k < L.extra.length; k++) {
+        const e = L.extra[k];
+        if (e.userData.rain !== undefined) e.scale.y = (1.4 + (e.userData.rain % 3) * 0.4) * (0.75 + 0.35 * Math.sin(time * 3 + e.userData.rain * 1.7));
+        else e.position.y = 2.5 + ((e.userData.puff ?? 0) % 3) * 0.35 + Math.sin(time * 1.6 + k * 0.9) * 0.12;
+      }
+      let a = 0.35 + Math.sin(time * 1.4 + v.phase) * 0.12;
+      if (moving) a = 0.35 + Math.sin(time * 3) * 0.25;
+      if (v.mode === "wind") { a = 0.4 + windU * 2.6; y += windU * 1.4; sx = 1 + windU * 0.12; sy = sx; }
+      if (v.mode === "attack") { a = 3.0 - atkU * 3.0; y = Math.max(0, 1.75 - atkU * 5); }
+      if (L.armL && L.armR) { L.armL.rotation.x = -a * 0.35; L.armR.rotation.x = a * 0.35; L.armL.rotation.z = a; L.armR.rotation.z = a; }
     } else if (v.kind === "bigblob") {
       // swells while gathering itself for the slam, then flattens
       const q = Math.sin(time * 4 + v.phase) * 0.03;
@@ -865,13 +935,14 @@ export class Monsters {
 
     boss(px: number, pz: number): MView | null {
     for (const v of this.views.values()) {
-      if (v.def.boss && v.mode !== "dead" && Math.hypot(v.x - px, v.z - pz) < 34) return v;
+      if ((v.def.boss || v.def.field) && v.mode !== "dead" && Math.hypot(v.x - px, v.z - pz) < 34) return v;
     }
     return null;
   }
 
   /** Zone change: hide everything (views go back to the pools). */
   clear(): void {
+    this.reachMark?.hide();
     for (const v of this.views.values()) { this.release(v); v.dieMat?.dispose(); v.dieMat = null; }
     this.views.clear();
     for (const f of this.fx.values()) {
@@ -884,6 +955,7 @@ export class Monsters {
     // bamboo portal once you are back in the village, which has no monster updates to refresh this)
     this.obstacles.length = 0;
     this.elites.length = 0;
+    this.fb = null;
     this.hasClock = false;
   }
 }

@@ -7,8 +7,9 @@ import { MAX_LEVEL, MONSTERS, SKILLS, attackFor, expToNext, isObstacle, maxHpFor
 import { ENHANCE_MAX, SKILL_MAX, enhancedAtk, pointsEarned, pointsSpent, skillCdMul, skillDmgMul } from "./growth";
 import { BOOK, bookAfter, bookBonus } from "./book";
 import { HARMONY_BONUS, ITEM, STARTER_DYE, STARTER_EQUIP, STARTER_OWNED, harmonySkill, hatHpBonus, sashCdCut } from "./items";
-import { type Look, type Profile, type SlotId, today } from "./types";
-import { AD_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, SUB_QUESTS, ZONES, type QuestDef } from "./world";
+import { type AdUse, type Look, type Profile, type SlotId, today } from "./types";
+import { FB_DAILY } from "./fieldboss";
+import { AD_DAILY, AD_DOUBLE_DAILY, AD_PULL_DAILY, AD_REVIVE_DAILY, DAILY_QUESTS, MAIN_QUESTS, START_ZONE, SUB_QUESTS, ZONES, type QuestDef } from "./world";
 
 export const STARTER_POTIONS = 3;
 /**
@@ -25,9 +26,33 @@ export function starterProfile(name: string, now: number): Profile {
     name, level: 1, exp: 0, hp: maxHpFor(1), ult: 0, potions: STARTER_POTIONS, pigment: 0, jade: 0,
     owned: [...STARTER_OWNED], equip: { ...STARTER_EQUIP }, dye: { ...STARTER_DYE }, pity: 0,
     created: false, skills: SKILLS.map(() => 1), bonusPoints: 0, stones: 0, shards: 0, protects: 0, enh: {},
-    main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), sub: { id: "", prog: 0 }, book: {}, adsDay: today(now), adsLeft: AD_DAILY,
-    zone: START_ZONE, channel: 1, createdAt: now,
+    main: 0, qv: QUEST_VERSION, mainAccepted: false, mainProgress: 0, daily: emptyDaily(now), sub: { id: "", prog: 0 }, book: {}, adsDay: today(now), adsLeft: AD_DAILY, adUse: emptyAdUse(now),
+    fb: { day: today(now), n: 0 }, zone: START_ZONE, channel: 1, createdAt: now,
   };
+}
+
+function emptyAdUse(now: number): AdUse {
+  return { day: today(now), revive: 0, double: 0, pull: 0 };
+}
+
+function readAdUse(raw: unknown): AdUse {
+  const r = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  return {
+    day: typeof r.day === "string" ? r.day : "",
+    revive: int(r.revive, 0, 0, AD_REVIVE_DAILY),
+    double: int(r.double, 0, 0, AD_DOUBLE_DAILY),
+    pull: int(r.pull, 0, 0, AD_PULL_DAILY),
+  };
+}
+
+function readFbUse(raw: unknown): Profile["fb"] {
+  const r = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  return { day: typeof r.day === "string" ? r.day : "", n: int(r.n, 0, 0, FB_DAILY) };
+}
+
+/** How many more 필드 보스 rewards can be taken today. */
+export function fbLeft(p: Pick<Profile, "fb">): number {
+  return Math.max(0, FB_DAILY - (p.fb?.n ?? 0));
 }
 
 function emptyDaily(now: number): Profile["daily"] {
@@ -112,18 +137,22 @@ export function readProfile(raw: unknown): Profile | null {
     book: readBook(r.book),
     adsDay: typeof r.adsDay === "string" ? r.adsDay : "",
     adsLeft: int(r.adsLeft, AD_DAILY, 0, AD_DAILY),
+    adUse: readAdUse(r.adUse),
+    fb: readFbUse(r.fb),
     zone: typeof r.zone === "string" && ZONES[r.zone] ? r.zone : START_ZONE,
     channel: int(r.channel, 1, 1),
     createdAt: int(r.createdAt, 0),
   };
 }
 
-/** A new KST day: the daily quests and the rewarded-ad count start over. */
+/** A new KST day: the daily quests and the rewarded-ad counts start over. */
 export function freshDay(p: Profile, now: number): Profile {
   const day = today(now);
   let next = p;
   if (p.daily.day !== day) next = { ...next, daily: emptyDaily(now) };
   if (p.adsDay !== day) next = { ...next, adsDay: day, adsLeft: AD_DAILY };
+  if (p.adUse.day !== day) next = { ...next, adUse: emptyAdUse(now) };
+  if (p.fb.day !== day) next = { ...next, fb: { day, n: 0 } };
   return next;
 }
 
@@ -292,6 +321,19 @@ export function mainDone(p: Profile): boolean {
     default:
       return p.mainProgress >= 1;
   }
+}
+
+/** Every daily quest of the day handed in (the daily double's ad opens then). */
+export function dailyAllClaimed(p: Pick<Profile, "daily">): boolean {
+  return DAILY_QUESTS.every((_, i) => p.daily.claimed[i] === true);
+}
+
+export type AdUseKind = "revive" | "double" | "pull";
+const AD_LIMIT: Record<AdUseKind, number> = { revive: AD_REVIVE_DAILY, double: AD_DOUBLE_DAILY, pull: AD_PULL_DAILY };
+
+/** How many more times today the rewarded ad of `kind` can be used. */
+export function adUsesLeft(p: Pick<Profile, "adUse">, kind: AdUseKind): number {
+  return Math.max(0, AD_LIMIT[kind] - (p.adUse?.[kind] ?? 0));
 }
 
 export function dailyDone(p: Profile, index: number): boolean {

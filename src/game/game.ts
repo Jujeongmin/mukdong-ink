@@ -42,6 +42,8 @@ import { CharacterCreator } from "./ui/create";
 import { Loading } from "./ui/loading";
 import { Hints } from "./ui/hints";
 import { DAILY_QUESTS, MAIN_QUESTS } from "../shared/world";
+import { adUsesLeft } from "../shared/profile";
+import { FIELD_BOSS, FIELD_BOSS_ID, fieldBossFits, fieldBossUp, fieldBossWindow } from "../shared/fieldboss";
 
 /** A main quest's position by id (the list can change; never hard-code indices). */
 const questIndex = (id: string): number => MAIN_QUESTS.findIndex((q) => q.id === id);
@@ -72,6 +74,7 @@ const DEATH_BY: Record<string, string> = {
   lantern: t("석등지기에 짓눌렸다"),
   kilnlord: t("가마 지킴이의 재 껍데기에 짓눌렸다"),
   ashboss: t("잿불귀의 불길에 삼켜졌다"),
+  inkcloud: t("떠도는 먹구름의 먹비에 잠겼다"),
 };
 
 const SKILL_THOUGHT: Record<number, string> = {
@@ -169,6 +172,12 @@ export class Game {
   /** kills in 죽림 while c1q3 is running (gate 2: the third one) */
   private gateKills = 0;
   private readonly eliteTagged: MView[] = [];
+  /** 필드 보스: its plate's last drawn life (whole percent), the window last told of, paid and struck */
+  private fbPlatePct = -1;
+  private fbTold = "";
+  private fbPaidSeen = "";
+  private fbStruck = "";
+  private fbSecs = -1;
   /** the monster I last struck, for the frame at the top (MMO style); the boss frame wins over it */
   private tgt: { id: string; kind: string; name: string; maxHp: number; named: boolean; hp: number; from: number; at: number; deadAt: number } | null = null;
   private readonly auto: AutoPlay;
@@ -185,6 +194,8 @@ export class Game {
   private transitioning = false;
   private dead = false;
   private respawning = false;
+  /** the death screen's rewarded ad (stand up where you fell) is under way */
+  private adRising = false;
   private lastFrame = 0;
   private camX = 0;
   private camZ = 0;
@@ -214,6 +225,9 @@ export class Game {
       interact: () => this.interact(),
       skill: (i) => this.pressSkill(i),
       respawn: () => void this.respawn(),
+      adsAvailable: () => this.api.adsAvailable(),
+      adRevive: () => void this.reviveWithAd(),
+      adDouble: () => void this.dailyDoubleWithAd(),
       auto: () => this.autoProgress(),
       travel: () => this.autoProgress(),
       travelDaily: (i) => this.autoDaily(i),
@@ -304,11 +318,13 @@ export class Game {
         if (m === "dead") audio.play("jar-break", v.x, v.z);
         else if ((m === "chase" && prev === "idle") || m === "attack") audio.play("jar-hop", v.x, v.z, 0.8);
       } else if (v.kind === "shademonk" && m === "attack") audio.play("monk-staff", v.x, v.z);
-      else if (v.kind === "ashboss") {
+      else if (v.kind === "ashboss" || v.kind === FIELD_BOSS) {
         if (m === "wind") audio.play("boss-windup", v.x, v.z);
         else if (m === "dead") audio.play("boss-fade", v.x, v.z);
       }
     };
+    // the field boss bursts: the whole screen floods with ink for everyone in the room
+    this.monsters.onFieldFall = () => this.hud.screenBurst("#15110e");
     this.chat = new Chat(root, { send: (t) => this.sayChat(t), typing: (on) => this.lockLayout(on) });
     gameSettings.onChange((s) => {
       setQuality(s.quality);
@@ -613,14 +629,11 @@ export class Game {
       this.sheets.close();
       this.dialogue.hold(true);
       this.hud.death(true);
+      this.hud.reviveAd(this.reviveAdsLeft());
       audio.play("death");
       audio.duck(true);
     } else if (!dead && this.dead && !this.respawning) {
-      this.dead = false;
-      this.player.revive();
-      this.dialogue.hold(false);
-      this.hud.death(false);
-      audio.duck(false);
+      this.standUp();
     }
   }
 
@@ -711,6 +724,7 @@ export class Game {
     if (res.hits.length) this.lastHitAt = performance.now();
     for (const h of res.hits) {
       const hv = this.monsters.views.get(h.id);
+      if (h.id === FIELD_BOSS_ID && this.monsters.fb) this.fbStruck = this.monsters.fb.win;
       if (h.resisted && hv) {
         // 먹 갑옷 / 덩굴: the blow slides off
         sparkBurst(hv.x, hv.def.height * 0.6, hv.z, 10, GREY, 0.7, 1);
@@ -1026,9 +1040,12 @@ export class Game {
     l.zone = this.zone?.def.id ?? "";
     if (p) { l.x = p.x; l.z = p.z; l.fx = p.fx; l.fz = p.fz; }
     l.count = n;
+    const fb = this.monsters.views.get(FIELD_BOSS_ID);
+    l.fb.on = !!fb && fb.mode !== "dead";
+    if (fb) { l.fb.x = fb.x; l.fb.z = fb.z; }
     return l;
   }
-  private readonly mapLiveObj: MapLive = { zone: "", x: 0, z: 0, fx: 0, fz: -1, others: this.mmOthers, count: 0, marks: this.mmMark };
+  private readonly mapLiveObj: MapLive = { zone: "", x: 0, z: 0, fx: 0, fz: -1, others: this.mmOthers, count: 0, marks: this.mmMark, fb: { on: false, x: 0, z: 0 } };
 
   /** 순간이동 from a village to another (the map sheet). */
   private async travelVillage(to: string): Promise<void> {
@@ -1181,8 +1198,59 @@ export class Game {
     for (const a of this.zone.anchors) this.hud.tag(a, esc(t(a.text)), a.kind);
   }
 
+  /** Back on your feet where you fell (the room says you stand again). */
+  private standUp(): void {
+    this.dead = false;
+    this.player.revive();
+    this.dialogue.hold(false);
+    this.hud.death(false);
+    this.hud.deathThought(null);
+    audio.duck(false);
+  }
+
+  /** Revives by rewarded ad still open today (null: none, or no ads here). */
+  private reviveAdsLeft(): number | null {
+    if (!this.api.adsAvailable() || !this.profile) return null;
+    const left = adUsesLeft(this.profile, "revive");
+    return left > 0 ? left : null;
+  }
+
+  /** 광고 보고 이 자리에서 일어나기: an ad, then up where you fell with full health (no walk home). */
+  private async reviveWithAd(): Promise<void> {
+    if (!this.dead || this.respawning || this.adRising) return;
+    this.adRising = true;
+    this.hud.death(true, true);
+    this.hud.reviveAd(this.reviveAdsLeft(), true);
+    try {
+      const p = await attempt(this.api.reviveWithAd());
+      if (p) {
+        this.applyProfile(p);
+        if (this.dead) this.standUp();
+        audio.play("respawn");
+      }
+    } finally {
+      this.adRising = false;
+      if (this.dead) {
+        this.hud.death(true, false);
+        this.hud.reviveAd(this.reviveAdsLeft());
+      }
+    }
+  }
+
+  /** All of today's quests handed in: an ad, then their rewards once more (from the tracker). */
+  private async dailyDoubleWithAd(): Promise<void> {
+    const before = this.profile;
+    const p = await attempt(this.api.dailyDoubleWithAd());
+    if (!p) { this.hud.setProfile(before); return; }
+    const sum = { exp: 0, pigment: 0, jade: 0, stones: 0, shards: 0, potions: 0, protects: 0, points: 0 };
+    for (const q of DAILY_QUESTS) for (const k of Object.keys(sum) as (keyof typeof sum)[]) sum[k] += q.reward[k] ?? 0;
+    this.applyProfile(p);
+    this.hud.reward(t("오늘의 의뢰 한 번 더"), sum);
+    audio.play("quest-done");
+  }
+
   private async respawn(): Promise<void> {
-    if (this.respawning) return;
+    if (this.respawning || this.adRising) return;
     this.respawning = true;
     this.hud.death(true, true);
     try {
@@ -1287,12 +1355,23 @@ export class Game {
     const el = this.monsters.elites;
     for (let i = 0; i < el.length; i++) {
       const v = el[i];
+      if (v.def.field) {
+        // the field boss: its name, level and a life bar over it (rewritten only when the whole percent moves)
+        const pct = Math.round((100 * v.hp) / Math.max(1, v.maxHp));
+        if (!this.eliteTagged.includes(v) || pct !== this.fbPlatePct) {
+          if (!this.eliteTagged.includes(v)) this.eliteTagged.push(v);
+          this.fbPlatePct = pct;
+          this.hud.tag(v, `${esc(t(v.def.name))}<small>Lv ${v.level}</small><i class="tag-hp" style="--f:${pct / 100}"><i></i></i>`, "elite fboss");
+        }
+        this.hud.placeTag(v, v.x, v.y + v.def.height + 0.7, v.z);
+        continue;
+      }
       if (!this.eliteTagged.includes(v)) { this.eliteTagged.push(v); this.hud.tag(v, esc(t(v.def.name)), "elite"); }
       this.hud.placeTag(v, v.x, v.y + v.def.height * 1.45 + 0.4, v.z);
     }
     for (let i = this.eliteTagged.length - 1; i >= 0; i--) {
       const v = this.eliteTagged[i];
-      if (!el.includes(v)) { this.hud.dropTag(v); this.eliteTagged.splice(i, 1); }
+      if (!el.includes(v)) { this.hud.dropTag(v); this.eliteTagged.splice(i, 1); if (v.def.field) this.fbPlatePct = -1; }
     }
     this.hud.fadeOverlaps();
 
@@ -1469,6 +1548,41 @@ export class Game {
     }
   }
 
+  /**
+   * 필드 보스 on the HUD (10 Hz): up in this room, a banner with its name and the time it has left; up in another
+   * field that suits your level, a toast once when it comes; felled, your reward (or why there is none).
+   */
+  private fieldBossUi(): void {
+    const fb = this.monsters.fb, me = this.api.account;
+    const now = this.monsters.serverNow();
+    const row = this.monsters.views.get(FIELD_BOSS_ID);
+    const up = !!fb && !fb.done && fb.dead === 0 && !!row && row.mode !== "dead";
+    const secs = up && fb ? Math.max(0, Math.ceil((fb.end - now) / 1000)) : -1;
+    if (secs !== this.fbSecs) {
+      this.fbSecs = secs;
+      this.hud.fieldBoss(secs >= 0 ? t(MONSTERS[FIELD_BOSS].name) : null, secs);
+    }
+    if (fb && fb.paid && fb.win !== this.fbPaidSeen) {
+      this.fbPaidSeen = fb.win;
+      if (me in fb.paid) {
+        const r = fb.paid[me];
+        if (r) {
+          this.hud.reward(t("떠도는 먹구름을 흩었다"), r);
+          audio.play("pickup");
+          this.profileCheckAt = performance.now() + 700;
+        } else toast(t("오늘의 필드 보스 보상은 모두 받았다\n내일 다시"));
+      } else if (this.fbStruck === fb.win) toast(t("힘을 조금 더 보태야 보상을 받는다"));
+    }
+    // up elsewhere: told once per window, when it suits you
+    const w = fieldBossWindow(now);
+    if (w.id !== this.fbTold && fieldBossUp(w, now) && this.profile) {
+      this.fbTold = w.id;
+      if (w.zone !== this.zone.def.id && fieldBossFits(w.zone, this.profile.level)) {
+        toast(t("필드 보스 출현 · {zone}\n{name}이 {min}분 머문다", { zone: t(ZONES[w.zone].name), name: t(MONSTERS[FIELD_BOSS].name), min: Math.max(1, Math.round((w.end - now) / 60_000)) }));
+      }
+    }
+  }
+
   private slowUi(): void {
     this.autoPotion();
     this.aimScan -= 0.1;
@@ -1501,6 +1615,7 @@ export class Game {
     }
     this.hud.prompt(prompt);
     this.npcMarks();
+    this.fieldBossUi();
     this.drawMinimap();
     const boss = this.monsters.boss(p.x, p.z);
     if (boss) this.hud.target({ id: boss.id, name: `${t(boss.def.name)} · Lv ${boss.level}`, frac: boss.hp / Math.max(1, boss.maxHp), tier: "boss", pic: null, dying: false });

@@ -84,6 +84,19 @@ export interface RoomView {
   monsters: Record<string, MonsterState>;
   effects: RoomEffect[];
   now: number; // server ms when this state was written
+  /** the room's 필드 보스, while it is up or just felled (shared/fieldboss.ts); null when there is none */
+  fb: FieldBossView | null;
+}
+
+/** A room's field boss as the game shows it: when it leaves, when it fell, who was paid what. */
+export interface FieldBossView {
+  win: string;
+  end: number;
+  /** server ms it fell (0: up, or gone) */
+  dead: number;
+  done: boolean;
+  /** after the fall: each earner's reward (null: their FB_DAILY for the day was already taken) */
+  paid: Record<string, import("../shared/fieldboss").FbReward | null> | null;
 }
 
 /** One drawn entry, as the altar shows it. */
@@ -107,6 +120,9 @@ export interface GachaResult {
   /** the same draws, ready to show */
   pulls: GachaPull[];
 }
+
+/** The rewarded ads: 묵옥, 이 자리에서 일어나기, 오늘의 의뢰 보상 한 번 더, 무료 1회 뽑기. */
+export type AdKind = "jade" | "revive" | "double" | "pull";
 
 export interface GameApi {
   readonly mode: "verse8" | "local";
@@ -146,6 +162,16 @@ export interface GameApi {
   pullGacha(n: 1 | 10): Promise<GachaResult & { profile: ProfileView }>;
   /** Shows a rewarded ad (or the local mock) and claims the reward if it was watched. */
   watchAdForJade(): Promise<ProfileView | null>;
+  /** Whether rewarded ads can be shown here (false offline without the mock, or once Verse8 said unsupported_env). */
+  adsAvailable(): boolean;
+  /** Shows the rewarded ad of `kind` (only from a press); its requestId when it was watched to the end, else null. */
+  watchAd(kind: AdKind): Promise<string | null>;
+  /** Fallen: an ad, then up where you fell with full health. null when the ad was not watched. Errors: not_dead, no_ads_left. */
+  reviveWithAd(): Promise<ProfileView | null>;
+  /** All daily quests handed in: an ad, then their rewards once more. Errors: quest_not_done, no_ads_left. */
+  dailyDoubleWithAd(): Promise<ProfileView | null>;
+  /** An ad, then one altar pull without jade (counts toward pity). Errors: no_ads_left. */
+  freePullWithAd(): Promise<(GachaResult & { profile: ProfileView }) | null>;
   /** Opens the VXShop purchase (local: grants immediately, marked as a mock). */
   buyJade(productId: string): Promise<void>;
   /** VX prices of the shop's products as VXShop lists them (only on Verse8); called again whenever they change */
