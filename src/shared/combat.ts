@@ -27,7 +27,7 @@ export const BASIC_MIN_GAP = 0.2;
 /**
  * 궁극기 「무지개 붓질」: the five colors at once. A gauge (0..ULT_MAX) fills as you strike and fell monsters; full,
  * the brush comes down and a rainbow ring of radius ULT_RADIUS strikes everything around for ULT_MUL × attack,
- * while you stand untouchable for ULT_IFRAME_MS. Opens after 1장's boss (shared/world ultOpen).
+ * while you stand untouchable for ULT_IFRAME_MS. There from level 1 (shared/world ultOpen).
  */
 export const ULT_MAX = 100;
 /** gauge per monster struck in one blow (up to ULT_HIT_CAP for the blow) and per monster felled */

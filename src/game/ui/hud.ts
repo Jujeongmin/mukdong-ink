@@ -110,7 +110,7 @@ const MARKUP = `
 <div class="arc" data-arc>
   <button class="ring-btn atk" type="button" data-act="atk" aria-label="${t("베기 (클릭, J)")}" data-tip-title="${t("베기 (클릭 · J)")}" data-tip="${t("누르고 있으면 이어 벤다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(7)}"></i><b>${t("베기")}</b><kbd>${KEYS.attack}</kbd></button>
   <button class="ring-btn roll touch" type="button" data-act="dash" style="--a:138deg" aria-label="${t("구르기")}" data-tip-title="${t("구르기")} (Space)" data-tip="${t("구르는 동안은 맞지 않는다.")}"><i class="rim spr-enso"></i><i class="spr ic-sk" style="background-position:${skillIconPos(8)}"></i><b>${t("구르기")}</b></button>
-  <button class="ring-btn ult" type="button" data-ult hidden aria-label="${t("무지개 붓질")} (F)" data-tip-title="${t("궁극기 · 무지개 붓질")} (F)" data-tip="${t("베고 쓰러뜨릴수록 무지개가 찬다. 가득 차면 높이 뛰어올라 주변을 모두 벤다. 그동안은 맞지 않는다.")}"><i class="ult-gauge" aria-hidden="true"></i><i class="rim spr-enso"></i><i class="ult-ic" aria-hidden="true"></i><b>${t("궁극기")}</b><kbd>F</kbd></button>
+  <button class="ring-btn ult" type="button" data-ult hidden aria-label="${t("무지개 붓질")} (F)" data-tip-title="${t("궁극기 · 무지개 붓질")} (F)" data-tip="${t("베고 쓰러뜨릴수록 무지개가 찬다. 가득 차면 높이 뛰어올라 주변을 모두 벤다. 그동안은 맞지 않는다.")}"><i class="ult-ic" aria-hidden="true"></i><i class="ult-ic ult-fill" aria-hidden="true"></i><b class="ult-pct" data-ultpct>0%</b><kbd>F</kbd></button>
   <button class="ring-btn small auto ui-later" data-ui="auto" type="button" data-auto style="--a:168deg" aria-label="${t("자동 진행")} (Z)" aria-pressed="false" data-tip-title="${t("자동 진행")} (Z)" data-tip="${t("의뢰를 받고, 사냥하고, 보고하러 저절로 간다. 갈 곳이 없으면 그 자리에서 사냥한다. 검법도 저절로 쓴다.")}"><i class="rim spr-enso"></i><i class="auto-brush" aria-hidden="true"></i><b>${t("자동")}</b></button>
   <button class="auto-set btn btn-secondary btn-sm ui-later" data-ui="auto" type="button" data-autoset aria-label="${t("자동 사냥 설정")}" data-tip-title="${t("자동 사냥 설정")}" data-tip="${t("쓸 검법, 물약 기준, 의뢰 대상 먼저.")}">${t("설정")}</button>
   <button class="gourd ui-later" data-ui="potion" type="button" data-potion style="--a:135deg" aria-label="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip-title="${t("물약 마시기 ({key})", { key: KEYS.potion })}" data-tip="${t("길게 누르거나 우클릭: 자동 사용 켜기/끄기")}" data-tip-touch="off"><i class="body"></i><b data-pot>0</b><kbd>${KEYS.potion}</kbd></button>
@@ -434,6 +434,7 @@ export class Hud {
     const filled = f >= 1 && this.ultShown < 1 && this.ultShown >= 0;
     this.ultShown = f;
     b.style.setProperty("--f", f.toFixed(3));
+    el("[data-ultpct]", b).textContent = `${Math.floor(f * 100)}%`;
     b.classList.toggle("full", f >= 1);
     if (filled) this.flashClass("[data-ult]", "ready", 900);
   }

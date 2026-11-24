@@ -534,13 +534,7 @@ export class Game {
   applyProfile(p: ProfileView): void {
     const prev = this.profile;
     this.profile = p;
-    // 대먹귀 handed in: the colors are back, and the 궁극기 with them
-    const ultNow = ultOpen(p);
-    if (prev && !ultOpen(prev) && ultNow) {
-      this.hints.think("ult-open", t("물빛 조각이 붓에 스민다… 무지개를 모아 내리칠 수 있겠다. (F)"), { urgent: true });
-      bigMoment(this.player?.x ?? 0, this.player?.z ?? 0, [0.98, 0.84, 0.16], 1.2);
-    }
-    this.hud.setUlt(this.ultGauge / ULT_MAX, ultNow);
+    this.hud.setUlt(this.ultGauge / ULT_MAX, ultOpen(p));
     this.lastProfileAt = performance.now();
     if (this.player) this.player.applyLook(this.lookOf(p));
     this.hud.setProfile(p);

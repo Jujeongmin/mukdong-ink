@@ -11,22 +11,21 @@ async function ready(server: any, x = 0, z = 0): Promise<void> {
 }
 
 describe("궁극기 「무지개 붓질」", () => {
-  test("opens once 1장's boss is handed in", () => {
-    expect(ultOpen({ main: after1 - 1 })).toBe(false);
-    expect(ultOpen({ main: after1 })).toBe(true);
+  test("is there from the first level", () => {
+    expect(ultOpen({ main: 0 })).toBe(true);
     expect(ultGain(10, 0)).toBe(8);
     expect(ultGain(1, 1)).toBe(ULT_PER_HIT + ULT_PER_KILL);
   });
 
-  test("locked before that, and no gauge fills", async (server) => {
+  test("a brand-new player fills the gauge and can use it", async (server) => {
     await goTo(server, "test-a", "bamboo");
     await only("bamboo", "blob0", 1.5, 0, { hp: 5 });
     await ready(server);
     const r = await server.attack({ kind: 1, ...at() });
     expect(r.hits[0].kill).toBe(true);
-    expect(r.ult).toBe(0);
+    expect(r.ult).toBe(ULT_PER_HIT + ULT_PER_KILL);
     await $room.updateMyState({ ult: ULT_MAX });
-    expect(await errorOf(server.ultimate(at()))).toContain("locked");
+    expect((await server.ultimate(at())).ult).toBe(0);
   });
 
   test("strikes and kills fill the gauge; a kill keeps it in the profile", async (server) => {
