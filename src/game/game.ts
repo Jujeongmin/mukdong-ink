@@ -46,6 +46,8 @@ import { adUsesLeft } from "../shared/profile";
 import { FIELD_BOSS, FIELD_BOSS_ID, fieldBossFits, fieldBossUp, fieldBossWindow } from "../shared/fieldboss";
 
 /** A main quest's position by id (the list can change; never hard-code indices). */
+/** the camera is turned this far round the player (a 45° quarter view); movement keys turn with it */
+export const CAM_YAW = Math.PI / 4;
 const questIndex = (id: string): number => MAIN_QUESTS.findIndex((q) => q.id === id);
 import type { MView } from "./monsters";
 import { AutoPlay } from "./autoplay";
@@ -1296,8 +1298,10 @@ export class Game {
     const p = this.player;
     this.input.read();
     const inp = p.input;
-    inp.mx = this.dead ? 0 : this.input.mx;
-    inp.mz = this.dead ? 0 : this.input.mz;
+    // keys and stick are read on the screen (W is up the screen); the camera is turned CAM_YAW, so turn them too
+    const imx = this.dead ? 0 : this.input.mx, imz = this.dead ? 0 : this.input.mz;
+    inp.mx = imx * Math.cos(CAM_YAW) + imz * Math.sin(CAM_YAW);
+    inp.mz = -imx * Math.sin(CAM_YAW) + imz * Math.cos(CAM_YAW);
     if (inp.mx !== 0 || inp.mz !== 0) this.auto.manual(true);
     if (this.auto.on && this.dialogue.isOpen()) this.auto.stop();
     this.auto.decide(realDt);
@@ -1642,14 +1646,17 @@ export class Game {
     // frame opens onto the field's far edge, the painted backdrop and the moon
     // the 궁극기's leap: the view rises with it (and settles back as it lands)
     this.camLift += ((p.state === "ult" ? p.y * 0.6 : 0) - this.camLift) * Math.min(1, dt * 6);
-    // a higher, farther quarter view: more of the field around you, looked down on like a painted scroll
-    camera.position.set(this.camX + sx, 11.2 * k + sy + this.camLift * 0.5, this.camZ + 17.2 * k);
-    camera.lookAt(this.camX + sx * 0.5, 1.7 + sy * 0.5 + this.camLift, this.camZ - 3.2);
+    // a 45° quarter view: turned CAM_YAW round the player and looking down on the field diagonally, like a
+    // painted scroll seen from above one corner
+    const cs = Math.sin(CAM_YAW), cc = Math.cos(CAM_YAW);
+    camera.position.set(this.camX + cs * 14.5 * k + sx, 14.5 * k + sy + this.camLift * 0.5, this.camZ + cc * 14.5 * k);
+    camera.lookAt(this.camX - cs * 1.2 + sx * 0.5, 1.2 + sy * 0.5 + this.camLift, this.camZ - cc * 1.2);
     camFocus.set(this.camX, 0, this.camZ);
     camera.updateMatrixWorld();
     camera.getWorldDirection(camFwd);
-    // the painted backdrop starts where the field's far edge meets the screen
-    hz.set(this.camX, 0, -(this.zone.def.radius + 11)).project(camera);
+    // the painted backdrop starts where the field's far edge (straight ahead of the camera) meets the screen
+    const edge = this.zone.def.radius + 11;
+    hz.set(this.camX - cs * edge, 0, this.camZ - cc * edge).project(camera);
     setHorizon(Math.min(0.99, Math.max(0.45, hz.y * 0.5 + 0.5)), this.camX);
   }
 }

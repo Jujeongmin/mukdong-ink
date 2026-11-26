@@ -1,4 +1,4 @@
-// Zone maps drawn as an ink disc on paper (north up, like the camera). One painter, two sizes:
+// Zone maps drawn as an ink disc on paper (north up; the corner one is turned 45° in CSS to match the camera). Two sizes:
 // - the corner minimap under the portrait (Minimap), and
 // - the map sheet's big map (ZoneMap with `labels`): the same picture enlarged, with names written beside things.
 // What never moves (the worn path, the gates and where they lead, the NPCs, the fixed monster spots and the boss
