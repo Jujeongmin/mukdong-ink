@@ -8,7 +8,7 @@ export default defineConfig({
   base: "./",
   optimizeDeps: { include: ["@agent8/gameserver"] },
   server: {
-    port: Number(process.env.PORT) || 5280, // 5190 is taken by another local project
+    port: Number(process.env.PORT) || 5371, // 5190 and 5280 are taken by other local projects
     watch: { ignored: ["**/.git/**", "**/node_modules/**", "**/dist/**", "**/proto/**"] },
   },
   build: {

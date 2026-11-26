@@ -2320,3 +2320,26 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 @keyframes rise-in { from { opacity: 0; } to { opacity: 1; } }
 .btn.btn.ink-death-rise:disabled { filter: brightness(0.55) saturate(0.6); cursor: default; }
 .ink-death.risen .btn.btn.ink-death-rise { animation: rise-gone 0.3s 0.2s ease forwards; }
+
+/* ---------- phones: nothing on top of anything (checked by an overlap sweep at 375×812 and 844×390) ---------- */
+/* portrait phones: the target / boss bar and the field boss banner drop below the top HUD (portrait, minimap,
+   purse and menu, quest card) instead of sitting under it */
+@media (max-width: 640px) and (min-height: 481px) {
+  #ui .bossbar { top: calc(200px + var(--safe-t)); max-width: calc(100vw - 24px); }
+  #ui .bossbar .hp, #ui .gauge.boss { width: min(300px, 70vw); height: 22px; }
+  #ui .bossbar .tg-pic { width: 38px; height: 38px; }
+  #ui .bossbar > b { font-size: 15px; }
+  .fb-banner { top: calc(252px + var(--safe-t)); }
+}
+/* landscape phones: a slimmer bar fits the gap between the portrait and the purse; the banner sits lower, clear
+   of the portrait and the menu tablet; the chat lines move to the bottom, right of the stick, off the minimap */
+@media (max-height: 480px) {
+  #ui .bossbar { top: calc(6px + var(--safe-t)); }
+  #ui .bossbar .hp, #ui .gauge.boss { width: min(240px, 28vw); height: 18px; }
+  #ui .bossbar .tg-pic { width: 32px; height: 32px; }
+  #ui .bossbar > b { font-size: 13.5px; }
+  .fb-banner { top: calc(128px + var(--safe-t)); } /* below the portrait and the menu tablet, over the field */
+  #ui .chat-log { left: calc(204px + var(--safe-l)); bottom: calc(10px + var(--safe-b)); width: min(240px, 28vw); } /* right of the 채팅 button */
+}
+/* touch phones: the 궁극기 ring leaves the 자동 ring's place (both sat near 101–104°) */
+@media (pointer: coarse) and (max-width: 520px) { .ring-btn.ult { --a: 126deg; } }
