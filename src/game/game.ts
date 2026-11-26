@@ -46,8 +46,9 @@ import { adUsesLeft } from "../shared/profile";
 import { FIELD_BOSS, FIELD_BOSS_ID, fieldBossFits, fieldBossUp, fieldBossWindow } from "../shared/fieldboss";
 
 /** A main quest's position by id (the list can change; never hard-code indices). */
-/** the camera is turned this far round the player (a 45° quarter view); movement keys turn with it */
-export const CAM_YAW = Math.PI / 4;
+/** how far the camera is turned round the player (0: it faces north, as the painted backdrop expects); movement
+ *  keys turn with it */
+export const CAM_YAW = 0;
 const questIndex = (id: string): number => MAIN_QUESTS.findIndex((q) => q.id === id);
 import type { MView } from "./monsters";
 import { AutoPlay } from "./autoplay";
@@ -1646,11 +1647,11 @@ export class Game {
     // frame opens onto the field's far edge, the painted backdrop and the moon
     // the 궁극기's leap: the view rises with it (and settles back as it lands)
     this.camLift += ((p.state === "ult" ? p.y * 0.6 : 0) - this.camLift) * Math.min(1, dt * 6);
-    // a 45° quarter view: turned CAM_YAW round the player and looking down on the field diagonally, like a
-    // painted scroll seen from above one corner
+    // the quarter view: high and far back, looking down on the field so more of it shows round you
     const cs = Math.sin(CAM_YAW), cc = Math.cos(CAM_YAW);
-    camera.position.set(this.camX + cs * 14.5 * k + sx, 14.5 * k + sy + this.camLift * 0.5, this.camZ + cc * 14.5 * k);
-    camera.lookAt(this.camX - cs * 1.2 + sx * 0.5, 1.2 + sy * 0.5 + this.camLift, this.camZ - cc * 1.2);
+    const H = 16.5 * k, D = 18.5 * k;
+    camera.position.set(this.camX + cs * D + sx, H + sy + this.camLift * 0.5, this.camZ + cc * D);
+    camera.lookAt(this.camX - cs * 2.2 + sx * 0.5, 1.4 + sy * 0.5 + this.camLift, this.camZ - cc * 2.2);
     camFocus.set(this.camX, 0, this.camZ);
     camera.updateMatrixWorld();
     camera.getWorldDirection(camFwd);
