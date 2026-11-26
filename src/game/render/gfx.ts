@@ -251,8 +251,11 @@ bool behindScene() {
 }`;
 
 /* ---------- screen ink splashes: ink dropped on the picture plane, bleeding into the paper ---------- */
-// Each blow lands as a drop of ink on the paper itself and bleeds outward along the fibres while the world is
-// held still. (A blow's color bleeds on the ground instead: see stains.)
+// Each blow lands as a splash of ink on the paper itself: one of eight patterns from the splatter atlas
+// (tools/make_splats.py: impact, burst, spray, drip, flick, twin, crown, trail), turned, flipped and sized at
+// random, spreading out from where it hit and gone within two seconds. Until the atlas has loaded, a procedural
+// blot stands in. (A blow's color bleeds on the ground instead: see stains.)
+const splatU = { tSplat: { value: null as THREE.Texture | null }, uSplatOn: { value: 0 } };
 const splashes = Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, -1000, 0));
 let splashIdx = 0;
 const vProj = new THREE.Vector3();
@@ -405,6 +408,8 @@ uniform mat4 uInvProj, uCamWorld;
 uniform vec4 uLight[${LN}];
 uniform vec3 uLightCol[${LN}];
 uniform vec4 uSplash[6];
+uniform sampler2D tSplat;
+uniform float uSplatOn;
 uniform vec4 uStain[12];
 uniform vec3 uStainCol[12];
 uniform vec3 uPaper, uInk, uSkyTop, uSkyLow, uMist;
@@ -706,7 +711,30 @@ void main(){
   for (int i = 0; i < 6; i++) {
     vec4 s = uSplash[i];
     float age = uTime - s.z;
-    if (age < 0.0 || age > 4.0) continue;
+    if (age < 0.0) continue;
+    if (uSplatOn > 0.5) {
+      if (age > 2.0) continue;
+      vec2 p = uv - s.xy; p.x *= uAspect;
+      float seed = fract(s.z * 7.13) + 0.1;
+      float h1 = hash(vec2(seed * 17.0, 3.1)), h2 = hash(vec2(seed * 5.0, 9.7)), h3 = hash(vec2(seed * 11.0, 1.3));
+      float pat = floor(h1 * 8.0);
+      float ang = h2 * 6.2831;
+      float span = s.w * (2.8 + h3 * 1.1); // the cell's width on screen
+      vec2 q = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * p / span;
+      if (h3 > 0.5) q.x = -q.x;
+      if (abs(q.x) > 0.5 || abs(q.y) > 0.5) continue;
+      vec2 cell = q + 0.5;
+      float col4 = mod(pat, 4.0), row = floor(pat / 4.0);
+      vec2 auv = vec2((col4 + cell.x) / 4.0, 1.0 - (row + 1.0 - cell.y) / 2.0);
+      vec3 tx = texture2D(tSplat, auv).rgb;
+      // it spreads out from where it hit (the green channel says when each part arrives), then dries away fast
+      float grow = 0.3 + 0.75 * (1.0 - exp(-age * 10.0));
+      float here = smoothstep(tx.g - 0.06, tx.g, grow);
+      float fade = 1.0 - smoothstep(0.45, 1.9, age);
+      spl = max(spl, tx.r * here * fade * (0.85 + 0.15 * (1.0 - smoothstep(0.1, 0.6, age))));
+      continue;
+    }
+    if (age > 4.0) continue;
     vec2 p = uv - s.xy; p.x *= uAspect;
     float dist = length(p);
     if (dist > s.w * 3.4) continue; // past the farthest drop
@@ -751,6 +779,13 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
   colorRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
   colorRT.depthTexture = new THREE.DepthTexture(4, 4);
   normalRT = new THREE.WebGLRenderTarget(4, 4);
+  // the splatter atlas (SHARED, lives all session); the procedural blot covers until it arrives
+  new THREE.TextureLoader().load("./assets/fx/ink-splats-v1.png", (tex) => {
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    splatU.tSplat.value = tex;
+    splatU.uSplatOn.value = 1;
+  });
   groundDepthU.tSceneDepth.value = colorRT.depthTexture;
   postMat = new THREE.ShaderMaterial({
     depthTest: false,
@@ -772,6 +807,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
       uLight: { value: lightU },
       uLightCol: { value: lightC },
       uSplash: { value: splashes },
+      ...splatU,
       uStain: { value: stainU },
       uStainCol: { value: stainC },
       ...moodU,
