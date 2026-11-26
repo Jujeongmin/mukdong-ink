@@ -213,7 +213,6 @@
  "노랑": "Yellow",
  "노을": "Noeul",
  "높음": "High",
- "누르고 있으면 다시 일어난다": "Hold to get back up",
  "누르고 있으면 이어 벤다": "Hold to keep slashing",
  "누르면 자동 진행": "Tap to auto-play",
  "눈에 띄는 먹귀신 열여덟만 베어 다오": "Just cut down eighteen ink spirits you come across",
@@ -227,7 +226,6 @@
  "다시 먹빛 세상으로": "Back to the ink-washed world",
  "다시 보기": "Replay",
  "다시 시도": "Retry",
- "다시 일어나기: 누르고 있기": "Get up: hold",
  "다시 일어나는 중": "Getting up",
  "다음 단련": "Next Drill",
  "다음 이야기: 불빛을 삼킨 그림자, 그리고 {이름/이} 태어난 곳": "Next: the shadow that swallowed the firelight, and the place {이름} was born",
@@ -684,7 +682,6 @@
  "음소거": "Mute",
  "음악": "Music",
  "음악과 효과음": "Music and sound effects",
- "의뢰 대상 먼저": "Request targets first",
  "의뢰 완료: {title} ({reward})": "Request done: {title} ({reward})",
  "의뢰를 받고, 사냥하고, 보고하러 저절로 간다\n갈 곳이 없으면 그 자리에서 사냥한다\n검법도 저절로 쓴다": "Takes requests, hunts, and goes back to report on its own\nWith nowhere to go, it hunts on the spot\nUses techniques too",
  "이 게임을 위해 PixelLab(pixellab.ai)으로 만들었다": "Made with PixelLab (pixellab.ai) for this game",
@@ -950,5 +947,6 @@
  "필드 보스 · {name}": "Field Boss · {name}",
  "필드 보스 출현 · {zone}\n{name}이 {min}분 머문다": "Field boss in {zone}\n{name} stays {min} min",
  "힘을 조금 더 보태야 보상을 받는다": "Lend a little more strength to earn a reward",
- "궁극기": "Ultimate"
+ "궁극기": "Ultimate",
+ "마을에서 부활": "Rise in the village"
 }

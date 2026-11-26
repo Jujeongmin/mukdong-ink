@@ -469,7 +469,9 @@ export class AutoPlay {
     // potions: the game drinks them (물약 자동 사용, any hunting play), not the driver
     // a daily hunt goes after its own targets (먹그림자 for 먹그림자 퇴치); else the main quest's
     const dk = this.goal?.kind === "hunt" && (this.goal.daily !== undefined || this.goal.sub) ? this.goal.monster : null;
-    const questKind = dk && dk !== "skill" && dk !== "any" ? dk : this.settings.questFirst ? questKill(p) : null;
+    // plain auto (자동 / Z) fights what is near where you pressed it; only 자동 진행 (the quest card) goes after
+    // the quest's own monster
+    const questKind = dk && dk !== "skill" && dk !== "any" ? dk : this.progress ? questKill(p) : null;
     let best: MView | null = null, bestScore = 1e9;
     for (const v of this.ctx.monsters().values()) {
       if (!targetable(v) || v.def.skillOnly) continue;

@@ -142,10 +142,7 @@ const MARKUP = `
     <h2 class="ink-death-ins" aria-label="${t("먹에 잠겼다")}">${inscription(t("먹에 잠겼다"))}</h2>
     <div class="ink-death-side"><p class="ink-death-cause" data-death-cause></p><p class="ink-death-thought" data-death-thought hidden></p></div>
   </div>
-  <div class="ink-death-rise" data-respawn role="button" tabindex="0" aria-label="${t("다시 일어나기: 누르고 있기")}">
-    <div class="enso-load" data-rise-enso><i class="bloom" aria-hidden="true"></i><i class="ring-track" aria-hidden="true"></i><i class="ring" aria-hidden="true"></i><i class="seam" aria-hidden="true"></i><i class="head" aria-hidden="true"></i></div>
-    <small>${t("누르고 있으면 다시 일어난다")}</small>
-  </div>
+  <button type="button" class="btn ink-death-rise" data-respawn disabled>${t("마을에서 부활")}<kbd>Space</kbd></button>
   <button type="button" class="ink-death-ad" data-ad-revive hidden></button>
 </div>
 <div class="fade" data-fade><span data-fadetext></span></div>
@@ -170,6 +167,9 @@ export interface TargetInfo {
   pic: string | null;
   dying: boolean;
 }
+
+/** the respawn button wakes this long after the fall */
+const RISE_READY_MS = 1000;
 
 export class Hud {
   private readonly root: HTMLElement;
@@ -1091,13 +1091,11 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
       <div class="auto-skills">${SKILLS.map((sk, i) => `<label><input type="checkbox" data-sk="${i}" ${st.skills[i] ? "checked" : ""}> ${esc(t(sk.name))}</label>`).join("")}</div>
       <label><input type="checkbox" data-potion-auto ${gameSettings.v.autoPotion ? "checked" : ""}> ${t("생명이 낮으면 물약 (어디서나)")}</label>
       ${potionSlider()}
-      <label><input type="checkbox" data-quest-first ${st.questFirst ? "checked" : ""}> ${t("의뢰 대상 먼저")}</label>
       <label><input type="checkbox" data-ult-auto ${st.ult !== false ? "checked" : ""}> ${t("궁극기 자동 사용")}</label>
       <button type="button" class="close btn btn-secondary btn-sm" data-popclose>${t("닫기")}</button>`;
     pop.hidden = false;
     pop.querySelectorAll<HTMLInputElement>("[data-sk]").forEach((c) => c.addEventListener("change", () => { st.skills[Number(c.dataset.sk)] = c.checked; this.h.saveAutoSettings(); }));
     el<HTMLInputElement>("[data-potion-auto]", pop).addEventListener("change", (e) => gameSettings.set({ autoPotion: (e.target as HTMLInputElement).checked }));
-    el<HTMLInputElement>("[data-quest-first]", pop).addEventListener("change", (e) => { st.questFirst = (e.target as HTMLInputElement).checked; this.h.saveAutoSettings(); });
     el<HTMLInputElement>("[data-ult-auto]", pop).addEventListener("change", (e) => { st.ult = (e.target as HTMLInputElement).checked; this.h.saveAutoSettings(); });
     bindSliders(pop, onSlider);
     el("[data-popclose]", pop).addEventListener("click", () => { pop.hidden = true; });
@@ -1136,8 +1134,7 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     if (left !== null) b.textContent = t("광고 보고 이 자리에서 일어나기 ({n}/{max})", { n: left, max: AD_REVIVE_DAILY });
   }
 
-  /* ---------- death: the ink takes the screen; hold the ensō to rise ---------- */
-  private deathShownAt = 0;
+  /* ---------- death: the ink takes the screen; 마을에서 부활 (a click, or Space/Enter) ---------- */
   private riseTimer = 0;
   private riseBusy = false;
   private outTimer = 0;
@@ -1151,13 +1148,16 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     this.riseBusy = busy;
     window.clearTimeout(this.outTimer);
     if (show) {
+      const btn = el<HTMLButtonElement>("[data-respawn]", this.root);
       if (box.hidden || box.classList.contains("out")) {
         box.classList.remove("out", "rising", "risen");
         box.hidden = false;
-        this.deathShownAt = performance.now();
-        this.setRise(0, false);
+        // a second's pause, so a player still mashing attack doesn't rise by accident
+        btn.disabled = true;
+        window.clearTimeout(this.riseTimer);
+        this.riseTimer = window.setTimeout(() => { btn.disabled = false; }, RISE_READY_MS);
       }
-      if (!busy && box.classList.contains("risen")) { box.classList.remove("risen", "rising"); this.setRise(0, false); }
+      if (!busy && box.classList.contains("risen")) { box.classList.remove("risen", "rising"); btn.disabled = false; }
       this.root.classList.add("dead");
       document.documentElement.classList.add("dying");
       return;
@@ -1169,52 +1169,24 @@ ${s.autoPotion ? t("남은 물약 {n}개 · 자동 사용 켜짐 (생명 {pct}% 
     this.outTimer = window.setTimeout(() => { box.hidden = true; box.classList.remove("out", "rising", "risen"); }, 1100);
   }
 
-  private setRise(f: number, slow: boolean): void {
-    const e = el("[data-rise-enso]", this.root);
-    e.classList.toggle("unwind", !slow && f === 0);
-    e.style.setProperty("--f", String(f));
-  }
-
-  /** The ensō you hold to rise: pointer/touch hold or Space/Enter held ~0.7 s; a plain tap works after 2 s. */
+  /** 마을에서 부활: a click on the button, or Space/Enter, once it has woken (RISE_READY_MS after the fall). */
   private wireRise(): void {
-    const rise = el("[data-respawn]", this.root);
+    const rise = el<HTMLButtonElement>("[data-respawn]", this.root);
     const box = el("[data-death]", this.root);
-    let holding = false;
-    const ready = () => !box.hidden && !box.classList.contains("out") && !box.classList.contains("risen") && !this.riseBusy;
-    const complete = () => {
-      window.clearTimeout(this.riseTimer);
-      holding = false;
-      this.setRise(1, true);
+    const ready = () => !box.hidden && !box.classList.contains("out") && !box.classList.contains("risen") && !this.riseBusy && !rise.disabled;
+    const go = () => {
+      if (!ready()) return;
+      rise.disabled = true;
       box.classList.add("risen");
       audio.play("respawn");
       window.setTimeout(() => this.h.respawn(), 380);
     };
-    const start = () => {
-      if (!ready() || holding) return;
-      holding = true;
-      box.classList.add("rising");
-      this.setRise(1, true);
-      this.riseTimer = window.setTimeout(() => { if (holding) complete(); }, 720);
-    };
-    const stop = (tap: boolean) => {
-      if (!holding) return;
-      holding = false;
-      window.clearTimeout(this.riseTimer);
-      // can't hold? after 2 s a plain tap is enough
-      if (tap && performance.now() - this.deathShownAt > 2000) { complete(); return; }
-      box.classList.remove("rising");
-      this.setRise(0, false);
-    };
     const ad = el<HTMLButtonElement>("[data-ad-revive]", this.root);
-    ad.addEventListener("click", () => { if (ready() && !ad.disabled) this.h.adRevive(); });
-    rise.addEventListener("pointerdown", (e) => { e.preventDefault(); rise.setPointerCapture?.(e.pointerId); start(); });
-    rise.addEventListener("pointerup", () => stop(true));
-    rise.addEventListener("pointercancel", () => stop(false));
-    rise.addEventListener("lostpointercapture", () => stop(false));
+    ad.addEventListener("click", () => { if (!box.hidden && !box.classList.contains("risen") && !this.riseBusy && !ad.disabled) this.h.adRevive(); });
+    rise.addEventListener("click", go);
     const isKey = (e: KeyboardEvent) => e.code === "Space" || e.code === "Enter" || e.code === "NumpadEnter";
-    // Space/Enter on the focused ad button presses it, it does not start the hold
-    window.addEventListener("keydown", (e) => { if (!box.hidden && isKey(e) && e.target !== ad) { e.preventDefault(); if (!e.repeat) start(); } });
-    window.addEventListener("keyup", (e) => { if (!box.hidden && isKey(e)) stop(true); });
+    // Space/Enter on the focused ad button presses that button instead
+    window.addEventListener("keydown", (e) => { if (!box.hidden && isKey(e) && e.target !== ad) { e.preventDefault(); if (!e.repeat) go(); } });
   }
 
   fade(on: boolean, text = ""): void {

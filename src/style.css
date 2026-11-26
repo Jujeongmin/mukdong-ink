@@ -1335,9 +1335,6 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* the ensō to hold: bottom centre, drawn while held, unwound on release */
 .ink-death-rise { position: absolute; left: 50%; bottom: calc(52px + var(--safe-b)); transform: translateX(-50%); display: grid; justify-items: center; gap: 8px; pointer-events: auto; cursor: pointer;
   touch-action: none; -webkit-user-select: none; user-select: none; opacity: 0; animation: ink-fade 0.8s 1.6s ease forwards; outline: none; }
-.ink-death-rise .enso-load { --es: 92px; transition: --f 0.72s linear; }
-.ink-death-rise .enso-load.unwind { transition: --f 0.35s ease-out; }
-.ink-death-rise .enso-load .ring-track { opacity: 0.22; }
 .ink-death-rise:hover .ring-track, .ink-death-rise:focus-visible .ring-track { opacity: 0.38; }
 .ink-death-rise small { font-family: var(--f-brush); font-size: 14px; letter-spacing: 0.1em; color: rgba(236, 226, 208, 0.75); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8); }
 .ink-death.risen .enso-load .seam { clip-path: inset(0 0 0 0); }
@@ -2313,3 +2310,13 @@ html.dying #stage { filter: grayscale(0.88) brightness(0.55) contrast(1.05); }
 /* skill icons sit on a soft ink disc, so a pale technique (바람) still reads on the light ground */
 .ring-btn.sk::before { content: ""; position: absolute; inset: 12%; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle, rgba(27, 23, 20, 0.5) 0 58%, rgba(27, 23, 20, 0.22) 70%, rgba(27, 23, 20, 0) 74%); }
+
+/* death: 마을에서 부활, a plain ink tablet you click (Space/Enter too); dim until it wakes */
+.btn.btn.ink-death-rise { display: inline-flex; align-items: baseline; gap: 10px; padding: 12px 30px 13px; font-size: 18px; letter-spacing: 0.08em;
+  background: rgba(236, 226, 208, 0.94); color: #1f1a16; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45); }
+.btn.btn.ink-death-rise kbd { font-family: var(--f-body); font-size: 11px; letter-spacing: 0; opacity: 0.6; }
+.btn.btn.ink-death-rise:hover:not(:disabled) { background: #f6efe2; }
+.btn.btn.ink-death-rise { position: absolute; filter: none; animation: rise-in 0.6s 0.6s ease forwards; }
+@keyframes rise-in { from { opacity: 0; } to { opacity: 1; } }
+.btn.btn.ink-death-rise:disabled { filter: brightness(0.55) saturate(0.6); cursor: default; }
+.ink-death.risen .btn.btn.ink-death-rise { animation: rise-gone 0.3s 0.2s ease forwards; }
