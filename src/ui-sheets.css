@@ -797,3 +797,7 @@
   #ui .sheet .map-zone figcaption { font-size: 15px; }
   #ui .sheet .map-title { font-size: 18px; }
 }
+
+/* a red dab on a sheet tab that has something to do now (수련 › 검법 단련 while a skill can be trained) */
+.sheet-card .tabs .tab-dot { display: inline-block; width: 8px; height: 8px; margin-left: 4px; vertical-align: 0.35em; background: var(--cinnabar);
+  -webkit-mask: var(--m-dab) center / contain no-repeat; mask: var(--m-dab) center / contain no-repeat; }

@@ -20,6 +20,7 @@ import { roundDist, type QuestNav } from "../questnav";
 import { gameSettings, onSlider, potionSlider } from "./settings";
 import { toast as toastLine } from "./dom";
 import { t } from "../i18n";
+import { anyTrainable } from "./growth";
 
 export interface HudHandlers {
   potion(): void;
@@ -519,7 +520,9 @@ ${t("각성: {text}", { text: t(aw.text) })}` : "");
     el("[data-brush]", this.root).textContent = w ? `${t(w.name)}${plus > 0 ? ` +${plus}` : ""}` : "";
     const pts = p.points ?? pointsEarned(p.level, p.bonusPoints ?? 0) - pointsSpent(p.skills ?? []);
     const ptsEl = el("[data-pts]", this.root);
-    ptsEl.hidden = pts <= 0;
+    // only while something can be trained now: points that can't be spent yet (a skill still locked, short of
+    // pigment or shards, all maxed) don't nag
+    ptsEl.hidden = pts <= 0 || !anyTrainable(p);
     ptsEl.textContent = String(pts);
     this.syncMenuDot();
     this.setQuest(p);

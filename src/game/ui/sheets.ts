@@ -21,7 +21,7 @@ import type { GachaPull, GachaResult, GameApi, ProfileView } from "../../net/api
 import { dailyStatus, mainStatus, npcName, progressText, rewardText } from "../quests";
 import { fmt, hexCss } from "../util";
 import { attempt, el, esc, itemIcon, resBar, resChip, resIcon, tipAttr, toast, type ResKind } from "./dom";
-import { enhanceHtml, growthAction, growthLocal, skillsHtml, type GrowthState } from "./growth";
+import { anyTrainable, enhanceHtml, growthAction, growthLocal, skillsHtml, type GrowthState } from "./growth";
 import { audio } from "../audio";
 import { SETTINGS_TABS, bindSettings, settingsHtml, type SettingsCtx } from "./settings";
 import { ALBUM_PAGES, album, pageEarned } from "../album";
@@ -481,10 +481,16 @@ export class Sheets {
     this.card.classList.toggle("is-settings", this.current === "settings");
   }
 
+  /** A red dot on a tab that has something to do now (the same rule as the HUD's red number). */
+  private tabDot(id: string): boolean {
+    if (this.current === "growth" && id === "skills") return anyTrainable(this.ctx.profile());
+    return false;
+  }
+
   private head(title: string, seal = false): string {
     const tabs = this.current ? TABS[this.current] : undefined;
     const nav = tabs
-      ? `<nav class="tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${id === this.tab}" data-tab="${id}">${esc(label)}</button>`).join("")}</nav>`
+      ? `<nav class="tabs" role="tablist">${tabs.map(([id, label]) => `<button type="button" role="tab" aria-selected="${id === this.tab}" data-tab="${id}">${esc(label)}${this.tabDot(id) ? `<i class="tab-dot"${tipAttr(t("할 수 있는 것이 있다"))}></i>` : ""}</button>`).join("")}</nav>`
       : "";
     return `<header><div>${seal ? `<i class="seal-dab" aria-hidden="true"></i>` : ""}<h2>${esc(title)}</h2></div><button class="close btn btn-secondary btn-sm" type="button" data-close aria-label="${t("닫기")}">${t("닫기")}</button></header>${nav}`;
   }

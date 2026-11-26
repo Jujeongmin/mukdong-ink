@@ -40,6 +40,21 @@ export function freePoints(p: ProfileView): number {
   return p.points ?? pointsEarned(p.level, p.bonusPoints ?? 0) - pointsSpent(p.skills ?? []);
 }
 
+/** Can this technique be trained right now (open, not maxed, and the points, pigment and shards are there)? */
+export function canTrain(p: ProfileView, i: number): boolean {
+  const s = SKILLS[i];
+  if (!s || p.level < s.unlock) return false;
+  const lv = p.skills?.[i] ?? 1;
+  if (lv >= SKILL_MAX) return false;
+  const c = trainCost(lv);
+  return freePoints(p) >= c.points && p.pigment >= c.pigment && (p.shards ?? 0) >= c.shards;
+}
+
+/** Something to train now: what the red marks (수련 on the HUD, the 검법 단련 tab, each row) follow. */
+export function anyTrainable(p: ProfileView): boolean {
+  return SKILLS.some((_, i) => canTrain(p, i));
+}
+
 /** Selection-only actions (no server call, no busy state). */
 export function growthLocal(what: string, b: HTMLElement, st: GrowthState): boolean {
   if (what === "pickSkill") { st.skill = Number(b.dataset.i); st.detail = true; st.slide = true; return true; }
@@ -69,8 +84,7 @@ export function skillsHtml(p: ProfileView, busy: boolean, st: GrowthState): stri
   const rows = SKILLS.map((s, i) => {
     const lv = p.skills?.[i] ?? 1;
     const locked = p.level < s.unlock;
-    const c = trainCost(lv);
-    const ready = !locked && lv < SKILL_MAX && pts >= c.points && p.pigment >= c.pigment && (p.shards ?? 0) >= c.shards;
+    const ready = canTrain(p, i);
     const badge = locked ? `<span class="lvb lock">${t("Lv {lv}에 열림", { lv: s.unlock })}</span>` : `<span class="lvb">Lv ${lv}</span>`;
     return `<li><button type="button" class="gr2-row${i === sel ? " on" : ""}${locked ? " locked" : ""}${focus && i === 1 ? " focus" : ""}" data-do="pickSkill" data-i="${i}" aria-pressed="${i === sel}" style="--skc:${SKILL_COLOR[i]}">
       <i class="spr ic-sk gr2-ico" style="background-position:${skillIconPos(i)}" aria-hidden="true"></i>
