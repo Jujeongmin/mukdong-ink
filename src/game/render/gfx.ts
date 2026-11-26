@@ -108,16 +108,23 @@ const moodU = {
   uSkyPow: { value: 0.7 },
   uContrast: { value: 0 },
 };
+/**
+ * Ink on paper: every zone's mood is laid onto ivory paper with warm black ink and pale skies, keeping about a
+ * quarter of the zone's own hue (night blue, dusk rose, storm grey) so places still differ. The distance thins
+ * out to empty paper sooner, and the dark foreground wash is lighter.
+ */
+const IVORY = [0.94, 0.91, 0.84], SKY_PAPER = [0.86, 0.84, 0.79], WARM_INK = [0.07, 0.06, 0.055];
+const onPaper = (c: readonly number[], to: readonly number[], k: number): number[] => c.map((v, i) => v + (to[i] - v) * k);
 export function setMood(m: Mood): void {
-  moodU.uPaper.value.fromArray(m.paper as number[]);
-  moodU.uInk.value.fromArray(m.ink as number[]);
-  moodU.uSkyTop.value.fromArray(m.skyTop as number[]);
-  moodU.uSkyLow.value.fromArray(m.skyLow as number[]);
-  moodU.uMist.value.fromArray(m.mist as number[]);
+  moodU.uPaper.value.fromArray(onPaper(m.paper, IVORY, 0.78));
+  moodU.uInk.value.fromArray(onPaper(m.ink, WARM_INK, 0.65));
+  moodU.uSkyTop.value.fromArray(onPaper(m.skyTop, SKY_PAPER, 0.72));
+  moodU.uSkyLow.value.fromArray(onPaper(m.skyLow, IVORY, 0.78));
+  moodU.uMist.value.fromArray(onPaper(m.mist, IVORY, 0.72));
   moodU.uMoon.value.fromArray(m.moon as number[]);
   moodU.uFogLow.value = m.fogLow;
-  moodU.uHazeNear.value = m.hazeNear;
-  moodU.uHazeFar.value = m.hazeFar;
+  moodU.uHazeNear.value = m.hazeNear * 0.78;
+  moodU.uHazeFar.value = m.hazeFar * 0.74;
   hemi.color.setHex(m.hemiSky);
   hemi.groundColor.setHex(m.hemiGround);
   hemi.intensity = m.hemiI;
@@ -129,7 +136,7 @@ export function setMood(m: Mood): void {
   moodU.uStalks.value = m.stalks;
   moodU.uGlow.value = m.glow;
   moodU.uClouds.value = m.clouds;
-  moodU.uFgDark.value = m.fgDark;
+  moodU.uFgDark.value = m.fgDark * 0.35;
   moodU.uSunRing.value = m.sunRing ?? 0;
   moodU.uSkyPow.value = m.skyPow ?? 0.7;
   moodU.uContrast.value = m.contrast ?? 0;
@@ -588,7 +595,7 @@ void main(){
   sky = mix(sky, clamp(sky * (0.55 + 0.75 * uBloomCol), 0.0, 1.0), 0.45 * uBloom.w * smoothstep(8.0, 40.0, uBloom.z));
   vec3 col = sky;
   if (!isSky) {
-    float strokeVar = uFine > 0.5 ? 0.5 + 1.0 * fbm(uv * vec2(3.0, 14.0) + 3.1) : 1.0;
+    float strokeVar = uFine > 0.5 ? 0.35 + 1.6 * fbm(uv * vec2(3.0, 14.0) + 3.1) : 1.0;
     vec2 o = px * uEdge * strokeVar;
     float izC = 1.0 / d;
     float izL = 1.0 / linDepth(suv - vec2(o.x, 0.0)), izR = 1.0 / linDepth(suv + vec2(o.x, 0.0));
@@ -600,18 +607,25 @@ void main(){
     float edge = max(dEdge, nEdge * 0.8);
     edge *= mix(1.0, 0.35, smoothstep(30.0, 120.0, d));
     edge *= 0.6 + 0.4 * smoothstep(0.25, 0.7, noise(uv * uRes / 3.0));
+    // the brush lifts now and then: the line breaks into dry gaps along its length
+    edge *= mix(1.0, smoothstep(0.22, 0.5, noise(wp.xz * 1.7 + wp.y * 2.3)), 0.55 * uFine);
 
     float L = luma(src);
     float q = (1.0 - L) * uTones + (fbm(uv * 8.0 + 2.0) - 0.5) * 0.7 * uBleed;
     float qf = fract(q), ws = 0.06 + 0.3 * uBleed;
     float soft = smoothstep(0.5 - ws, 0.5 + ws, qf);
     float tone = (floor(q) + soft) / uTones;
-    tone = pow(clamp(tone, 0.0, 1.0), 1.3) * 0.98;
+    tone = pow(clamp(tone, 0.0, 1.0), 1.7) * 0.98; // a light curve: more bare paper shows
     tone += 0.07 * soft * (1.0 - soft) * 4.0 * step(0.08, tone);
     tone *= 0.82 + 0.3 * fbm(uv * uRes / 6.0);
     // value by distance: near ink stays rich, far ink thins toward the paper
     tone *= mix(1.08, 0.62, smoothstep(16.0, 64.0, d));
     if (uContrast > 0.0) tone = mix(tone, smoothstep(0.18, 0.72, tone), uContrast);
+    // dry brush: the wash breaks into hair streaks where the brush ran dry (mid tones only; solid ink and bare
+    // paper stay as they are)
+    float hair = noise(vec2((wp.x + wp.z) * 1.1, wp.y * 12.0 + (wp.x - wp.z) * 4.5));
+    float upFace = smoothstep(0.55, 0.9, nrm(suv).y); // flat ground takes much less of it (it read as scratches)
+    tone *= 1.0 - 0.32 * (1.0 - 0.75 * upFace) * smoothstep(0.42, 0.78, hair) * smoothstep(0.12, 0.45, tone) * (1.0 - smoothstep(0.75, 0.95, tone)) * (0.6 + 0.4 * uFine);
 
     vec3 inkImg = mix(paper, uInk, clamp(tone, 0.0, 1.0) * 0.92);
     inkImg = mix(inkImg, uInk * 0.8, clamp(edge, 0.0, 1.0) * 0.92);
@@ -799,7 +813,7 @@ export function initRenderer(canvas: HTMLCanvasElement): void {
       uTime: { value: 0 },
       uNear: { value: camera.near },
       uFar: { value: camera.far },
-      uEdge: { value: 1.6 },
+      uEdge: { value: 1.9 },
       uBleed: { value: 0.45 },
       uTones: { value: 4 },
       uInvProj: { value: camera.projectionMatrixInverse },

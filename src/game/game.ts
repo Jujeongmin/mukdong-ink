@@ -1642,8 +1642,9 @@ export class Game {
     // frame opens onto the field's far edge, the painted backdrop and the moon
     // the 궁극기's leap: the view rises with it (and settles back as it lands)
     this.camLift += ((p.state === "ult" ? p.y * 0.6 : 0) - this.camLift) * Math.min(1, dt * 6);
-    camera.position.set(this.camX + sx, 8.4 * k + sy + this.camLift * 0.5, this.camZ + 15 * k);
-    camera.lookAt(this.camX + sx * 0.5, 2.2 + sy * 0.5 + this.camLift, this.camZ - 4);
+    // a higher, farther quarter view: more of the field around you, looked down on like a painted scroll
+    camera.position.set(this.camX + sx, 11.2 * k + sy + this.camLift * 0.5, this.camZ + 17.2 * k);
+    camera.lookAt(this.camX + sx * 0.5, 1.7 + sy * 0.5 + this.camLift, this.camZ - 3.2);
     camFocus.set(this.camX, 0, this.camZ);
     camera.updateMatrixWorld();
     camera.getWorldDirection(camFwd);
